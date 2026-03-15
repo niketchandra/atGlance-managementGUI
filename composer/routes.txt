@@ -1,0 +1,38 @@
+
+  GET|HEAD        / .......................................................... 
+  POST            auth/login ........................ Api\AuthController@login
+  POST            auth/logout ...................... Api\AuthController@logout
+  POST            auth/pat-tokens ............... Api\PatTokenController@store
+  GET|HEAD        auth/pat-tokens ............... Api\PatTokenController@index
+  POST            auth/register .................. Api\AuthController@register
+  POST            auth/validate-token Api\TokenValidationController@validateT…
+  GET|HEAD        auth/validate-token Api\TokenValidationController@validateF…
+  GET|HEAD        config-files ............ Api\FileController@listConfigFiles
+  POST            config-files/upload .... Api\FileController@uploadConfigFile
+  GET|HEAD        config-files/{fileId} Api\FileController@downloadConfigFile
+  DELETE          config-files/{fileId} .. Api\FileController@deleteConfigFile
+  GET|HEAD        config-files/{fileId}/raw-data Api\FileController@getRawData
+  POST            files/upload ..................... Api\FileController@upload
+  GET|HEAD        files/{fileId} ................. Api\FileController@download
+  GET|HEAD        products ...... products.index › Api\ProductController@index
+  POST            products ...... products.store › Api\ProductController@store
+  GET|HEAD        products/{product} products.show › Api\ProductController@sh…
+  PUT|PATCH       products/{product} products.update › Api\ProductController@…
+  DELETE          products/{product} products.destroy › Api\ProductController…
+  GET|HEAD        sanctum/csrf-cookie sanctum.csrf-cookie › Laravel\Sanctum  …
+  GET|HEAD        storage/{path} ............................... storage.local
+  PUT             storage/{path} ........................ storage.local.upload
+  POST            system-deregister .. Api\SystemRegisterController@deregister
+  POST            system-register ......... Api\SystemRegisterController@store
+  GET|HEAD        system-register ......... Api\SystemRegisterController@index
+  GET|HEAD        system-register/pat/{patTokenId} Api\SystemRegisterControll…
+  GET|HEAD        system-register/user/{userId} Api\SystemRegisterController@…
+  GET|HEAD        up ......................................................... 
+  GET|HEAD        users ............... users.index › Api\UserController@index
+  POST            users ............... users.store › Api\UserController@store
+  GET|HEAD        users/{user} .......... users.show › Api\UserController@show
+  PUT|PATCH       users/{user} ...... users.update › Api\UserController@update
+  DELETE          users/{user} .... users.destroy › Api\UserController@destroy
+
+                                                           Showing [34] routes
+

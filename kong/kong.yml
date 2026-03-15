@@ -1,0 +1,193 @@
+_format_version: "3.0"
+
+services:
+  - name: users-service
+    url: http://api:8000/api
+    routes:
+      - name: users-route
+        paths:
+          - /users
+        strip_path: false
+        methods:
+          - GET
+          - POST
+          - PUT
+          - DELETE
+      - name: products-route
+        paths:
+          - /products
+        strip_path: false
+        methods:
+          - GET
+          - POST
+          - PUT
+          - DELETE
+    plugins:
+      - name: rate-limiting
+        config:
+          minute: 4
+          policy: local
+  - name: auth-service
+    url: http://api:8000/api
+    routes:
+      - name: auth-register-route
+        paths:
+          - /auth/register
+        strip_path: false
+        methods:
+          - POST
+      - name: auth-login-route
+        paths:
+          - /auth/login
+        strip_path: false
+        methods:
+          - POST
+      - name: auth-logout-route
+        paths:
+          - /auth/logout
+        strip_path: false
+        methods:
+          - POST
+      - name: auth-pat-tokens-route
+        paths:
+          - /auth/pat-tokens
+        strip_path: false
+        methods:
+          - POST
+          - GET
+      - name: auth-validate-token-post-route
+        paths:
+          - /auth/validate-token
+        strip_path: false
+        methods:
+          - POST
+      - name: auth-validate-token-get-route
+        paths:
+          - /auth/validate-token
+        strip_path: false
+        methods:
+          - GET
+  - name: files-service
+    url: http://api:8000/api
+    routes:
+      - name: system-register-route
+        paths:
+          - /system-register
+        strip_path: false
+        methods:
+          - POST
+          - GET
+      - name: system-register-pat-route
+        paths:
+          - /system-register/pat
+        strip_path: false
+        methods:
+          - GET
+      - name: system-register-user-route
+        paths:
+          - /system-register/user
+        strip_path: false
+        methods:
+          - GET
+      - name: system-deregister-route
+        paths:
+          - /system-deregister
+        strip_path: false
+        methods:
+          - POST
+      - name: system-reactive-route
+        paths:
+          - /system-reactive
+        strip_path: false
+        methods:
+          - POST
+          - GET
+      - name: system-deregister-force-route
+        paths:
+          - /system-deregister-force
+        strip_path: false
+        methods:
+          - POST
+          - GET
+      - name: files-upload-route
+        paths:
+          - /files/upload
+        strip_path: false
+        methods:
+          - POST
+      - name: files-download-route
+        paths:
+          - /files
+        strip_path: false
+        methods:
+          - GET
+      - name: config-files-upload-route
+        paths:
+          - /config-files/upload
+        strip_path: false
+        methods:
+          - POST
+      - name: config-files-list-route
+        paths:
+          - /config-files
+        strip_path: false
+        methods:
+          - GET
+      - name: config-files-download-route
+        paths:
+          - /config-files/
+        strip_path: false
+        methods:
+          - GET
+          - DELETE
+      - name: services-list-route
+        paths:
+          - /services
+        strip_path: false
+        methods:
+          - GET
+      - name: services-create-route
+        paths:
+          - /services
+        strip_path: false
+        methods:
+          - POST
+      - name: services-show-route
+        paths:
+          - /services/
+        strip_path: false
+        methods:
+          - GET
+
+  - name: force-deregister-api-prefix-service
+    url: http://api:8000
+    routes:
+      - name: force-deregister-api-prefix-route
+        paths:
+          - /api/system-deregister-force
+        strip_path: false
+        methods:
+          - POST
+          - GET
+
+  - name: force-reactivate-api-prefix-service
+    url: http://api:8000
+    routes:
+      - name: force-reactivate-api-prefix-route
+        paths:
+          - /api/system-reactivate-force
+        strip_path: false
+        methods:
+          - POST
+          - GET
+
+  - name: reactive-api-prefix-service
+    url: http://api:8000
+    routes:
+      - name: reactive-api-prefix-route
+        paths:
+          - /api/system-reactive
+        strip_path: false
+        methods:
+          - POST
+          - GET
