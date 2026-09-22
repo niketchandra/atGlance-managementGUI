@@ -15,7 +15,8 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        // Seed default admin user
-        $this->call(AdminUserSeeder::class);
+        // Installation wizard uses InstallationSeeder with form-submitted org/admin data.
+        // For development/testing, run AdminUserSeeder manually:
+        // php artisan db:seed --class=AdminUserSeeder
     }
 }

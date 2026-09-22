@@ -18,6 +18,8 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'auth.session' => \App\Http\Middleware\AuthenticateSession::class,
             'auth.pat' => \App\Http\Middleware\AuthenticatePatToken::class,
+            'app.installed' => \App\Http\Middleware\EnsureApplicationInstalled::class,
+            'admin.role' => \App\Http\Middleware\AdminRoleMiddleware::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
