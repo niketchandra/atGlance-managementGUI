@@ -4,161 +4,96 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Installation Complete</title>
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Sora', 'ui-sans-serif', 'system-ui']
+                    },
+                    boxShadow: {
+                        glow: '0 20px 60px -30px #555555'
+                    }
+                }
+            }
+        };
+    </script>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 20px;
-        }
-        .success-card {
-            background: white;
-            border-radius: 12px;
-            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
-            max-width: 700px;
-            width: 100%;
-            padding: 40px;
-        }
-        .success-header {
-            text-align: center;
-            margin-bottom: 30px;
-        }
-        .success-icon {
-            width: 80px;
-            height: 80px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: white;
-            font-size: 40px;
-            margin: 0 auto 20px;
-        }
-        .success-title {
-            font-size: 28px;
-            font-weight: bold;
-            color: #333;
-            margin-bottom: 10px;
-        }
-        .success-subtitle {
-            font-size: 14px;
-            color: #666;
-            line-height: 1.6;
-        }
-        .info-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 15px;
-            margin: 30px 0;
-        }
-        .info-item {
-            background: #f8f9fa;
-            padding: 15px;
-            border-radius: 8px;
-            border-left: 4px solid #667eea;
-        }
-        .info-label {
-            font-weight: 600;
-            color: #333;
-            font-size: 12px;
-            text-transform: uppercase;
-            margin-bottom: 8px;
-        }
-        .info-value {
-            font-size: 14px;
-            color: #666;
-        }
-        .action-buttons {
-            display: flex;
-            gap: 15px;
-            justify-content: center;
-            margin-top: 30px;
-        }
-        .btn {
-            padding: 12px 30px;
-            border-radius: 6px;
-            border: none;
-            cursor: pointer;
-            font-weight: 600;
-            font-size: 13px;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            transition: transform 0.3s ease, box-shadow 0.3s ease;
-            text-decoration: none;
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-        }
-        .btn-primary {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-        }
-        .btn-primary:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.3);
-        }
-        @media (max-width: 640px) {
-            .success-card {
-                padding: 25px;
-            }
-            .info-grid {
-                grid-template-columns: 1fr;
-            }
-            .success-title {
-                font-size: 22px;
-            }
-            .action-buttons {
-                flex-direction: column;
-            }
-            .btn {
-                width: 100%;
-                justify-content: center;
-            }
+            font-family: 'Sora', ui-sans-serif, system-ui;
         }
     </style>
 </head>
-<body>
-    <div class="success-card">
-        <div class="success-header">
-            <div class="success-icon">
-                <i class="fas fa-check"></i>
-            </div>
-            <h1 class="success-title">Installation Completed</h1>
-            <p class="success-subtitle">Your AtGlance application is ready. Sign in with the administrator account you created during setup.</p>
-        </div>
+<body class="min-h-screen overflow-x-hidden bg-white">
+    <div class="fixed inset-0 -z-10">
+        <div class="h-full w-full bg-white"></div>
+    </div>
 
-        <div class="info-grid">
-            <div class="info-item">
-                <div class="info-label"><i class="fas fa-building"></i> Organization</div>
-                <div class="info-value">{{ $installation['organization_name'] ?? 'Default Organization' }}</div>
+    <div class="mx-auto flex min-h-screen w-full max-w-6xl items-center justify-center px-5 py-8 sm:px-8">
+        <div class="w-full max-w-4xl rounded-3xl border border-cccccc bg-white p-6 shadow-lg sm:p-10">
+            <div class="mb-6 flex items-center gap-4">
+                <div class="flex h-14 w-14 items-center justify-center rounded-2xl bg-black text-lg font-extrabold text-white shadow-lg">
+                    AG
+                </div>
+                <div>
+                    <h1 class="text-2xl font-extrabold text-black sm:text-3xl">Installation Completed</h1>
+                </div>
             </div>
-            <div class="info-item">
-                <div class="info-label"><i class="fas fa-globe"></i> Domain</div>
-                <div class="info-value">{{ $installation['app_domain'] ?? '' }}</div>
-            </div>
-            <div class="info-item">
-                <div class="info-label"><i class="fas fa-lock"></i> HTTPS Enabled</div>
-                <div class="info-value">{{ ($installation['https_enabled'] ?? false) ? 'Yes' : 'No' }}</div>
-            </div>
-            <div class="info-item">
-                <div class="info-label"><i class="fas fa-user"></i> Administrator</div>
-                <div class="info-value">{{ $installation['admin_email'] ?? 'Admin account' }}</div>
-            </div>
-        </div>
 
-        <div class="action-buttons">
-            <a href="{{ route('home') }}" class="btn btn-primary">
-                <i class="fas fa-sign-in-alt"></i>
+            <p class="text-sm text-slate-600 sm:text-base">Your AtGlance application is ready. Please use the details below to sign in and continue setup.</p>
+
+            <div class="mt-6 grid grid-cols-1 gap-4 text-sm md:grid-cols-2">
+                <div class="rounded-xl border border-cccccc bg-white p-4">
+                    <p class="font-semibold text-slate-800">Organization Name</p>
+                    <p class="mt-1 text-slate-700">{{ $installation['organization_name'] ?? 'Default Organization' }}</p>
+                </div>
+                <div class="rounded-xl border border-cccccc bg-white p-4">
+                    <p class="font-semibold text-slate-800">IP Address</p>
+                    <p class="mt-1 text-slate-700">{{ $installation['app_ip'] ?? parse_url(($installation['app_url'] ?? url('/')), PHP_URL_HOST) }}</p>
+                </div>
+                <div class="rounded-xl border border-cccccc bg-white p-4">
+                    <p class="font-semibold text-slate-800">Domain Alias</p>
+                    <p class="mt-1 text-slate-700">{{ !empty($installation['app_alias_domain'] ?? '') ? $installation['app_alias_domain'] : 'Not configured' }}</p>
+                </div>
+                <div class="rounded-xl border border-cccccc bg-white p-4">
+                    <p class="font-semibold text-slate-800">HTTPS Enabled</p>
+                    <p class="mt-1 text-slate-700">{{ ($installation['https_enabled'] ?? false) ? 'Yes' : 'No' }}</p>
+                </div>
+                <div class="rounded-xl border border-cccccc bg-white p-4">
+                    <p class="font-semibold text-slate-800">Project URL</p>
+                    <p class="mt-1 text-slate-700">{{ $installation['app_url'] ?? url('/') }}</p>
+                </div>
+                <div class="rounded-xl border border-cccccc bg-white p-4">
+                    <p class="font-semibold text-slate-800">Super Admin Email</p>
+                    <p class="mt-1 text-slate-700">{{ $installation['superadmin_email'] ?? 'superadmin@admin.com' }}</p>
+                </div>
+                <div class="rounded-xl border border-cccccc bg-white p-4">
+                    <p class="font-semibold text-slate-800">Super Admin Password</p>
+                    <p class="mt-1 text-slate-700">{{ $installation['superadmin_password'] ?? 'Atglance@123' }}</p>
+                </div>
+            </div>
+
+            <div class="mt-6 rounded-xl border border-cccccc bg-f5f5f5 p-4 text-sm text-slate-700 sm:p-5">
+                <p class="font-semibold text-black">Next steps for SSO integration</p>
+                <ol class="mt-2 list-decimal pl-5 space-y-1">
+                    <li>Login with the super admin account.</li>
+                    <li>Open <span class="font-medium">Admin Settings</span> and navigate to SSO settings.</li>
+                    <li>Enable desired providers and add client ID/secret values.</li>
+                    <li>Set provider callback URLs to: <span class="font-medium">/auth/sso/{provider}/callback</span>.</li>
+                    <li>Save settings and test SSO login from the sign-in page.</li>
+                </ol>
+            </div>
+
+            <a
+                href="{{ route('home') }}"
+                class="mt-6 inline-flex items-center rounded-xl bg-black px-5 py-3 text-sm font-bold uppercase tracking-wider text-white transition"
+                onmouseover="this.style.background='#555555'"
+                onmouseout="this.style.background='#000000'"
+            >
                 Go to Login
             </a>
         </div>

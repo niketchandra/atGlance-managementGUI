@@ -23,7 +23,7 @@ class AdminUserSeeder extends Seeder
             'id' => 1010,
             'rbac_id' => 100, // super_admin role
             'org_id' => 200, // default organization
-            'name' => 'superadmin',
+            'name' => 'admin',
             'password' => $hashedPassword,
             'password_hash' => $hashedPassword,
             'dob' => '1990-01-01',

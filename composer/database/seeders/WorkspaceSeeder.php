@@ -13,9 +13,11 @@ class WorkspaceSeeder extends Seeder
      */
     public function run(): void
     {
+        // Get default organization (ID 200)
         $defaultOrg = Organization::find(200);
-
+        
         if ($defaultOrg) {
+            // Create default workspace
             Workspace::firstOrCreate(
                 ['name' => 'Default Workspace'],
                 [
@@ -25,6 +27,7 @@ class WorkspaceSeeder extends Seeder
                 ]
             );
 
+            // Create sample workspaces if needed
             Workspace::firstOrCreate(
                 ['name' => 'Development'],
                 [

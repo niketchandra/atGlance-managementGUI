@@ -12,7 +12,7 @@
                 </h1>
                 <p style="color: #666; font-size: 14px;">View and download all configuration versions for this service</p>
             </div>
-            <a href="{{ route('systems-registered.services', ['systemId' => $systemId]) }}" style="background: #667eea; color: white; padding: 10px 20px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 14px;">
+            <a href="{{ route('systems-registered.services', ['systemId' => $systemId]) }}" style="background: #111827; color: white; padding: 10px 20px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 14px; transition: background 0.2s ease;" onmouseover="this.style.background='#1f2937'" onmouseout="this.style.background='#111827'">
                 <i class="fas fa-arrow-left"></i> Back to Services
             </a>
         </div>
@@ -21,11 +21,11 @@
     <div style="background: white; padding: 24px; border-radius: 14px; box-shadow: 0 2px 10px rgba(0,0,0,0.08); margin-bottom: 20px;">
         <div style="display: flex; align-items: center; justify-content: space-between;">
             <div>
-                <div style="font-size: 14px; color: #999; margin-bottom: 4px;">Total Versions</div>
-                <div style="font-size: 32px; font-weight: bold; color: #667eea;">{{ count($versions) }}</div>
+                <div style="font-size: 14px; color: #6b7280; margin-bottom: 4px; font-weight: 600;">Total Versions</div>
+                <div style="font-size: 32px; font-weight: bold; color: #111827;">{{ count($versions) }}</div>
             </div>
-            <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 12px; text-align: center; min-width: 150px;">
-                <div style="font-size: 12px; opacity: 0.9; margin-bottom: 4px;">SERVICE NAME</div>
+            <div style="background: #f3f4f6; border: 1px solid #d1d5db; color: #111827; padding: 20px; border-radius: 12px; text-align: center; min-width: 150px;">
+                <div style="font-size: 12px; color: #4b5563; margin-bottom: 4px; font-weight: 600;">SERVICE NAME</div>
                 <div style="font-size: 16px; font-weight: bold;">{{ $serviceName }}</div>
             </div>
         </div>
@@ -42,12 +42,12 @@
                 @php
                     $isActive = strtolower($version->status) === 'active';
                 @endphp
-                <div style="background: linear-gradient(180deg, #ffffff 0%, #fafbff 100%); border-radius: 14px; border: 2px solid {{ $isActive ? '#4caf50' : '#f44336' }}; box-shadow: 0 8px 20px rgba(0,0,0,0.08); overflow: hidden; transition: transform 0.2s ease, box-shadow 0.2s ease;" 
+                <div style="background: linear-gradient(180deg, #ffffff 0%, #fafbff 100%); border-radius: 14px; border: 2px solid #d0d7de; box-shadow: 0 8px 20px rgba(0,0,0,0.08); overflow: hidden; transition: transform 0.2s ease, box-shadow 0.2s ease;" 
                      onmouseover="this.style.transform='translateY(-4px)'; this.style.boxShadow='0 12px 28px rgba(0,0,0,0.15)';" 
                      onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 8px 20px rgba(0,0,0,0.08)';">
                     
                     <!-- Version Header -->
-                    <div style="background: {{ $isActive ? 'linear-gradient(135deg, #11998e 0%, #38ef7d 100%)' : 'linear-gradient(135deg, #eb3349 0%, #f45c43 100%)' }}; padding: 20px;">
+                    <div style="background: linear-gradient(135deg, #1f2937 0%, #374151 100%); padding: 20px;">
                         <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
                             <div style="display: flex; align-items: center; gap: 10px;">
                                 <div style="background: rgba(255,255,255,0.25); border-radius: 10px; width: 45px; height: 45px; display: flex; align-items: center; justify-content: center;">
@@ -55,10 +55,10 @@
                                 </div>
                                 <div>
                                     <div style="font-size: 10px; color: rgba(255,255,255,0.8); font-weight: 500;">VERSION</div>
-                                    <div style="font-size: 20px; color: white; font-weight: bold;">{{ $version->version ?? 'N/A' }}</div>
+                                    <div style="font-size: 20px; color: white; font-weight: bold;">{{ $version->display_version ?? $version->version ?? 'N/A' }}</div>
                                 </div>
                             </div>
-                            <div style="background: {{ $isActive ? 'rgba(76, 175, 80, 0.95)' : 'rgba(244, 67, 54, 0.95)' }}; padding: 5px 12px; border-radius: 16px; font-size: 10px; color: white; font-weight: 600; text-transform: uppercase;">
+                            <div style="background: rgba(17, 24, 39, 0.85); border: 1px solid rgba(255,255,255,0.3); padding: 6px 14px; border-radius: 20px; font-size: 11px; color: white; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">
                                 {{ ucfirst($version->status) }}
                             </div>
                         </div>
@@ -95,7 +95,7 @@
                                 </a>
                                 <div id="version-hash-content-{{ $version->id }}" style="display: none; margin-top: 8px; background: white; padding: 8px; border-radius: 6px; border: 1px solid #ffe0b2; font-family: 'Courier New', monospace; font-size: 10px; color: #333; word-break: break-all; line-height: 1.5; position: relative; padding-right: 70px;">
                                     <span id="version-hash-value-{{ $version->id }}">{{ $version->validation_hash }}</span>
-                                    <button onclick="copyHashById('version-hash-value-{{ $version->id }}', this)" style="position: absolute; top: 6px; right: 6px; background: #ff9800; color: white; border: none; padding: 4px 8px; border-radius: 4px; font-size: 10px; cursor: pointer; font-weight: 600; transition: background 0.2s;" onmouseover="this.style.background='#f57c00'" onmouseout="this.style.background='#ff9800'">
+                                    <button onclick="copyHashById('version-hash-value-{{ $version->id }}', this)" style="position: absolute; top: 6px; right: 6px; background: #111827; color: white; border: none; padding: 4px 8px; border-radius: 4px; font-size: 10px; cursor: pointer; font-weight: 600; transition: background 0.2s;" onmouseover="this.style.background='#1f2937'" onmouseout="this.style.background='#111827'">
                                         <i class="fas fa-copy"></i> Copy
                                     </button>
                                 </div>
@@ -118,15 +118,15 @@
                         <!-- Action Buttons -->
                         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding-top: 16px; border-top: 1px solid #f0f0f0;">
                             <button onclick="window.location.href='{{ route('configuration-backups.view', ['id' => $version->id]) }}'" 
-                                    style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; padding: 10px; border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.2s ease; display: flex; align-items: center; justify-content: center; gap: 6px;"
-                                    onmouseover="this.style.transform='scale(1.05)'; this.style.boxShadow='0 4px 12px rgba(102, 126, 234, 0.4)';" 
-                                    onmouseout="this.style.transform='scale(1)'; this.style.boxShadow='none';">
+                                    style="background: #111827; color: white; border: none; padding: 10px; border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.2s ease; display: flex; align-items: center; justify-content: center; gap: 6px;"
+                                    onmouseover="this.style.transform='scale(1.05)'; this.style.boxShadow='0 4px 12px rgba(17, 24, 39, 0.35)'; this.style.background='#1f2937';" 
+                                    onmouseout="this.style.transform='scale(1)'; this.style.boxShadow='none'; this.style.background='#111827';">
                                 <i class="fas fa-eye"></i> View
                             </button>
                             <button onclick="window.location.href='{{ route('configuration-backups.download', ['id' => $version->id]) }}'" 
-                                    style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white; border: none; padding: 10px; border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.2s ease; display: flex; align-items: center; justify-content: center; gap: 6px;"
-                                    onmouseover="this.style.transform='scale(1.05)'; this.style.boxShadow='0 4px 12px rgba(245, 87, 108, 0.4)';" 
-                                    onmouseout="this.style.transform='scale(1)'; this.style.boxShadow='none';">
+                                    style="background: #f3f4f6; color: #111827; border: 1px solid #d1d5db; padding: 10px; border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.2s ease; display: flex; align-items: center; justify-content: center; gap: 6px;"
+                                    onmouseover="this.style.transform='scale(1.05)'; this.style.boxShadow='0 4px 12px rgba(17, 24, 39, 0.12)'; this.style.background='#e5e7eb';" 
+                                    onmouseout="this.style.transform='scale(1)'; this.style.boxShadow='none'; this.style.background='#f3f4f6';">
                                 <i class="fas fa-download"></i> Download
                             </button>
                         </div>
@@ -178,7 +178,7 @@ function copyHashById(hashElementId, button) {
         // Reset button after 2 seconds
         setTimeout(() => {
             button.innerHTML = originalHTML;
-            button.style.background = '#ff9800';
+            button.style.background = '#111827';
         }, 2000);
     } catch (err) {
         console.error('Failed to copy:', err);
@@ -187,7 +187,7 @@ function copyHashById(hashElementId, button) {
         
         setTimeout(() => {
             button.innerHTML = '<i class="fas fa-copy"></i> Copy';
-            button.style.background = '#ff9800';
+            button.style.background = '#111827';
         }, 2000);
     } finally {
         document.body.removeChild(textarea);

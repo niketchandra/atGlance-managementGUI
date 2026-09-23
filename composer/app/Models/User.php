@@ -32,7 +32,6 @@ class User extends Authenticatable
         'phone',
         'password',
         'password_hash',
-        'status',
     ];
 
     /**
@@ -101,6 +100,16 @@ class User extends Authenticatable
     public function patTokens(): HasMany
     {
         return $this->hasMany(PatToken::class, 'user_id');
+    }
+
+    /**
+     * Get the workspaces for this user.
+     */
+    public function workspaces()
+    {
+        return $this->belongsToMany(Workspace::class, 'workspace_user')
+            ->withPivot('is_admin')
+            ->withTimestamps();
     }
 
     /**

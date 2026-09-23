@@ -6,7 +6,7 @@ use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
-class AdminRoleMiddleware
+class SuperAdminRoleMiddleware
 {
     /**
      * Handle an incoming request.
@@ -19,9 +19,9 @@ class AdminRoleMiddleware
 
         $rbacId = (int) Auth::user()->rbac_id;
 
-        if (!in_array($rbacId, [100, 101], true)) {
+        if ($rbacId !== 100) {
             return redirect()->route('dashboard')->withErrors([
-                'authorization' => 'You do not have permission to access admin dashboard.',
+                'authorization' => 'Only super admin users can access enterprise console.',
             ]);
         }
 

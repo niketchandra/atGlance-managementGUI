@@ -19,6 +19,9 @@ class Workspace extends Model
         'status',
     ];
 
+    /**
+     * Get the users for this workspace.
+     */
     public function users(): BelongsToMany
     {
         return $this->belongsToMany(User::class, 'workspace_user')
@@ -26,26 +29,41 @@ class Workspace extends Model
             ->withTimestamps();
     }
 
+    /**
+     * Get the admins for this workspace.
+     */
     public function admins()
     {
         return $this->users()->wherePivot('is_admin', true);
     }
 
+    /**
+     * Get the regular users for this workspace.
+     */
     public function regularUsers()
     {
         return $this->users()->wherePivot('is_admin', false);
     }
 
+    /**
+     * Get the organization for this workspace.
+     */
     public function organization()
     {
         return $this->belongsTo(Organization::class, 'org_id');
     }
 
+    /**
+     * Scope to get only active workspaces
+     */
     public function scopeActive($query)
     {
         return $query->where('status', 'active');
     }
 
+    /**
+     * Check if a user is an admin of this workspace.
+     */
     public function hasUserAsAdmin($userId): bool
     {
         return $this->users()
@@ -54,6 +72,9 @@ class Workspace extends Model
             ->exists();
     }
 
+    /**
+     * Add a user to this workspace as admin or regular user.
+     */
     public function addUser($userId, $isAdmin = false): void
     {
         $this->users()->syncWithoutDetaching([
@@ -61,6 +82,9 @@ class Workspace extends Model
         ]);
     }
 
+    /**
+     * Remove a user from this workspace.
+     */
     public function removeUser($userId): void
     {
         $this->users()->detach($userId);

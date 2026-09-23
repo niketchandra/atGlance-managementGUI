@@ -17,6 +17,7 @@ class ConfigurationFile extends Model
         'service_id',
         'file_name',
         'service_name',
+        'storage_disk',
         'file_location',
         'validation_hash',
         'version',

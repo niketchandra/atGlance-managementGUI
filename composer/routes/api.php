@@ -3,7 +3,6 @@
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\FileController;
 use App\Http\Controllers\Api\PatTokenController;
-use App\Http\Controllers\Api\ProductController;
 use App\Http\Controllers\Api\ServiceController;
 use App\Http\Controllers\Api\SystemRegisterController;
 use App\Http\Controllers\Api\TokenValidationController;
@@ -23,7 +22,6 @@ Route::post('/auth/pat-tokens', [PatTokenController::class, 'store'])->middlewar
 Route::get('/auth/pat-tokens', [PatTokenController::class, 'index'])->middleware('auth.session');
 
 Route::apiResource('users', UserController::class);
-Route::apiResource('products', ProductController::class);
 
 // File operations - require PAT token only (permanent token with atgla- prefix)
 Route::post('/files/upload', [FileController::class, 'upload'])->middleware('auth.pat');
@@ -33,6 +31,7 @@ Route::get('/files/{fileId}', [FileController::class, 'download'])->middleware('
 Route::post('/config-files/upload', [FileController::class, 'uploadConfigFile'])->middleware('auth.pat');
 Route::get('/config-files', [FileController::class, 'listConfigFiles'])->middleware('auth.pat');
 Route::get('/config-files/filter', [FileController::class, 'listConfigFilesBySystemAndHash'])->middleware('auth.pat');
+Route::get('/config-files/config-show', [FileController::class, 'listConfigVersionsBySystemValidationAndService'])->middleware('auth.pat');
 Route::get('/config-files/{fileId}', [FileController::class, 'downloadConfigFile'])->middleware('auth.pat');
 Route::get('/config-files/download/{id}', [FileController::class, 'downloadConfigFileById'])->middleware('auth.pat');
 Route::get('/config-files/{fileId}/raw-data', [FileController::class, 'getRawData'])->middleware('auth.pat');
@@ -56,10 +55,10 @@ Route::post('/system-deregister', [SystemRegisterController::class, 'deregister'
 Route::post('/system-reactive', [SystemRegisterController::class, 'reactive'])->middleware('auth.pat');
 Route::get('/system-reactive', [SystemRegisterController::class, 'reactive'])->middleware('auth.pat');
 
-// Force system deregistration - requires session token (bearer token) - ADMIN API
-Route::post('/system-deregister-force', [SystemRegisterController::class, 'deregisterForce'])->middleware('auth.session');
-Route::get('/system-deregister-force', [SystemRegisterController::class, 'deregisterForce'])->middleware('auth.session');
+// Force system deregistration - no bearer token required; uses email + password/pin
+Route::post('/system-deregister-force', [SystemRegisterController::class, 'deregisterForce']);
+Route::get('/system-deregister-force', [SystemRegisterController::class, 'deregisterForce']);
 
-// Force system reactivation - requires session token (bearer token) - ADMIN API
-Route::post('/system-reactivate-force', [SystemRegisterController::class, 'reactiveForce'])->middleware('auth.session');
-Route::get('/system-reactivate-force', [SystemRegisterController::class, 'reactiveForce'])->middleware('auth.session');
+// Force system reactivation - no bearer token required; uses email + password/pin
+Route::post('/system-reactivate-force', [SystemRegisterController::class, 'reactiveForce']);
+Route::get('/system-reactivate-force', [SystemRegisterController::class, 'reactiveForce']);

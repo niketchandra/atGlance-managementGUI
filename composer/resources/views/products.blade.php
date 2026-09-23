@@ -10,7 +10,7 @@
             <h1 style="font-size: 32px; font-weight: bold; color: #333; margin-bottom: 10px;">Products & APIs</h1>
             <p style="color: #666;">Manage your APIs and integrations</p>
         </div>
-        <button style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 12px 24px; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; transition: transform 0.3s ease;" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='translateY(0)'">
+        <button style="background: #000000; color: white; padding: 12px 24px; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; transition: transform 0.3s ease;" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='translateY(0)'">
             <i class="fas fa-plus"></i> Add New API
         </button>
     </div>
@@ -25,7 +25,7 @@
         .filter-btn {
             padding: 8px 16px;
             background: white;
-            border: 1px solid #ddd;
+            border: 1px solid #b3b3b3;
             border-radius: 6px;
             cursor: pointer;
             font-weight: 500;
@@ -34,19 +34,19 @@
         }
 
         .filter-btn.active {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: #7a7a7a;
             color: white;
-            border-color: transparent;
+            border-color: #7a7a7a;
         }
 
         .filter-btn:hover {
-            border-color: #667eea;
+            border-color: #8f8f8f;
         }
 
         .search-box {
             flex: 1;
             padding: 12px 16px;
-            border: 1px solid #ddd;
+            border: 1px solid #b3b3b3;
             border-radius: 6px;
             font-size: 14px;
             transition: border-color 0.3s ease;
@@ -54,8 +54,8 @@
 
         .search-box:focus {
             outline: none;
-            border-color: #667eea;
-            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+            border-color: #000000;
+            box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.08);
         }
 
         .products-grid {

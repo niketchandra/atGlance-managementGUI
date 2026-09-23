@@ -11,7 +11,11 @@ class EnsureApplicationInstalled
 {
     public function handle(Request $request, Closure $next): Response
     {
-        if (InstallationState::isInstalled() || $request->routeIs('install.*')) {
+        if (InstallationState::isInstalled()) {
+            return $next($request);
+        }
+
+        if ($request->routeIs('install.*')) {
             return $next($request);
         }
 

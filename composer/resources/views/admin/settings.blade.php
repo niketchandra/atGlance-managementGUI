@@ -37,7 +37,6 @@
         <button type="button" class="settings-tab-btn" data-tab="s3" style="padding:10px 14px; border-radius:8px; border:1px solid #b3b3b3; background:{{ $activeTab === 's3' ? '#7a7a7a' : '#ffffff' }}; color:{{ $activeTab === 's3' ? '#ffffff' : '#111827' }}; cursor:pointer; font-weight:600;">S3 Configuration</button>
         <button type="button" class="settings-tab-btn" data-tab="migration" style="padding:10px 14px; border-radius:8px; border:1px solid #b3b3b3; background:{{ $activeTab === 'migration' ? '#7a7a7a' : '#ffffff' }}; color:{{ $activeTab === 'migration' ? '#ffffff' : '#111827' }}; cursor:pointer; font-weight:600;">Migration</button>
         <button type="button" class="settings-tab-btn" data-tab="backup-restore" style="padding:10px 14px; border-radius:8px; border:1px solid #b3b3b3; background:{{ $activeTab === 'backup-restore' ? '#7a7a7a' : '#ffffff' }}; color:{{ $activeTab === 'backup-restore' ? '#ffffff' : '#111827' }}; cursor:pointer; font-weight:600;">Backup &amp; Restore</button>
-        <button type="button" class="settings-tab-btn" data-tab="ai" style="padding:10px 14px; border-radius:8px; border:1px solid #b3b3b3; background:{{ $activeTab === 'ai' ? '#7a7a7a' : '#ffffff' }}; color:{{ $activeTab === 'ai' ? '#ffffff' : '#111827' }}; cursor:pointer; font-weight:600;">AI Setup</button>
         <button type="button" class="settings-tab-btn" data-tab="plugins" style="padding:10px 14px; border-radius:8px; border:1px solid #b3b3b3; background:{{ $activeTab === 'plugins' ? '#7a7a7a' : '#ffffff' }}; color:{{ $activeTab === 'plugins' ? '#ffffff' : '#111827' }}; cursor:pointer; font-weight:600;">Plugins</button>
         <button type="button" class="settings-tab-btn" data-tab="crons" style="padding:10px 14px; border-radius:8px; border:1px solid #b3b3b3; background:{{ $activeTab === 'crons' ? '#7a7a7a' : '#ffffff' }}; color:{{ $activeTab === 'crons' ? '#ffffff' : '#111827' }}; cursor:pointer; font-weight:600;">Crons</button>
     </div>
@@ -455,134 +454,6 @@
         @endif
     </div>
 
-    <div id="tab-ai" class="settings-tab-content" style="display:{{ $activeTab === 'ai' ? 'block' : 'none' }}; background:white; border:1px solid #b3b3b3; border-radius:10px; padding:22px; box-shadow:0 2px 10px rgba(0,0,0,0.06);">
-        <h2 style="font-size:18px; margin-bottom:12px;">AI Setup</h2>
-        <p style="font-size:13px; color:#6b7280; margin-bottom:14px;">Configure AI providers for auditing configuration files. You can use either a Cloud AI provider or Bring Your Own AI Settings (BYOS).</p>
-        
-        @php
-            $selectedProviderType = old('ai_provider_type', $aiProviderType ?? 'cloud');
-            $selectedCloudProvider = old('ai_provider', $aiProvider ?? 'chatgpt');
-            $apiKeyMap = old('ai_api_keys', $aiApiKeyMap ?? []);
-            $byosEnabledState = old('byos_enabled', ($byosEnabled ?? false) ? '1' : '0');
-            $ollamaBaseUrl = old('ai_ollama_base_url', $aiOllamaBaseUrl ?? 'http://localhost:11434');
-            $ollamaModel = old('ai_ollama_model', $aiOllamaModel ?? 'mistral');
-        @endphp
-
-        <form method="POST" action="{{ route('admin.settings.ai', ['tab' => 'ai']) }}" id="ai-settings-form">
-            @csrf
-
-            <!-- Cloud AI Provider Section -->
-            <div style="margin-bottom:20px; padding:16px; border:2px solid #e5e7eb; border-radius:10px; background:#fafafa;">
-                <div style="display:flex; align-items:center; gap:8px; margin-bottom:12px;">
-                    <input type="radio" id="provider-type-cloud" name="ai_provider_type" value="cloud" {{ $selectedProviderType === 'cloud' ? 'checked' : '' }} style="cursor:pointer;">
-                    <label for="provider-type-cloud" style="cursor:pointer; font-weight:600; color:#111827;">Cloud AI Provider</label>
-                </div>
-
-                <div id="cloud-provider-section" style="display:{{ $selectedProviderType === 'cloud' ? 'block' : 'none' }}; margin-left:24px;">
-                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:12px;">
-                        <div>
-                            <label style="display:block; font-size:13px; color:#4b5563; margin-bottom:6px;">Select AI Provider</label>
-                            <select name="ai_provider" id="ai-provider-select" style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:10px;">
-                                <option value="">-- Choose a provider --</option>
-                                <option value="chatgpt" {{ $selectedCloudProvider === 'chatgpt' ? 'selected' : '' }}>ChatGPT (OpenAI)</option>
-                                <option value="claude" {{ $selectedCloudProvider === 'claude' ? 'selected' : '' }}>Claude (Anthropic)</option>
-                                <option value="gemini" {{ $selectedCloudProvider === 'gemini' ? 'selected' : '' }}>Gemini (Google)</option>
-                                <option value="ollama" {{ $selectedCloudProvider === 'ollama' ? 'selected' : '' }}>Ollama (Local/Self-Hosted)</option>
-                            </select>
-                        </div>
-                        <div id="api-key-input-wrapper" style="display:{{ in_array($selectedCloudProvider, ['chatgpt', 'claude', 'gemini']) ? 'block' : 'none' }};">
-                            <label style="display:block; font-size:13px; color:#4b5563; margin-bottom:6px;">API Key</label>
-                            <input type="password" name="ai_api_keys[{{ $selectedCloudProvider }}]" id="ai-api-key" value="{{ $apiKeyMap[$selectedCloudProvider] ?? '' }}" placeholder="Enter your API key" style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:10px;">
-                            <div style="font-size:12px; color:#6b7280; margin-top:4px;">Your API key is encrypted and stored securely.</div>
-                        </div>
-                    </div>
-
-                    <!-- Ollama Specific Settings -->
-                    <div id="ollama-settings" style="display:{{ $selectedCloudProvider === 'ollama' ? 'block' : 'none' }};">
-                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
-                            <div>
-                                <label style="display:block; font-size:13px; color:#4b5563; margin-bottom:6px;">Ollama Base URL</label>
-                                <input type="url" name="ai_ollama_base_url" value="{{ $ollamaBaseUrl }}" placeholder="http://localhost:11434" style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:10px;">
-                                <div style="font-size:12px; color:#6b7280; margin-top:4px;">e.g., http://localhost:11434</div>
-                            </div>
-                            <div>
-                                <label style="display:block; font-size:13px; color:#4b5563; margin-bottom:6px;">Ollama Model</label>
-                                <input type="text" name="ai_ollama_model" value="{{ $ollamaModel }}" placeholder="mistral, neural-chat, etc." style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:10px;">
-                                <div style="font-size:12px; color:#6b7280; margin-top:4px;">e.g., mistral, llama2, neural-chat</div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- BYOS Section -->
-            <div style="margin-bottom:20px; padding:16px; border:2px solid #e5e7eb; border-radius:10px; background:#fafafa;">
-                <div style="display:flex; align-items:center; gap:8px; margin-bottom:12px;">
-                    <input type="radio" id="provider-type-byos" name="ai_provider_type" value="byos" {{ $selectedProviderType === 'byos' ? 'checked' : '' }} style="cursor:pointer;">
-                    <label for="provider-type-byos" style="cursor:pointer; font-weight:600; color:#111827;">Bring Your Own AI Settings (BYOS)</label>
-                </div>
-
-                <div id="byos-section" style="display:{{ $selectedProviderType === 'byos' ? 'block' : 'none' }}; margin-left:24px;">
-                    <div style="margin-bottom:14px;">
-                        <label style="display:flex; align-items:center; gap:8px;">
-                            <input type="checkbox" id="byos-enabled-toggle" name="byos_enabled" value="1" {{ $byosEnabledState === '1' ? 'checked' : '' }}>
-                            <span style="font-weight:600; color:#111827;">Enable BYOS Configuration</span>
-                        </label>
-                        <p style="margin:6px 0 0 26px; font-size:12px; color:#6b7280;">Enable this to use your own AI server or custom AI configuration.</p>
-                    </div>
-
-                    <div id="byos-config-fields" style="display:{{ $byosEnabledState === '1' ? 'block' : 'none' }}; margin-left:24px;">
-                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:12px;">
-                            <div>
-                                <label style="display:block; font-size:13px; color:#4b5563; margin-bottom:6px;">Base URL</label>
-                                <input type="url" name="byos_base_url" value="{{ old('byos_base_url', $byosBaseUrl) }}" placeholder="https://api.example.com" style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:10px;">
-                                <div style="font-size:12px; color:#6b7280; margin-top:4px;">e.g., https://api.example.com or http://your-server:port</div>
-                            </div>
-                            <div>
-                                <label style="display:block; font-size:13px; color:#4b5563; margin-bottom:6px;">Model Name</label>
-                                <input type="text" name="byos_model" value="{{ old('byos_model', $byosModel) }}" placeholder="gpt-4, claude-3, etc." style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:10px;">
-                                <div style="font-size:12px; color:#6b7280; margin-top:4px;">The model identifier for your AI service</div>
-                            </div>
-                        </div>
-
-                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:12px;">
-                            <div>
-                                <label style="display:block; font-size:13px; color:#4b5563; margin-bottom:6px;">Auth Token {{ $hasByosAuthToken ? '(leave blank to keep existing)' : '' }}</label>
-                                <input type="password" name="byos_auth_token" value="" placeholder="Your authentication token/API key" style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:10px;">
-                                <div style="font-size:12px; color:#6b7280; margin-top:4px;">This will be encrypted before storage</div>
-                            </div>
-                            <div>
-                                <label style="display:block; font-size:13px; color:#4b5563; margin-bottom:6px;">Max Thinking Tokens</label>
-                                <input type="number" name="byos_max_thinking_tokens" value="{{ old('byos_max_thinking_tokens', $byosMaxThinkingTokens) }}" placeholder="10000" min="0" style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:10px;">
-                                <div style="font-size:12px; color:#6b7280; margin-top:4px;">Maximum tokens for thinking (leave blank if not supported)</div>
-                            </div>
-                        </div>
-
-                        <div style="padding:10px; border-radius:8px; background:#eff6ff; color:#1e3a8a; border:1px solid #bfdbfe; font-size:13px;">
-                            <strong>Note:</strong> BYOS settings are useful for custom AI servers, local deployments, or private AI APIs.
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <div style="padding:10px; border-radius:8px; background:#f9fafb; border:1px solid #e5e7eb; color:#374151; font-size:13px; line-height:1.5; margin-bottom:14px;">
-                <strong>Configuration File Auditing:</strong>
-                <br>
-                Once configured, the selected AI provider will be used to automatically audit your configuration files for:
-                <br>
-                • Security vulnerabilities
-                <br>
-                • Best practice violations
-                <br>
-                • Compliance issues
-                <br>
-                • Performance optimization opportunities
-            </div>
-
-            <button type="submit" style="background:#000000; color:white; border:none; border-radius:8px; padding:10px 14px; font-weight:600; cursor:pointer;">Save AI Settings</button>
-        </form>
-    </div>
-
     <div id="tab-sso" class="settings-tab-content" style="display:{{ $activeTab === 'sso' ? 'block' : 'none' }}; background:white; border:1px solid #b3b3b3; border-radius:10px; padding:22px; box-shadow:0 2px 10px rgba(0,0,0,0.06);">
         <h2 style="font-size:18px; margin-bottom:12px;">SSO Configuration</h2>
         <form method="POST" action="{{ route('admin.settings.sso', ['tab' => 'sso']) }}">
@@ -627,24 +498,21 @@
 
             <div style="margin-bottom:14px;">
                 <label style="display:block; font-size:13px; color:#4b5563; margin-bottom:8px; font-weight:600;">Provider Login URLs</label>
-                <p style="font-size:12px; color:#6b7280; margin-bottom:10px;">Only selected providers are shown below. For Authentik and generic OIDC, enter the issuer or OpenID configuration URL. Tenant/Domain is optional and not required for GitHub.</p>
+                <p style="font-size:12px; color:#6b7280; margin-bottom:10px;">Only selected providers are shown below. Configure URL and Client ID/Secret per provider. Tenant/Domain is optional and not required for GitHub.</p>
                 <p style="font-size:12px; color:#374151; margin-bottom:10px;">Configure callback/redirect URL on your identity platform, not here. App callback format: <strong>{{ url('/auth/sso/{provider}/callback') }}</strong></p>
                 <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
                     @foreach(($ssoProviderOptions ?? []) as $providerKey => $providerMeta)
-                        @php $isOidcProvider = in_array($providerKey, ['authentik', 'oidc'], true); @endphp
                         <div class="provider-url-group" data-provider="{{ $providerKey }}" style="display:{{ in_array($providerKey, $selectedProviders, true) ? 'block' : 'none' }};">
                             <div style="font-size:12px; color:#111827; margin-bottom:6px;">Callback URL for {{ $providerMeta['label'] ?? ucfirst($providerKey) }}: <strong>{{ url('/auth/sso/' . $providerKey . '/callback') }}</strong></div>
-                            @if(!in_array($providerKey, ['azure-ad', 'microsoft'], true))
-                                <label style="display:block; font-size:12px; color:#4b5563; margin-bottom:5px;">{{ $isOidcProvider ? 'Issuer / OpenID Configuration URL' : ($providerMeta['label'] ?? ucfirst($providerKey)) . ' URL' }}</label>
-                                <input
-                                    class="provider-config-input"
-                                    type="url"
-                                    name="sso_provider_urls[{{ $providerKey }}]"
-                                    value="{{ $providerUrls[$providerKey] ?? '' }}"
-                                    placeholder="https://..."
-                                    style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:10px;"
-                                >
-                            @endif
+                            <label style="display:block; font-size:12px; color:#4b5563; margin-bottom:5px;">{{ $providerMeta['label'] ?? ucfirst($providerKey) }} URL</label>
+                            <input
+                                class="provider-config-input"
+                                type="url"
+                                name="sso_provider_urls[{{ $providerKey }}]"
+                                value="{{ $providerUrls[$providerKey] ?? '' }}"
+                                placeholder="https://..."
+                                style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:10px;"
+                            >
 
                             <label style="display:block; font-size:12px; color:#4b5563; margin:8px 0 5px;">{{ $providerMeta['label'] ?? ucfirst($providerKey) }} Client ID</label>
                             <input
@@ -802,55 +670,6 @@
     updateProviderConfigVisibility();
     updateSsoDependentVisibility();
     updateBackupVisibility();
-
-    // AI Settings Form Behavior
-    const cloudProviderRadio = document.getElementById('provider-type-cloud');
-    const byosRadio = document.getElementById('provider-type-byos');
-    const cloudProviderSection = document.getElementById('cloud-provider-section');
-    const byosSection = document.getElementById('byos-section');
-    const aiProviderSelect = document.getElementById('ai-provider-select');
-    const apiKeyInputWrapper = document.getElementById('api-key-input-wrapper');
-    const ollamaSettings = document.getElementById('ollama-settings');
-    const byosEnabledToggle = document.getElementById('byos-enabled-toggle');
-    const byosConfigFields = document.getElementById('byos-config-fields');
-
-    function updateAiFormVisibility() {
-        // Show/hide Cloud and BYOS sections based on radio selection
-        if (cloudProviderRadio && cloudProviderSection) {
-            cloudProviderSection.style.display = cloudProviderRadio.checked ? 'block' : 'none';
-        }
-        if (byosRadio && byosSection) {
-            byosSection.style.display = byosRadio.checked ? 'block' : 'none';
-        }
-
-        // Show/hide provider-specific fields
-        if (aiProviderSelect && apiKeyInputWrapper && ollamaSettings) {
-            const selectedProvider = aiProviderSelect.value;
-            apiKeyInputWrapper.style.display = ['chatgpt', 'claude', 'gemini'].includes(selectedProvider) ? 'block' : 'none';
-            ollamaSettings.style.display = selectedProvider === 'ollama' ? 'block' : 'none';
-        }
-
-        // Show/hide BYOS config fields
-        if (byosEnabledToggle && byosConfigFields) {
-            byosConfigFields.style.display = byosEnabledToggle.checked ? 'block' : 'none';
-        }
-    }
-
-    if (cloudProviderRadio) {
-        cloudProviderRadio.addEventListener('change', updateAiFormVisibility);
-    }
-    if (byosRadio) {
-        byosRadio.addEventListener('change', updateAiFormVisibility);
-    }
-    if (aiProviderSelect) {
-        aiProviderSelect.addEventListener('change', updateAiFormVisibility);
-    }
-    if (byosEnabledToggle) {
-        byosEnabledToggle.addEventListener('change', updateAiFormVisibility);
-    }
-
-    // Initial visibility update
-    updateAiFormVisibility();
 })();
 </script>
 @endsection

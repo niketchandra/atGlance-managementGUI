@@ -16,15 +16,17 @@ class InstallationState
         }
 
         $raw = @file_get_contents(self::markerPath());
-        $decoded = $raw === false ? null : json_decode($raw, true);
+        if ($raw === false) {
+            return [];
+        }
 
+        $decoded = json_decode($raw, true);
         return is_array($decoded) ? $decoded : [];
     }
 
     public static function markInstalled(array $data): void
     {
         $directory = dirname(self::markerPath());
-
         if (!is_dir($directory)) {
             mkdir($directory, 0755, true);
         }

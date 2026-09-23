@@ -9,20 +9,20 @@
         <p style="color: #666; font-size: 14px;">Manage and download your configuration backup files</p>
     </div>
 
-    <div style="background: white; padding: 24px; border-radius: 14px; box-shadow: 0 2px 10px rgba(0,0,0,0.08); margin-bottom: 30px;">
+    <div style="background: white; padding: 24px; border-radius: 14px; border: 1px solid #b3b3b3; box-shadow: 0 2px 10px rgba(0,0,0,0.08); margin-bottom: 30px;">
         <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 20px;">
-            <i class="fas fa-filter" style="color: #667eea; font-size: 18px;"></i>
+            <i class="fas fa-filter" style="color: #333333; font-size: 18px;"></i>
             <h3 style="font-size: 16px; font-weight: bold; color: #333; margin: 0;">Search & Filter</h3>
         </div>
         <form method="GET" action="{{ route('configuration-backups') }}">
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 16px;">
                 <div>
                     <label style="font-size: 12px; color: #666; font-weight: 600; display: block; margin-bottom: 6px;">Service Name</label>
-                    <input type="text" name="service_name" value="{{ request('service_name') }}" placeholder="Search by service" style="width: 100%; padding: 10px 12px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 14px; outline: none; transition: border-color 0.2s;" onfocus="this.style.borderColor='#667eea'" onblur="this.style.borderColor='#e0e0e0'">
+                    <input type="text" name="service_name" value="{{ request('service_name') }}" placeholder="Search by service" style="width: 100%; padding: 10px 12px; border: 1px solid #b3b3b3; border-radius: 8px; font-size: 14px; outline: none; transition: border-color 0.2s;" onfocus="this.style.borderColor='#000000'" onblur="this.style.borderColor='#b3b3b3'">
                 </div>
                 <div>
                     <label style="font-size: 12px; color: #666; font-weight: 600; display: block; margin-bottom: 6px;">Status</label>
-                    <select name="status" style="width: 100%; padding: 10px 12px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 14px; outline: none; transition: border-color 0.2s; background: white; cursor: pointer;" onfocus="this.style.borderColor='#667eea'" onblur="this.style.borderColor='#e0e0e0'">
+                    <select name="status" style="width: 100%; padding: 10px 12px; border: 1px solid #b3b3b3; border-radius: 8px; font-size: 14px; outline: none; transition: border-color 0.2s; background: white; cursor: pointer;" onfocus="this.style.borderColor='#000000'" onblur="this.style.borderColor='#b3b3b3'">
                         <option value="">All Status</option>
                         <option value="active" {{ request('status') === 'active' ? 'selected' : '' }}>Active</option>
                         <option value="inactive" {{ request('status') === 'inactive' ? 'selected' : '' }}>Inactive</option>
@@ -30,22 +30,22 @@
                 </div>
                 <div>
                     <label style="font-size: 12px; color: #666; font-weight: 600; display: block; margin-bottom: 6px;">Date</label>
-                    <input type="date" name="date" value="{{ request('date') }}" style="width: 100%; padding: 10px 12px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 14px; outline: none; transition: border-color 0.2s;" onfocus="this.style.borderColor='#667eea'" onblur="this.style.borderColor='#e0e0e0'">
+                    <input type="date" name="date" value="{{ request('date') }}" style="width: 100%; padding: 10px 12px; border: 1px solid #b3b3b3; border-radius: 8px; font-size: 14px; outline: none; transition: border-color 0.2s;" onfocus="this.style.borderColor='#000000'" onblur="this.style.borderColor='#b3b3b3'">
                 </div>
                 <div>
                     <label style="font-size: 12px; color: #666; font-weight: 600; display: block; margin-bottom: 6px;">System ID</label>
-                    <input type="text" name="system_id" value="{{ request('system_id') }}" placeholder="Search by system id" style="width: 100%; padding: 10px 12px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 14px; outline: none; transition: border-color 0.2s;" onfocus="this.style.borderColor='#667eea'" onblur="this.style.borderColor='#e0e0e0'">
+                    <input type="text" name="system_id" value="{{ request('system_id') }}" placeholder="Search by system id" style="width: 100%; padding: 10px 12px; border: 1px solid #b3b3b3; border-radius: 8px; font-size: 14px; outline: none; transition: border-color 0.2s;" onfocus="this.style.borderColor='#000000'" onblur="this.style.borderColor='#b3b3b3'">
                 </div>
                 <div>
                     <label style="font-size: 12px; color: #666; font-weight: 600; display: block; margin-bottom: 6px;">Hash</label>
-                    <input type="text" name="hash" value="{{ request('hash') }}" placeholder="Search by hash" style="width: 100%; padding: 10px 12px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 14px; outline: none; transition: border-color 0.2s;" onfocus="this.style.borderColor='#667eea'" onblur="this.style.borderColor='#e0e0e0'">
+                    <input type="text" name="hash" value="{{ request('hash') }}" placeholder="Search by hash" style="width: 100%; padding: 10px 12px; border: 1px solid #b3b3b3; border-radius: 8px; font-size: 14px; outline: none; transition: border-color 0.2s;" onfocus="this.style.borderColor='#000000'" onblur="this.style.borderColor='#b3b3b3'">
                 </div>
             </div>
             <div style="display: flex; gap: 12px;">
-                <button type="submit" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; padding: 12px 24px; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; transition: transform 0.2s ease;" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">
+                <button type="submit" style="background: #000000; color: white; border: none; padding: 12px 24px; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; transition: transform 0.2s ease;" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">
                     <i class="fas fa-search"></i> Search
                 </button>
-                <a href="{{ route('configuration-backups') }}" style="background: #f5f5f5; color: #666; border: none; padding: 12px 24px; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; text-decoration: none; display: inline-block; transition: background 0.2s ease;" onmouseover="this.style.background='#e0e0e0'" onmouseout="this.style.background='#f5f5f5'">
+                <a href="{{ route('configuration-backups') }}" style="background: #d1d1d1; color: #333333; border: 1px solid #a8a8a8; padding: 12px 24px; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; text-decoration: none; display: inline-block; transition: background 0.2s ease;" onmouseover="this.style.background='#b6b6b6'" onmouseout="this.style.background='#d1d1d1'">
                     <i class="fas fa-redo"></i> Clear Filters
                 </a>
             </div>
@@ -67,12 +67,12 @@
                         ? route('configuration-backups.service-versions', ['serviceId' => $item->service_id])
                         : route('configuration-backups.service-versions-by-name', ['serviceName' => $item->service_name]);
                 @endphp
-                <div style="background: linear-gradient(180deg, #ffffff 0%, #fafbff 100%); border-radius: 14px; border: 2px solid {{ $isActive ? '#4caf50' : '#f44336' }}; box-shadow: 0 8px 20px rgba(0,0,0,0.08); overflow: hidden; transition: transform 0.2s ease, box-shadow 0.2s ease;" 
+                <div style="background: linear-gradient(180deg, #ffffff 0%, #fafbff 100%); border-radius: 14px; border: 2px solid #d0d7de; box-shadow: 0 8px 20px rgba(0,0,0,0.08); overflow: hidden; transition: transform 0.2s ease, box-shadow 0.2s ease;" 
                      onmouseover="this.style.transform='translateY(-4px)'; this.style.boxShadow='0 12px 28px rgba(0,0,0,0.15)';" 
                      onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 8px 20px rgba(0,0,0,0.08)';">
                     
                     <!-- Card Header -->
-                    <div style="background: {{ $isActive ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' : 'linear-gradient(135deg, #eb3349 0%, #f45c43 100%)' }}; padding: 20px; position: relative;">
+                    <div style="background: linear-gradient(135deg, #1f2937 0%, #374151 100%); padding: 20px; position: relative;">
                         <div style="display: flex; align-items: center; justify-content: space-between;">
                             <div style="display: flex; align-items: center; gap: 12px;">
                                 <div style="background: rgba(255,255,255,0.25); border-radius: 10px; width: 50px; height: 50px; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(10px);">
@@ -83,7 +83,7 @@
                                     <div style="font-size: 18px; color: white; font-weight: bold; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ $item->service_name ?? 'N/A' }}</div>
                                 </div>
                             </div>
-                            <div style="background: {{ $isActive ? 'rgba(76, 175, 80, 0.95)' : 'rgba(244, 67, 54, 0.95)' }}; padding: 6px 14px; border-radius: 20px; font-size: 11px; color: white; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">
+                            <div style="background: rgba(17, 24, 39, 0.85); border: 1px solid rgba(255,255,255,0.3); padding: 6px 14px; border-radius: 20px; font-size: 11px; color: white; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">
                                 {{ ucfirst($item->status) }}
                             </div>
                         </div>
@@ -149,13 +149,13 @@
                         <!-- Action Buttons -->
                         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding-top: 16px; border-top: 1px solid #f0f0f0;">
                                     <button onclick="window.location.href='{{ $versionsUrl }}'" 
-                                    style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; padding: 12px; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.2s ease; display: flex; align-items: center; justify-content: center; gap: 6px;"
-                                    onmouseover="this.style.transform='scale(1.05)'; this.style.boxShadow='0 4px 12px rgba(102, 126, 234, 0.4)';" 
-                                    onmouseout="this.style.transform='scale(1)'; this.style.boxShadow='none';">
+                                    style="background: #111827; color: white; border: none; padding: 12px; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.2s ease; display: flex; align-items: center; justify-content: center; gap: 6px;"
+                                    onmouseover="this.style.transform='scale(1.05)'; this.style.boxShadow='0 4px 12px rgba(17, 24, 39, 0.35)'; this.style.background='#1f2937';" 
+                                    onmouseout="this.style.transform='scale(1)'; this.style.boxShadow='none'; this.style.background='#111827';">
                                 <i class="fas fa-eye"></i> View Versions ({{ $item->version_count ?? 1 }})
                             </button>
-                            <div style="background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); color: white; padding: 12px; border-radius: 8px; font-size: 13px; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 6px; flex-direction: column;">
-                                <div style="font-size: 10px; opacity: 0.9;">LATEST VERSION</div>
+                            <div style="background: #f3f4f6; border: 1px solid #d1d5db; color: #111827; padding: 12px; border-radius: 8px; font-size: 13px; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 6px; flex-direction: column;">
+                                <div style="font-size: 10px; color: #4b5563;">LATEST VERSION</div>
                                 <div style="font-size: 16px; font-weight: bold;">{{ $item->version ?? 'N/A' }}</div>
                             </div>
                         </div>

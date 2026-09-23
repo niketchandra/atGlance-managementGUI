@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class SystemRegister extends Model
 {
@@ -22,9 +23,16 @@ class SystemRegister extends Model
         'pat_token_id',
         'user_id',
         'org_id',
+        'workspace_id',
         'system_name',
         'os_type',
         'ip_address',
+        'public_ip',
+        'public_facing',
+        'description',
+        'distro',
+        'version',
+        'is_locked',
         'tags',
         'metadata',
         'status',
@@ -33,7 +41,19 @@ class SystemRegister extends Model
     
     protected $attributes = [
         'status' => 'active',
+        'public_facing' => false,
+        'is_locked' => false,
     ];
+
+    protected $casts = [
+        'public_facing' => 'boolean',
+        'is_locked' => 'boolean',
+    ];
+
+    public function workspace(): BelongsTo
+    {
+        return $this->belongsTo(Workspace::class, 'workspace_id');
+    }
     
     /**
      * Generate a unique random ID between 5-10 digits
