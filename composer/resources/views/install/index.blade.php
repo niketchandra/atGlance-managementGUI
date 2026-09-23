@@ -4,70 +4,233 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AtGlance Installer</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    <script src="https://cdn.tailwindcss.com"></script>
-    <style>body { font-family: 'Sora', ui-sans-serif, system-ui; }</style>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .installer-card {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+            max-width: 600px;
+            width: 100%;
+            padding: 40px;
+        }
+        .installer-header {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+        .installer-logo {
+            width: 50px;
+            height: 50px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 24px;
+            font-weight: bold;
+        }
+        .installer-title {
+            font-size: 24px;
+            font-weight: bold;
+            color: #333;
+            margin: 0;
+        }
+        .installer-description {
+            background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
+            padding: 15px;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+            margin-bottom: 25px;
+            font-size: 14px;
+            color: #666;
+            line-height: 1.6;
+        }
+        .form-section {
+            margin-bottom: 25px;
+        }
+        .section-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #333;
+            text-transform: uppercase;
+            margin-bottom: 15px;
+            padding-bottom: 12px;
+            border-bottom: 2px solid #e0e0e0;
+        }
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            margin-bottom: 15px;
+        }
+        .form-group label {
+            font-weight: 600;
+            color: #333;
+            font-size: 13px;
+            margin-bottom: 8px;
+        }
+        .form-group input,
+        .form-group select {
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+            font-family: inherit;
+            transition: border-color 0.3s ease;
+        }
+        .form-group input:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+        .helper-text {
+            font-size: 12px;
+            color: #999;
+            margin-top: 6px;
+        }
+        .error-alert {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+            padding: 12px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            font-size: 13px;
+        }
+        .error-alert ul {
+            margin: 0;
+            padding-left: 20px;
+        }
+        .error-alert li {
+            margin-bottom: 6px;
+        }
+        .submit-btn {
+            width: 100%;
+            padding: 14px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-weight: 600;
+            font-size: 14px;
+            cursor: pointer;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-top: 10px;
+        }
+        .submit-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.3);
+        }
+        .submit-btn i {
+            margin-right: 8px;
+        }
+        @media (max-width: 640px) {
+            .installer-card {
+                padding: 25px;
+            }
+            .form-row {
+                grid-template-columns: 1fr;
+            }
+            .installer-title {
+                font-size: 20px;
+            }
+        }
+    </style>
 </head>
-<body class="min-h-screen overflow-x-hidden bg-slate-950">
-    <div class="fixed inset-0 -z-10 bg-gradient-to-br from-slate-950 via-teal-950 to-slate-900"></div>
-    <div class="mx-auto flex min-h-screen w-full max-w-5xl items-center justify-center px-5 py-8 sm:px-8">
-        <div class="w-full max-w-3xl rounded-3xl border border-white/20 bg-white/90 p-6 shadow-2xl backdrop-blur-xl sm:p-10">
-            <div class="mb-6 flex items-center gap-4">
-                <div class="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-500 to-cyan-500 text-lg font-extrabold text-white">AG</div>
-                <h1 class="text-2xl font-extrabold text-slate-900 sm:text-3xl">AtGlance Project Installer</h1>
+<body>
+    <div class="installer-card">
+        <div class="installer-header">
+            <div class="installer-logo">
+                <i class="fas fa-gate"></i>
             </div>
-            <div class="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm leading-relaxed text-slate-700 sm:p-5">
-                <span class="font-semibold text-slate-900">AtGlance</span> is a configuration files backup platform for Linux administrators.
+            <h1 class="installer-title">AtGlance Installer</h1>
+        </div>
+        <div class="installer-description">
+            <strong>AtGlance</strong> is a configuration files backup platform for Linux administrators. Set up the application for your organization.
+        </div>
+        @if ($errors->any())
+            <div class="error-alert">
+                <ul>
+                    @foreach ($errors->all() as $error)
+                        <li>{{ $error }}</li>
+                    @endforeach
+                </ul>
             </div>
-            <p class="mt-5 text-sm font-medium text-slate-600 sm:text-base">Set up the application for your organization.</p>
-            @if ($errors->any())
-                <div class="mt-5 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700"><ul class="list-disc space-y-1 pl-5">@foreach ($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul></div>
-            @endif
-            <form action="{{ route('install.run') }}" method="POST" class="mt-6 space-y-5">
-                @csrf
-                <div>
-                    <label for="organization_name" class="block text-sm font-semibold text-slate-800">Organization Name</label>
-                    <input id="organization_name" name="organization_name" type="text" required value="{{ old('organization_name', 'Default Organization') }}" placeholder="Acme Corp" class="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100">
+        @endif
+        <form action="{{ route('install.run') }}" method="POST">
+            @csrf
+            <div class="form-section">
+                <h2 class="section-title">Organization Setup</h2>
+                <div class="form-group">
+                    <label for="organization_name">Organization Name</label>
+                    <input id="organization_name" name="organization_name" type="text" required value="{{ old('organization_name', 'Default Organization') }}" placeholder="Acme Corp">
                 </div>
-                <div>
-                    <label for="app_url" class="block text-sm font-semibold text-slate-800">Domain or IP</label>
-                    <input id="app_url" name="app_url" type="text" required value="{{ old('app_url', $defaultDomain ?? request()->getHttpHost()) }}" placeholder="example.com or 192.168.1.50:8000" class="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100">
-                    <p class="mt-2 text-xs text-slate-500">Do not include http:// or https://</p>
+                <div class="form-group">
+                    <label for="app_url">Domain or IP Address</label>
+                    <input id="app_url" name="app_url" type="text" required value="{{ old('app_url', $defaultDomain ?? request()->getHttpHost()) }}" placeholder="example.com or 192.168.1.50:8000">
+                    <p class="helper-text">Do not include http:// or https://</p>
                 </div>
-                <div>
-                    <label for="use_https" class="block text-sm font-semibold text-slate-800">Use HTTPS</label>
-                    <select id="use_https" name="use_https" class="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100">
+                <div class="form-group">
+                    <label for="use_https">Use HTTPS</label>
+                    <select id="use_https" name="use_https">
                         <option value="1" {{ old('use_https', '1') === '1' ? 'selected' : '' }}>Yes</option>
                         <option value="0" {{ old('use_https') === '0' ? 'selected' : '' }}>No</option>
                     </select>
                 </div>
-                <div class="border-t border-slate-200 pt-5">
-                    <h2 class="text-lg font-bold text-slate-900">Administrator account</h2>
-                    <p class="mt-1 text-sm text-slate-500">Create the account you will use to manage this organization.</p>
+            </div>
+
+            <div class="form-section">
+                <h2 class="section-title">Administrator Account</h2>
+                <p style="font-size: 13px; color: #666; margin-bottom: 15px;">Create the account you will use to manage this organization.</p>
+                <div class="form-group">
+                    <label for="admin_name">Administrator Name</label>
+                    <input id="admin_name" name="admin_name" type="text" required value="{{ old('admin_name') }}" placeholder="Jane Smith">
                 </div>
-                <div>
-                    <label for="admin_name" class="block text-sm font-semibold text-slate-800">Administrator name</label>
-                    <input id="admin_name" name="admin_name" type="text" required value="{{ old('admin_name') }}" placeholder="Jane Smith" class="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100">
+                <div class="form-group">
+                    <label for="admin_email">Administrator Email</label>
+                    <input id="admin_email" name="admin_email" type="email" required value="{{ old('admin_email') }}" placeholder="admin@example.com">
                 </div>
-                <div>
-                    <label for="admin_email" class="block text-sm font-semibold text-slate-800">Administrator email</label>
-                    <input id="admin_email" name="admin_email" type="email" required value="{{ old('admin_email') }}" placeholder="admin@example.com" class="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100">
-                </div>
-                <div class="grid gap-5 sm:grid-cols-2">
-                    <div>
-                        <label for="admin_password" class="block text-sm font-semibold text-slate-800">Administrator password</label>
-                        <input id="admin_password" name="admin_password" type="password" minlength="8" required class="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="admin_password">Password</label>
+                        <input id="admin_password" name="admin_password" type="password" minlength="8" required placeholder="Minimum 8 characters">
                     </div>
-                    <div>
-                        <label for="admin_password_confirmation" class="block text-sm font-semibold text-slate-800">Confirm password</label>
-                        <input id="admin_password_confirmation" name="admin_password_confirmation" type="password" minlength="8" required class="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100">
+                    <div class="form-group">
+                        <label for="admin_password_confirmation">Confirm Password</label>
+                        <input id="admin_password_confirmation" name="admin_password_confirmation" type="password" minlength="8" required placeholder="Confirm password">
                     </div>
                 </div>
-                <button type="submit" class="w-full rounded-xl bg-gradient-to-r from-emerald-600 to-cyan-600 px-4 py-3 text-sm font-bold uppercase tracking-wider text-white">Next - Install Application</button>
-            </form>
-        </div>
+            </div>
+
+            <button type="submit" class="submit-btn">
+                <i class="fas fa-check-circle"></i>
+                Complete Installation
+            </button>
+        </form>
     </div>
 </body>
 </html>

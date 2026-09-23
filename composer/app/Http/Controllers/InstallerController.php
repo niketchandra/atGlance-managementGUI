@@ -78,11 +78,6 @@ class InstallerController extends Controller
                 '--force' => true,
             ]);
 
-            Artisan::call('db:seed', [
-                '--class' => 'Database\\Seeders\\AdminUserSeeder',
-                '--force' => true,
-            ]);
-
             Artisan::call('optimize:clear');
         } catch (\Throwable $exception) {
             return back()
