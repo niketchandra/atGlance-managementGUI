@@ -733,7 +733,7 @@
         <!-- LEFT SIDEBAR (20%) -->
         <div class="sidebar">
             <div class="sidebar-logo">
-                <img src="{{ !empty($siteLogoUrl) ? $siteLogoUrl : asset('branding/atglance-logo.png') }}" alt="AtGlance Logo" style="max-width: 250px; max-height: 100px; object-fit: contain;">
+                <img src="{{ !empty($siteLogoUrl) ? $siteLogoUrl : asset('branding/atglance-logo.svg') }}" alt="AtGlance Logo" style="max-width: 250px; max-height: 100px; object-fit: contain;">
             </div>
 
             <div class="form-container" id="authForm">

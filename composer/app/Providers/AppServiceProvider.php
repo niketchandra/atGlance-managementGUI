@@ -25,7 +25,7 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        $defaultLogoUrl = asset('branding/atglance-logo.png');
+        $defaultLogoUrl = asset('branding/atglance-logo.svg');
         $defaultFaviconUrl = asset('branding/favicon.ico');
 
         $sharedSettings = [
