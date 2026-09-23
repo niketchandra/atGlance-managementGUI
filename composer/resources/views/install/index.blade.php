@@ -183,7 +183,7 @@
 
             <aside class="order-1 flex h-full flex-col rounded-2xl border border-slate-200 bg-slate-50 p-5 sm:p-7 lg:order-1">
                 <img
-                    src="{{ asset('branding/atglance-logo.png') }}"
+                    src="{{ asset('branding/atglance-logo.svg') }}"
                     alt="AtGlance logo"
                     class="h-14 w-auto object-contain sm:h-16"
                 >
