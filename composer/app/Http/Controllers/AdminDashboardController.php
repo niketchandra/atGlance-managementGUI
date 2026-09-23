@@ -286,4 +286,64 @@ class AdminDashboardController extends Controller
 
         return back()->with('success', 'AI settings updated successfully.');
     }
+
+    public function adminWorkspaces(): View
+    {
+        $workspaces = Workspace::where('org_id', auth()->user()->org_id)->latest()->paginate(25);
+
+        return view('admin.manage-workspaces', compact('workspaces'));
+    }
+
+    public function viewWorkspace($workspaceId): View
+    {
+        $workspace = Workspace::where('org_id', auth()->user()->org_id)->findOrFail($workspaceId);
+        $users = $workspace->users()->paginate(25);
+
+        return view('admin.workspace-detail', compact('workspace', 'users'));
+    }
+
+    public function addUserToWorkspace(Request $request, $workspaceId): RedirectResponse
+    {
+        $workspace = Workspace::where('org_id', auth()->user()->org_id)->findOrFail($workspaceId);
+
+        $validated = $request->validate([
+            'user_id' => ['required', 'exists:users,id'],
+            'is_admin' => ['nullable', 'boolean'],
+        ]);
+
+        $workspace->addUser($validated['user_id'], $request->boolean('is_admin'));
+
+        return back()->with('success', 'User added to workspace successfully.');
+    }
+
+    public function removeUserFromWorkspace($workspaceId, $userId): RedirectResponse
+    {
+        $workspace = Workspace::where('org_id', auth()->user()->org_id)->findOrFail($workspaceId);
+        $workspace->removeUser($userId);
+
+        return back()->with('success', 'User removed from workspace successfully.');
+    }
+
+    public function updateWorkspace(Request $request, $workspaceId): RedirectResponse
+    {
+        $workspace = Workspace::where('org_id', auth()->user()->org_id)->findOrFail($workspaceId);
+
+        $validated = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'description' => ['nullable', 'string', 'max:512'],
+            'status' => ['required', Rule::in(['active', 'inactive'])],
+        ]);
+
+        $workspace->update($validated);
+
+        return back()->with('success', 'Workspace updated successfully.');
+    }
+
+    public function deleteWorkspace($workspaceId): RedirectResponse
+    {
+        $workspace = Workspace::where('org_id', auth()->user()->org_id)->findOrFail($workspaceId);
+        $workspace->delete();
+
+        return redirect()->route('admin.workspaces')->with('success', 'Workspace deleted successfully.');
+    }
 }

@@ -64,6 +64,12 @@ Route::middleware('app.installed')->group(function () {
             Route::post('/settings/backup-restore', [AdminDashboardController::class, 'updateBackupRestoreSettings'])->name('admin.settings.backup-restore');
             Route::post('/settings/migration/config', [AdminDashboardController::class, 'updateMigrationSettings'])->name('admin.settings.migration.config');
             Route::post('/settings/ai', [AdminDashboardController::class, 'updateAiSettings'])->name('admin.settings.ai');
+            Route::get('/workspaces', [AdminDashboardController::class, 'adminWorkspaces'])->name('admin.workspaces');
+            Route::get('/workspaces/{workspaceId}', [AdminDashboardController::class, 'viewWorkspace'])->name('admin.workspaces.show');
+            Route::put('/workspaces/{workspaceId}', [AdminDashboardController::class, 'updateWorkspace'])->name('admin.workspaces.update');
+            Route::delete('/workspaces/{workspaceId}', [AdminDashboardController::class, 'deleteWorkspace'])->name('admin.workspaces.destroy');
+            Route::post('/workspaces/{workspaceId}/users', [AdminDashboardController::class, 'addUserToWorkspace'])->name('admin.workspaces.users.add');
+            Route::delete('/workspaces/{workspaceId}/users/{userId}', [AdminDashboardController::class, 'removeUserFromWorkspace'])->name('admin.workspaces.users.remove');
         });
     });
 });
