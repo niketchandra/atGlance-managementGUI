@@ -11,41 +11,47 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('admin_settings', function (Blueprint $table) {
-            $table->id();
-            $table->string('setting_group', 100)->default('general');
-            $table->string('setting_key', 150)->unique();
-            $table->longText('setting_value')->nullable();
-            $table->boolean('is_encrypted')->default(false);
-            $table->timestamps();
+        if (!Schema::hasTable('admin_settings')) {
+            Schema::create('admin_settings', function (Blueprint $table) {
+                $table->id();
+                $table->string('setting_group', 100)->default('general');
+                $table->string('setting_key', 150)->unique();
+                $table->longText('setting_value')->nullable();
+                $table->boolean('is_encrypted')->default(false);
+                $table->timestamps();
 
-            $table->index(['setting_group', 'setting_key']);
-        });
+                $table->index(['setting_group', 'setting_key']);
+            });
+        }
 
-        Schema::create('workspaces', function (Blueprint $table) {
-            $table->id();
-            $table->unsignedBigInteger('org_id');
-            $table->string('name', 255);
-            $table->string('description', 512)->nullable();
-            $table->string('status', 20)->default('active');
-            $table->timestamps();
+        if (!Schema::hasTable('workspaces')) {
+            Schema::create('workspaces', function (Blueprint $table) {
+                $table->id();
+                $table->unsignedBigInteger('org_id');
+                $table->string('name', 255);
+                $table->string('description', 512)->nullable();
+                $table->string('status', 20)->default('active');
+                $table->timestamps();
 
-            $table->foreign('org_id')->references('id')->on('organizations')->cascadeOnDelete();
-            $table->index(['org_id', 'status']);
-        });
+                $table->foreign('org_id')->references('id')->on('organizations')->cascadeOnDelete();
+                $table->index(['org_id', 'status']);
+            });
+        }
 
-        Schema::create('workspace_user', function (Blueprint $table) {
-            $table->id();
-            $table->unsignedBigInteger('workspace_id');
-            $table->unsignedBigInteger('user_id');
-            $table->boolean('is_admin')->default(false);
-            $table->timestamps();
+        if (!Schema::hasTable('workspace_user')) {
+            Schema::create('workspace_user', function (Blueprint $table) {
+                $table->id();
+                $table->unsignedBigInteger('workspace_id');
+                $table->unsignedBigInteger('user_id');
+                $table->boolean('is_admin')->default(false);
+                $table->timestamps();
 
-            $table->foreign('workspace_id')->references('id')->on('workspaces')->cascadeOnDelete();
-            $table->foreign('user_id')->references('id')->on('users')->cascadeOnDelete();
-            $table->unique(['workspace_id', 'user_id']);
-            $table->index(['workspace_id', 'is_admin']);
-        });
+                $table->foreign('workspace_id')->references('id')->on('workspaces')->cascadeOnDelete();
+                $table->foreign('user_id')->references('id')->on('users')->cascadeOnDelete();
+                $table->unique(['workspace_id', 'user_id']);
+                $table->index(['workspace_id', 'is_admin']);
+            });
+        }
     }
 
     /**

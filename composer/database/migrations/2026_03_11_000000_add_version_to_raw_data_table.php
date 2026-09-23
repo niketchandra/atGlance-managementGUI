@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasColumn('raw_data', 'version')) {
+            return;
+        }
+
         Schema::table('raw_data', function (Blueprint $table) {
             $table->string('version', 50)->nullable()->after('validation_hash');
         });

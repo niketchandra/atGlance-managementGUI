@@ -60,13 +60,17 @@ class InstallerController extends Controller
                         return;
                     }
 
-                    if (!preg_match('/^([A-Fa-f0-9:.]+)(?::(\d{1,5}))?$/', $input, $matches)) {
-                        $fail('Enter a valid IP address (optional port allowed).');
-                        return;
+                    $ipPart = $input;
+                    $portPart = null;
+
+                    // Bare IP (incl. IPv6) takes precedence; otherwise split the trailing :port.
+                    if (!filter_var($input, FILTER_VALIDATE_IP)
+                        && preg_match('/^(.+):(\d{1,5})$/', $input, $matches)) {
+                        $ipPart = $matches[1];
+                        $portPart = $matches[2];
                     }
 
-                    $ipPart = $matches[1] ?? '';
-                    $portPart = $matches[2] ?? null;
+                    $ipPart = trim($ipPart, '[]');
 
                     if (!filter_var($ipPart, FILTER_VALIDATE_IP)) {
                         $fail('Enter a valid IP address.');

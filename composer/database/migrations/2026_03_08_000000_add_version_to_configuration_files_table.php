@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasColumn('configuration_files', 'version')) {
+            return;
+        }
+
         Schema::table('configuration_files', function (Blueprint $table) {
             $table->string('version', 50)->nullable()->after('validation_hash');
         });

@@ -33,4 +33,6 @@ RUN set -eux \
 
 EXPOSE 8000
 
-CMD ["php", "artisan", "serve", "--host", "0.0.0.0", "--port", "8000"]
+# --no-reload: the installer writes APP_URL to .env mid-request; the watcher
+# would restart the server and drop the in-flight response.
+CMD ["php", "artisan", "serve", "--host", "0.0.0.0", "--port", "8000", "--no-reload"]
