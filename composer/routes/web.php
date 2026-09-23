@@ -56,6 +56,14 @@ Route::middleware('app.installed')->group(function () {
             Route::post('/users', [AdminDashboardController::class, 'createUser'])->name('admin.users.store');
             Route::get('/users/{user}/profile', [AdminDashboardController::class, 'userProfile'])->name('admin.users.profile');
             Route::put('/users/{user}', [AdminDashboardController::class, 'updateUser'])->name('admin.users.update');
+            Route::get('/settings', [AdminDashboardController::class, 'settings'])->name('admin.settings');
+            Route::post('/settings/site', [AdminDashboardController::class, 'updateSiteSettings'])->name('admin.settings.site');
+            Route::post('/settings/mail', [AdminDashboardController::class, 'updateMailSettings'])->name('admin.settings.mail');
+            Route::post('/settings/sso', [AdminDashboardController::class, 'updateSsoSettings'])->name('admin.settings.sso');
+            Route::post('/settings/s3', [AdminDashboardController::class, 'updateS3Settings'])->name('admin.settings.s3');
+            Route::post('/settings/backup-restore', [AdminDashboardController::class, 'updateBackupRestoreSettings'])->name('admin.settings.backup-restore');
+            Route::post('/settings/migration/config', [AdminDashboardController::class, 'updateMigrationSettings'])->name('admin.settings.migration.config');
+            Route::post('/settings/ai', [AdminDashboardController::class, 'updateAiSettings'])->name('admin.settings.ai');
         });
     });
 });
