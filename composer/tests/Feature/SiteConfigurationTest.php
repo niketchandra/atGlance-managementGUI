@@ -103,6 +103,12 @@ class SiteConfigurationTest extends TestCase
         foreach (['about', 'features', 'faq', 'support', 'contact'] as $page) {
             $response->assertSee(route('public.page', ['page' => $page]), false);
         }
+
+        // The footer is AtGlance product info and is not white-labelled.
+        $response->assertSee('&copy; ' . date('Y') . ' AtGlance. All rights reserved.', false);
+        $response->assertSee('https://atglance.live/about', false);
+        $response->assertSee('https://atglance.live/contact', false);
+        $response->assertSee('https://atglance.live/faq', false);
     }
 
     public function test_pages_without_content_are_hidden(): void

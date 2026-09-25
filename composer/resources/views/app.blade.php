@@ -1026,7 +1026,7 @@
                 </div>
 
                 <footer style="margin-top:0; padding:14px 8px; border-top:1px solid #e5e7eb; color:#6b7280; font-size:12px; text-align:center;">
-                    <p>&copy; {{ date('Y') }} {{ $brandName }}. All rights reserved.@foreach($publicPages as $publicPage => $publicPageTitle) | <a href="{{ route('public.page', ['page' => $publicPage]) }}" style="color: #000000;">{{ $publicPageTitle }}</a>@endforeach</p>
+                    @include('partials.product-footer')
                 </footer>
             @else
                 <!-- PUBLIC HEADER -->
@@ -1153,7 +1153,7 @@
 
                 <!-- FOOTER -->
                 <footer style="padding: 40px; background: #f3f3f3; border-top: 1px solid #b3b3b3; text-align: center; color: #444; font-size: 14px;">
-                    <p>&copy; {{ date('Y') }} {{ $brandName }}. All rights reserved.@foreach($publicPages as $publicPage => $publicPageTitle) | <a href="{{ route('public.page', ['page' => $publicPage]) }}" style="color: #000000;">{{ $publicPageTitle }}</a>@endforeach</p>
+                    @include('partials.product-footer')
                 </footer>
             @endif
         </div>
