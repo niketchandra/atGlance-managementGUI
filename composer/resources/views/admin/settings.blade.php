@@ -448,12 +448,45 @@
                         <div style="font-weight:600; color:#111827;">{{ $cronSetup['name'] ?? 'Cron' }}</div>
                         <div style="font-size:13px; color:#374151;">{{ $cronSetup['frequency'] ?? 'Not configured' }}</div>
                         <div style="font-size:13px; color:#374151; margin-top:4px;">CRON: <span style="font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;">{{ $cronSetup['expression'] ?? '* * * * * *' }}</span></div>
+                        @php
+                            $lastRun = $cronSetup['last_run'] ?? [];
+                            $lastRunStatus = $lastRun['status'] ?? '';
+                            $lastRunColor = match ($lastRunStatus) {
+                                'success' => '#15803d',
+                                'failed' => '#b91c1c',
+                                default => '#92400e',
+                            };
+                        @endphp
+                        <div style="font-size:13px; color:#374151; margin-top:4px;">
+                            Last run:
+                            @if(!empty($lastRun))
+                                <span style="font-weight:600; color:{{ $lastRunColor }};">{{ ucfirst($lastRunStatus) }}</span>
+                                at {{ \Illuminate\Support\Carbon::parse($lastRun['finished_at'] ?? $lastRun['started_at'])->format('Y-m-d H:i:s T') }}
+                                @if(!empty($lastRun['message']))
+                                    <div style="font-size:12px; color:#6b7280; margin-top:2px; word-break:break-all;">{{ $lastRun['message'] }}</div>
+                                @endif
+                            @else
+                                <span style="color:#6b7280;">Never</span>
+                            @endif
+                        </div>
                     </div>
                 @endforeach
             </div>
         @else
             <p style="color:#6b7280;">No cron schedules configured yet.</p>
         @endif
+    </div>
+
+    <div id="tab-ai-connect" class="settings-tab-content" style="display:{{ $activeTab === 'ai-connect' ? 'block' : 'none' }}; background:white; border:1px solid #b3b3b3; border-radius:10px; padding:22px; box-shadow:0 2px 10px rgba(0,0,0,0.06);">
+        <h2 style="font-size:18px; margin-bottom:8px;">AI Connect</h2>
+        <p style="font-size:13px; color:#6b7280; margin-bottom:10px;">Connect an AI provider to AtGlance.</p>
+        <p style="color:#6b7280;">Coming Soon</p>
+    </div>
+
+    <div id="tab-notification" class="settings-tab-content" style="display:{{ $activeTab === 'notification' ? 'block' : 'none' }}; background:white; border:1px solid #b3b3b3; border-radius:10px; padding:22px; box-shadow:0 2px 10px rgba(0,0,0,0.06);">
+        <h2 style="font-size:18px; margin-bottom:8px;">Notification</h2>
+        <p style="font-size:13px; color:#6b7280; margin-bottom:10px;">Configure how and where AtGlance sends notifications.</p>
+        <p style="color:#6b7280;">Coming Soon</p>
     </div>
 
     <div id="tab-sso" class="settings-tab-content" style="display:{{ $activeTab === 'sso' ? 'block' : 'none' }}; background:white; border:1px solid #b3b3b3; border-radius:10px; padding:22px; box-shadow:0 2px 10px rgba(0,0,0,0.06);">
@@ -477,18 +510,6 @@
 
             @php
                 $selectedProviders = old('sso_enabled_providers', $ssoEnabledProviders ?? []);
-    <div id="tab-ai-connect" class="settings-tab-content" style="display:{{ $activeTab === 'ai-connect' ? 'block' : 'none' }}; background:white; border:1px solid #b3b3b3; border-radius:10px; padding:22px; box-shadow:0 2px 10px rgba(0,0,0,0.06);">
-        <h2 style="font-size:18px; margin-bottom:8px;">AI Connect</h2>
-        <p style="font-size:13px; color:#6b7280; margin-bottom:10px;">Connect an AI provider to AtGlance.</p>
-        <p style="color:#6b7280;">Coming Soon</p>
-    </div>
-
-    <div id="tab-notification" class="settings-tab-content" style="display:{{ $activeTab === 'notification' ? 'block' : 'none' }}; background:white; border:1px solid #b3b3b3; border-radius:10px; padding:22px; box-shadow:0 2px 10px rgba(0,0,0,0.06);">
-        <h2 style="font-size:18px; margin-bottom:8px;">Notification</h2>
-        <p style="font-size:13px; color:#6b7280; margin-bottom:10px;">Configure how and where AtGlance sends notifications.</p>
-        <p style="color:#6b7280;">Coming Soon</p>
-    </div>
-
                 $providerUrls = old('sso_provider_urls', $ssoProviderUrls ?? []);
                 $providerClientIds = old('sso_provider_client_ids', $ssoProviderClientIds ?? []);
                 $hasProviderClientSecrets = $hasSsoProviderClientSecrets ?? [];

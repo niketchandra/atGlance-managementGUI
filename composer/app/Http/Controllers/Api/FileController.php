@@ -6,9 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Models\ConfigurationFile;
 use App\Models\RawData;
 use App\Models\Service;
+use App\Support\S3Settings;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Config;
-use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
@@ -574,45 +573,7 @@ class FileController extends Controller
 
     private function resolveStorageDisk(): string
     {
-        $s3Enabled = filter_var((string) env('S3_ENABLED', 'false'), FILTER_VALIDATE_BOOL);
-
-        if (!$s3Enabled) {
-            return 'local';
-        }
-
-        $key = trim((string) config('filesystems.disks.s3.key', env('AWS_ACCESS_KEY_ID', '')));
-        $secret = trim((string) config('filesystems.disks.s3.secret', $this->resolveAwsSecretFromEnv()));
-        $region = trim((string) config('filesystems.disks.s3.region', env('AWS_DEFAULT_REGION', '')));
-        $bucket = trim((string) config('filesystems.disks.s3.bucket', env('AWS_BUCKET', '')));
-
-        if ($key === '' || $secret === '' || $region === '' || $bucket === '') {
-            return 'local';
-        }
-
-        Config::set('filesystems.disks.s3.key', $key);
-        Config::set('filesystems.disks.s3.secret', $secret);
-        Config::set('filesystems.disks.s3.region', $region);
-        Config::set('filesystems.disks.s3.bucket', $bucket);
-
-        return 's3';
-    }
-
-    private function resolveAwsSecretFromEnv(): string
-    {
-        $raw = trim((string) env('AWS_SECRET_ACCESS_KEY', ''));
-        if ($raw === '') {
-            return '';
-        }
-
-        if (!str_starts_with($raw, 'ENC:')) {
-            return $raw;
-        }
-
-        try {
-            return trim(Crypt::decryptString(substr($raw, 4)));
-        } catch (\Throwable) {
-            return '';
-        }
+        return S3Settings::activeDisk();
     }
 
     private function resolveDiskAndPath(?string $storageDisk, string $storedLocation): array

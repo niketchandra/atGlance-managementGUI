@@ -9,6 +9,8 @@ use App\Models\Service;
 use App\Models\SystemRegister;
 use App\Models\User;
 use App\Models\Workspace;
+use App\Services\BackupService;
+use App\Support\S3Settings;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -843,12 +845,15 @@ class AdminDashboardController extends Controller
             $backupPortalCron = '';
         }
 
+        $backupService = app(BackupService::class);
         $configuredCronSetups = [];
         if ($backupConfigToS3 && $backupConfigCron !== '') {
             $configuredCronSetups[] = [
                 'name' => 'Configuration files backup to S3',
                 'frequency' => $this->cronFrequencyLabel($backupConfigCron),
                 'expression' => $this->cronFrequencyExpression($backupConfigCron),
+                'command' => 'backup:config',
+                'last_run' => $backupService->lastRun(BackupService::TYPE_CONFIG),
             ];
         }
 
@@ -857,6 +862,8 @@ class AdminDashboardController extends Controller
                 'name' => 'Portal backup (.env, settings, DB) to S3',
                 'frequency' => $this->cronFrequencyLabel($backupPortalCron),
                 'expression' => $this->cronFrequencyExpression($backupPortalCron),
+                'command' => 'backup:portal',
+                'last_run' => $backupService->lastRun(BackupService::TYPE_PORTAL),
             ];
         }
 
@@ -1259,6 +1266,10 @@ class AdminDashboardController extends Controller
         $analysis = $this->analyzeStorageMigrationDirection($validated['direction']);
 
         if (($analysis['files_pending_migration'] ?? 0) === 0) {
+            // Files can already be at the destination (e.g. a kept source from an
+            // earlier migration); the file records must still switch disks.
+            $this->applyMigrationCompletion($validated['direction']);
+
             return redirect()
                 ->route('admin.settings', ['tab' => 'migration'])
                 ->with('success', 'No files pending migration. Source and destination are already synchronized.')
@@ -1282,7 +1293,7 @@ class AdminDashboardController extends Controller
         $postAnalysis = $this->analyzeStorageMigrationDirection($validated['direction']);
 
         if ($validated['direction'] === 's3_to_local' && (($postAnalysis['files_pending_migration'] ?? 0) === 0)) {
-            $this->setEnvironmentValues(['S3_ENABLED' => 'false']);
+            $this->disableS3AfterMigration();
         }
 
         if (!empty($result['errors'])) {
@@ -1295,20 +1306,7 @@ class AdminDashboardController extends Controller
                 ->with('migration_keep_source', $keepSource);
         }
 
-        if ($validated['direction'] === 'local_to_s3') {
-            AdminSetting::putValue('storage', 'migration_local_to_s3_completed_at', now()->toDateTimeString());
-            AdminSetting::putValue('site', 'site_logo_disk', 's3');
-            if ($this->hasStorageDiskColumn()) {
-                ConfigurationFile::query()->whereNotNull('file_location')->update(['storage_disk' => 's3']);
-            }
-        } else {
-            AdminSetting::putValue('storage', 'migration_s3_to_local_completed_at', now()->toDateTimeString());
-            $this->setEnvironmentValues(['S3_ENABLED' => 'false']);
-            AdminSetting::putValue('site', 'site_logo_disk', 'public');
-            if ($this->hasStorageDiskColumn()) {
-                ConfigurationFile::query()->whereNotNull('file_location')->update(['storage_disk' => 'local']);
-            }
-        }
+        $this->applyMigrationCompletion($validated['direction']);
 
         return redirect()
             ->route('admin.settings', ['tab' => 'migration'])
@@ -1317,6 +1315,38 @@ class AdminDashboardController extends Controller
             ->with('migration_analysis', $postAnalysis)
                 ->with('migration_direction', $validated['direction'])
                 ->with('migration_keep_source', $keepSource);
+    }
+
+    /**
+     * Points file records and the site logo at the migration's destination disk.
+     */
+    private function applyMigrationCompletion(string $direction): void
+    {
+        if ($direction === 'local_to_s3') {
+            AdminSetting::putValue('storage', 'migration_local_to_s3_completed_at', now()->toDateTimeString());
+            AdminSetting::putValue('site', 'site_logo_disk', 's3');
+            if ($this->hasStorageDiskColumn()) {
+                ConfigurationFile::query()->whereNotNull('file_location')->update(['storage_disk' => 's3']);
+            }
+
+            return;
+        }
+
+        AdminSetting::putValue('storage', 'migration_s3_to_local_completed_at', now()->toDateTimeString());
+        $this->disableS3AfterMigration();
+        AdminSetting::putValue('site', 'site_logo_disk', 'public');
+        if ($this->hasStorageDiskColumn()) {
+            ConfigurationFile::query()->whereNotNull('file_location')->update(['storage_disk' => 'local']);
+        }
+    }
+
+    /**
+     * Turns S3 off in both places it is read from, so the UI and the API agree.
+     */
+    private function disableS3AfterMigration(): void
+    {
+        $this->setEnvironmentValues(['S3_ENABLED' => 'false']);
+        AdminSetting::putValue('storage', 's3_enabled', 'false');
     }
 
     public function serveSiteLogo(?string $path = null)
@@ -2090,37 +2120,24 @@ class AdminDashboardController extends Controller
 
     private function resolveS3RuntimeCredentials(): array
     {
-        $storedKey = $this->normalizeSettingValue(AdminSetting::getValue('s3_access_key', ''));
-        $storedSecret = $this->normalizeSettingValue(AdminSetting::getValue('s3_secret_key', ''));
-        $storedRegion = $this->normalizeSettingValue(AdminSetting::getValue('s3_region', ''));
-        $storedBucket = $this->normalizeSettingValue(AdminSetting::getValue('s3_bucket', ''));
+        // Saved settings win; .env is only a fallback, since `artisan serve`
+        // keeps the environment it started with.
+        $credentials = S3Settings::credentials();
 
-        $configKey = $this->normalizeSettingValue(config('filesystems.disks.s3.key', ''));
-        $configSecret = $this->normalizeSettingValue(config('filesystems.disks.s3.secret', ''));
-        $configRegion = $this->normalizeSettingValue(config('filesystems.disks.s3.region', ''));
-        $configBucket = $this->normalizeSettingValue(config('filesystems.disks.s3.bucket', ''));
-
-        $envKey = $this->normalizeSettingValue($this->getEnvValue('AWS_ACCESS_KEY_ID', ''));
-        $envSecret = $this->normalizeSettingValue($this->getSecretEnvValue('AWS_SECRET_ACCESS_KEY', ''));
-        $envRegion = $this->normalizeSettingValue($this->getEnvValue('AWS_DEFAULT_REGION', ''));
-        $envBucket = $this->normalizeSettingValue($this->getEnvValue('AWS_BUCKET', ''));
-
-        $fileKey = $this->normalizeSettingValue($this->getEnvFileValue('AWS_ACCESS_KEY_ID', ''));
-        $fileSecret = $this->normalizeSettingValue($this->decryptSecretFromEnvironment($this->getEnvFileValue('AWS_SECRET_ACCESS_KEY', '')));
-        $fileRegion = $this->normalizeSettingValue($this->getEnvFileValue('AWS_DEFAULT_REGION', ''));
-        $fileBucket = $this->normalizeSettingValue($this->getEnvFileValue('AWS_BUCKET', ''));
-
-        $key = $configKey !== '' ? $configKey : ($envKey !== '' ? $envKey : ($fileKey !== '' ? $fileKey : $storedKey));
-        $secret = $configSecret !== '' ? $configSecret : ($envSecret !== '' ? $envSecret : ($fileSecret !== '' ? $fileSecret : $storedSecret));
-        $region = $configRegion !== '' ? $configRegion : ($envRegion !== '' ? $envRegion : ($fileRegion !== '' ? $fileRegion : $storedRegion));
-        $bucket = $configBucket !== '' ? $configBucket : ($envBucket !== '' ? $envBucket : ($fileBucket !== '' ? $fileBucket : $storedBucket));
-
-        return [
-            'key' => $key,
-            'secret' => $secret,
-            'region' => $region,
-            'bucket' => $bucket,
+        $fallbacks = [
+            'key' => fn () => $this->getEnvFileValue('AWS_ACCESS_KEY_ID', $this->getEnvValue('AWS_ACCESS_KEY_ID', '')),
+            'secret' => fn () => $this->decryptSecretFromEnvironment($this->getEnvFileValue('AWS_SECRET_ACCESS_KEY', $this->getEnvValue('AWS_SECRET_ACCESS_KEY', ''))),
+            'region' => fn () => $this->getEnvFileValue('AWS_DEFAULT_REGION', $this->getEnvValue('AWS_DEFAULT_REGION', '')),
+            'bucket' => fn () => $this->getEnvFileValue('AWS_BUCKET', $this->getEnvValue('AWS_BUCKET', '')),
         ];
+
+        foreach ($fallbacks as $name => $fallback) {
+            if ($credentials[$name] === '') {
+                $credentials[$name] = $this->normalizeSettingValue($fallback());
+            }
+        }
+
+        return $credentials;
     }
 
     private function getEnvFileValue(string $key, string $default = ''): string

@@ -4,10 +4,10 @@ namespace App\Http\Controllers;
 
 use App\Models\SystemRegister;
 use App\Models\Workspace;
+use App\Support\S3Settings;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Config;
 use App\Models\User;
 use App\Models\PatToken;
 use Illuminate\Support\Facades\Hash;
@@ -1215,44 +1215,7 @@ class DashboardController extends Controller
 
     private function resolveActiveStorageDisk(): string
     {
-        $s3Enabled = filter_var((string) env('S3_ENABLED', 'false'), FILTER_VALIDATE_BOOL);
-        if (!$s3Enabled) {
-            return 'local';
-        }
-
-        $key = trim((string) config('filesystems.disks.s3.key', env('AWS_ACCESS_KEY_ID', '')));
-        $secret = trim((string) config('filesystems.disks.s3.secret', $this->resolveAwsSecretFromEnv()));
-        $region = trim((string) config('filesystems.disks.s3.region', env('AWS_DEFAULT_REGION', '')));
-        $bucket = trim((string) config('filesystems.disks.s3.bucket', env('AWS_BUCKET', '')));
-
-        if ($key === '' || $secret === '' || $region === '' || $bucket === '') {
-            return 'local';
-        }
-
-        Config::set('filesystems.disks.s3.key', $key);
-        Config::set('filesystems.disks.s3.secret', $secret);
-        Config::set('filesystems.disks.s3.region', $region);
-        Config::set('filesystems.disks.s3.bucket', $bucket);
-
-        return 's3';
-    }
-
-    private function resolveAwsSecretFromEnv(): string
-    {
-        $raw = trim((string) env('AWS_SECRET_ACCESS_KEY', ''));
-        if ($raw === '') {
-            return '';
-        }
-
-        if (!str_starts_with($raw, 'ENC:')) {
-            return $raw;
-        }
-
-        try {
-            return trim(Crypt::decryptString(substr($raw, 4)));
-        } catch (\Throwable) {
-            return '';
-        }
+        return S3Settings::activeDisk();
     }
 
     private function resolveLegacyDiskAndPath(?string $storageDisk, string $storedLocation): array
