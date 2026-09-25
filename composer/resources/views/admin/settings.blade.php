@@ -39,6 +39,8 @@
         <button type="button" class="settings-tab-btn" data-tab="backup-restore" style="padding:10px 14px; border-radius:8px; border:1px solid #b3b3b3; background:{{ $activeTab === 'backup-restore' ? '#7a7a7a' : '#ffffff' }}; color:{{ $activeTab === 'backup-restore' ? '#ffffff' : '#111827' }}; cursor:pointer; font-weight:600;">Backup &amp; Restore</button>
         <button type="button" class="settings-tab-btn" data-tab="plugins" style="padding:10px 14px; border-radius:8px; border:1px solid #b3b3b3; background:{{ $activeTab === 'plugins' ? '#7a7a7a' : '#ffffff' }}; color:{{ $activeTab === 'plugins' ? '#ffffff' : '#111827' }}; cursor:pointer; font-weight:600;">Plugins</button>
         <button type="button" class="settings-tab-btn" data-tab="crons" style="padding:10px 14px; border-radius:8px; border:1px solid #b3b3b3; background:{{ $activeTab === 'crons' ? '#7a7a7a' : '#ffffff' }}; color:{{ $activeTab === 'crons' ? '#ffffff' : '#111827' }}; cursor:pointer; font-weight:600;">Crons</button>
+        <button type="button" class="settings-tab-btn" data-tab="ai-connect" style="padding:10px 14px; border-radius:8px; border:1px solid #b3b3b3; background:{{ $activeTab === 'ai-connect' ? '#7a7a7a' : '#ffffff' }}; color:{{ $activeTab === 'ai-connect' ? '#ffffff' : '#111827' }}; cursor:pointer; font-weight:600;">AI Connect</button>
+        <button type="button" class="settings-tab-btn" data-tab="notification" style="padding:10px 14px; border-radius:8px; border:1px solid #b3b3b3; background:{{ $activeTab === 'notification' ? '#7a7a7a' : '#ffffff' }}; color:{{ $activeTab === 'notification' ? '#ffffff' : '#111827' }}; cursor:pointer; font-weight:600;">Notification</button>
     </div>
 
     <div id="tab-info" class="settings-tab-content" style="display:{{ $activeTab === 'info' ? 'block' : 'none' }}; background:white; border:1px solid #b3b3b3; border-radius:10px; padding:22px; box-shadow:0 2px 10px rgba(0,0,0,0.06);">
@@ -475,6 +477,18 @@
 
             @php
                 $selectedProviders = old('sso_enabled_providers', $ssoEnabledProviders ?? []);
+    <div id="tab-ai-connect" class="settings-tab-content" style="display:{{ $activeTab === 'ai-connect' ? 'block' : 'none' }}; background:white; border:1px solid #b3b3b3; border-radius:10px; padding:22px; box-shadow:0 2px 10px rgba(0,0,0,0.06);">
+        <h2 style="font-size:18px; margin-bottom:8px;">AI Connect</h2>
+        <p style="font-size:13px; color:#6b7280; margin-bottom:10px;">Connect an AI provider to AtGlance.</p>
+        <p style="color:#6b7280;">Coming Soon</p>
+    </div>
+
+    <div id="tab-notification" class="settings-tab-content" style="display:{{ $activeTab === 'notification' ? 'block' : 'none' }}; background:white; border:1px solid #b3b3b3; border-radius:10px; padding:22px; box-shadow:0 2px 10px rgba(0,0,0,0.06);">
+        <h2 style="font-size:18px; margin-bottom:8px;">Notification</h2>
+        <p style="font-size:13px; color:#6b7280; margin-bottom:10px;">Configure how and where AtGlance sends notifications.</p>
+        <p style="color:#6b7280;">Coming Soon</p>
+    </div>
+
                 $providerUrls = old('sso_provider_urls', $ssoProviderUrls ?? []);
                 $providerClientIds = old('sso_provider_client_ids', $ssoProviderClientIds ?? []);
                 $hasProviderClientSecrets = $hasSsoProviderClientSecrets ?? [];
