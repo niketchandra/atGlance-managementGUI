@@ -23,7 +23,8 @@ read them, don't duplicate them here: `API.md` (full endpoint reference),
 `resilience.md` / `CircuitBreak.md` / `QUEUE.md` (resilience deep-dives),
 `KONG.md` (gateway config), `PersonalAccessToken.md` (PAT flow),
 `GUI_DOCUMENTATION.md` (web UI layout/pages), `BACKUP.md` (scheduled S3
-backups and the scheduler container), `scenerio.md` (tested failure
+backups and the scheduler container), `NOTIFICATIONS.md` (notification
+channels, workspace groups and events), `scenerio.md` (tested failure
 scenarios), `LARAVEL.md` / `IMPLEMENTATION.md` (original API layout notes).
 
 ## Architecture

@@ -4,6 +4,8 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use App\Notifications\NotificationEvents;
+use App\Services\Notifier;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class SystemRegister extends Model
@@ -53,6 +55,53 @@ class SystemRegister extends Model
     public function workspace(): BelongsTo
     {
         return $this->belongsTo(Workspace::class, 'workspace_id');
+    }
+
+    /**
+     * Notifies the system's workspace when a system is registered, reactivated
+     * or deregistered, whichever endpoint made the change.
+     */
+    protected static function booted(): void
+    {
+        static::created(function (SystemRegister $system) {
+            if ($system->status === 'active') {
+                $system->notifyWorkspace(NotificationEvents::SYSTEM_REGISTERED, 'System registered');
+            }
+        });
+
+        static::updated(function (SystemRegister $system) {
+            if (!$system->wasChanged('status')) {
+                return;
+            }
+
+            if ($system->status === 'active') {
+                $system->notifyWorkspace(NotificationEvents::SYSTEM_REGISTERED, 'System reactivated');
+            } elseif ($system->getOriginal('status') === 'active') {
+                $system->notifyWorkspace(NotificationEvents::SYSTEM_DEREGISTERED, 'System deregistered');
+            }
+        });
+    }
+
+    private function notifyWorkspace(string $event, string $action): void
+    {
+        $workspaceId = (int) ($this->workspace_id ?? 0);
+        if ($workspaceId <= 0) {
+            return;
+        }
+
+        app(Notifier::class)->notify(
+            $event,
+            $workspaceId,
+            $action . ': ' . $this->system_name,
+            array_filter([
+                'System' => (string) $this->system_name,
+                'Workspace' => (string) optional($this->workspace)->name,
+                'IP address' => (string) $this->ip_address,
+                'OS' => trim($this->os_type . ' ' . $this->distro . ' ' . $this->version),
+                'Status' => (string) $this->status,
+            ], fn (string $value) => $value !== ''),
+            ['system_id' => $this->id, 'status' => $this->status],
+        );
     }
     
     /**

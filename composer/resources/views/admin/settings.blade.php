@@ -610,8 +610,86 @@
 
     <div id="tab-notification" class="settings-tab-content" style="display:{{ $activeTab === 'notification' ? 'block' : 'none' }}; background:white; border:1px solid #b3b3b3; border-radius:10px; padding:22px; box-shadow:0 2px 10px rgba(0,0,0,0.06);">
         <h2 style="font-size:18px; margin-bottom:8px;">Notification</h2>
-        <p style="font-size:13px; color:#6b7280; margin-bottom:10px;">Configure how and where AtGlance sends notifications.</p>
-        <p style="color:#6b7280;">Coming Soon</p>
+        @php
+            $notifyCanEdit = (int) auth()->user()->rbac_id === 100;
+        @endphp
+        <p style="font-size:13px; color:#6b7280; margin-bottom:10px;">
+            Allow the channels that workspace admins can use, and set the organization-level connection for each one.
+            Workspace admins then add their own groups (email lists, channels, chats) on the
+            <a href="{{ route('admin.notifications') }}" style="color:#1d4ed8; text-decoration:underline;">Notifications</a> page.
+        </p>
+        @unless($notifyCanEdit)
+            <div style="margin-bottom:12px; padding:10px; border-radius:8px; background:#f9fafb; border:1px solid #e5e7eb; color:#374151; font-size:13px;">Only the super admin can change these settings.</div>
+        @endunless
+
+        <form method="POST" action="{{ route('admin.settings.notifications') }}">
+            @csrf
+            <fieldset {{ $notifyCanEdit ? '' : 'disabled' }} style="border:none; padding:0; margin:0;">
+                <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(280px, 1fr)); gap:12px; margin-bottom:14px;">
+                    @foreach(\App\Support\NotificationSettings::CHANNELS as $notifyChannel => $notifyMeta)
+                        @php
+                            $notifyAllowed = \App\Support\NotificationSettings::isAllowed($notifyChannel);
+                            $notifyMissing = $notifyAllowed ? \App\Support\NotificationSettings::missingSetup($notifyChannel) : null;
+                        @endphp
+                        <div style="border:1px solid #e5e7eb; border-radius:8px; padding:12px; background:{{ $notifyMeta['available'] ? '#ffffff' : '#f9fafb' }};">
+                            <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:6px;">
+                                <strong style="font-size:14px;">{{ $notifyMeta['label'] }}</strong>
+                                @if(!$notifyMeta['available'])
+                                    <span style="font-size:11px; color:#92400e; background:#fef3c7; border-radius:999px; padding:2px 8px;">Waiting for provider API details</span>
+                                @elseif($notifyAllowed && $notifyMissing === null)
+                                    <span style="font-size:11px; color:#065f46; background:#d1fae5; border-radius:999px; padding:2px 8px;">Ready</span>
+                                @elseif($notifyAllowed)
+                                    <span style="font-size:11px; color:#991b1b; background:#fee2e2; border-radius:999px; padding:2px 8px;">Setup needed</span>
+                                @endif
+                            </div>
+                            <div style="font-size:12px; color:#6b7280; margin-bottom:8px;">Groups enter: {{ $notifyMeta['target'] }}</div>
+
+                            @if($notifyMeta['available'])
+                                <label style="display:flex; gap:8px; align-items:center; font-size:13px; color:#374151; margin-bottom:8px;">
+                                    <input type="hidden" name="allowed[{{ $notifyChannel }}]" value="0">
+                                    <input type="checkbox" name="allowed[{{ $notifyChannel }}]" value="1" {{ $notifyAllowed ? 'checked' : '' }}>
+                                    Allow workspace admins to use this channel
+                                </label>
+                            @endif
+
+                            @if($notifyChannel === 'email')
+                                <div style="font-size:12px; color:#374151;">
+                                    SMTP server: {{ \App\Support\NotificationSettings::mailConfigured() ? 'configured' : 'not configured' }} on the
+                                    <a href="{{ route('admin.settings', ['tab' => 'email']) }}" style="color:#1d4ed8; text-decoration:underline;">Email Configuration</a> tab.
+                                </div>
+                            @endif
+
+                            @foreach(\App\Support\NotificationSettings::CREDENTIALS[$notifyChannel] ?? [] as $notifyKey => $notifyCredential)
+                                @php
+                                    $notifySaved = \App\Support\NotificationSettings::credential($notifyKey);
+                                @endphp
+                                <div style="margin-top:8px;">
+                                    <label style="display:block; font-size:12px; color:#4b5563; margin-bottom:4px;">{{ $notifyCredential['label'] }}</label>
+                                    @if($notifyCredential['secret'])
+                                        <input type="password" name="{{ $notifyKey }}" autocomplete="new-password" placeholder="{{ $notifySaved !== '' ? 'Saved; leave blank to keep' : 'Not set' }}" style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:8px;">
+                                        @if($notifySaved !== '')
+                                            <label style="display:flex; gap:6px; align-items:center; font-size:12px; color:#6b7280; margin-top:4px;">
+                                                <input type="checkbox" name="clear[{{ $notifyKey }}]" value="1"> Remove saved value
+                                            </label>
+                                        @endif
+                                    @else
+                                        <input type="text" name="{{ $notifyKey }}" value="{{ old($notifyKey, $notifySaved) }}" style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:8px;">
+                                    @endif
+                                </div>
+                            @endforeach
+
+                            @if($notifyMissing)
+                                <div style="font-size:12px; color:#b91c1c; margin-top:8px;">{{ $notifyMissing }}</div>
+                            @endif
+                        </div>
+                    @endforeach
+                </div>
+
+                @if($notifyCanEdit)
+                    <button type="submit" style="background:#000000; color:white; border:none; border-radius:8px; padding:10px 14px; font-weight:600; cursor:pointer;">Save Notification Channels</button>
+                @endif
+            </fieldset>
+        </form>
     </div>
 
     <div id="tab-sso" class="settings-tab-content" style="display:{{ $activeTab === 'sso' ? 'block' : 'none' }}; background:white; border:1px solid #b3b3b3; border-radius:10px; padding:22px; box-shadow:0 2px 10px rgba(0,0,0,0.06);">

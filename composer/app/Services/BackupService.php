@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\AdminSetting;
+use App\Notifications\NotificationEvents;
 use App\Support\S3Settings;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -349,6 +350,21 @@ class BackupService
         ];
 
         AdminSetting::putValue('storage', $this->lastRunSettingKey($type), $run);
+
+        if ($status !== self::STATUS_SKIPPED) {
+            $label = $type === self::TYPE_CONFIG ? 'Configuration files backup' : 'Portal backup';
+            app(Notifier::class)->notify(
+                $status === self::STATUS_SUCCESS ? NotificationEvents::BACKUP_SUCCEEDED : NotificationEvents::BACKUP_FAILED,
+                null,
+                $label . ($status === self::STATUS_SUCCESS ? ' succeeded' : ' failed'),
+                array_filter([
+                    'Backup' => $label,
+                    'Result' => $message,
+                    'Finished' => $run['finished_at'],
+                ]),
+                ['type' => $type, 'status' => $status, 'object_key' => $objectKey],
+            );
+        }
 
         return $run;
     }

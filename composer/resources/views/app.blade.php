@@ -968,6 +968,9 @@
                         <a href="{{ (int) auth()->user()->rbac_id === 100 ? route('enterprise.console') : route('admin.workspaces') }}" class="nav-link" style="padding: 10px; color: #333; text-decoration: none; border-radius: 6px; transition: all 0.3s ease;" onmouseover="this.style.background='#f0f0f0'" onmouseout="this.style.background='transparent'">
                             <i class="fas fa-sitemap"></i> Manage Workspace
                         </a>
+                        <a href="{{ route('admin.notifications') }}" class="nav-link" style="padding: 10px; color: #333; text-decoration: none; border-radius: 6px; transition: all 0.3s ease;" onmouseover="this.style.background='#f0f0f0'" onmouseout="this.style.background='transparent'">
+                            <i class="fas fa-bell"></i> Notifications
+                        </a>
                         @if((int) auth()->user()->rbac_id === 100)
                         <a href="{{ route('admin.settings') }}" class="nav-link" style="padding: 10px; color: #333; text-decoration: none; border-radius: 6px; transition: all 0.3s ease;" onmouseover="this.style.background='#f0f0f0'" onmouseout="this.style.background='transparent'">
                             <i class="fas fa-sliders-h"></i> Site Setting
