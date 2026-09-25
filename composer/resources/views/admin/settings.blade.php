@@ -432,8 +432,54 @@
             <button type="submit" style="background:#000000; color:white; border:none; border-radius:8px; padding:10px 14px; font-weight:600; cursor:pointer;">Save Backup Settings</button>
         </form>
 
-        <div style="margin-top:14px; padding:10px; border-radius:8px; background:#f9fafb; border:1px solid #e5e7eb; color:#374151;">
-            <strong>Restore:</strong> Coming Soon
+        <div id="restore-section" data-url="{{ route('admin.settings.backups') }}" style="margin-top:18px; padding-top:16px; border-top:1px solid #e5e7eb;">
+            <h3 style="font-size:16px; margin-bottom:6px;">Restore</h3>
+            <p style="font-size:13px; color:#6b7280; margin-bottom:10px;">
+                Backups from S3 and pre-restore snapshots on this server. A snapshot of the current state is saved before every restore.
+            </p>
+            <div style="margin-bottom:12px; padding:10px; border-radius:8px; background:#fef2f2; border:1px solid #fecaca; color:#991b1b; font-size:13px; line-height:1.5;">
+                <strong>Warning:</strong> a restore overwrites current data.
+                <br>
+                Configuration files backup: adds missing records back and resets changed records to their backed-up values. Records created after the backup are kept.
+                <br>
+                Portal backup: replaces the whole database and the .env file. Only the super admin can run it. Restart the app containers afterwards.
+            </div>
+
+            <div id="restore-errors" style="display:none; margin-bottom:10px; font-size:13px; color:#b91c1c;"></div>
+            <div style="overflow-x:auto; margin-bottom:12px;">
+                <table style="width:100%; border-collapse:collapse; font-size:13px;">
+                    <thead>
+                        <tr style="text-align:left; border-bottom:1px solid #e5e7eb; color:#4b5563;">
+                            <th style="padding:6px;">Type</th>
+                            <th style="padding:6px;">Source</th>
+                            <th style="padding:6px;">Backup</th>
+                            <th style="padding:6px;">Created</th>
+                            <th style="padding:6px;">Size</th>
+                            <th style="padding:6px;"></th>
+                        </tr>
+                    </thead>
+                    <tbody id="restore-backup-rows">
+                        <tr><td colspan="6" style="padding:8px; color:#6b7280;">Loading backups...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <form method="POST" action="{{ route('admin.settings.restore') }}" id="restore-form" style="display:none; padding:12px; border:1px solid #e5e7eb; border-radius:8px; background:#f9fafb;">
+                @csrf
+                <input type="hidden" name="source" id="restore-source">
+                <input type="hidden" name="path" id="restore-path">
+                <div style="font-size:13px; color:#111827; margin-bottom:10px;">Selected backup: <strong id="restore-selected-name"></strong></div>
+                <div style="margin-bottom:10px; max-width:320px;">
+                    <label style="display:block; font-size:13px; color:#4b5563; margin-bottom:6px;">Confirm your password</label>
+                    <input type="password" name="password" required autocomplete="current-password" style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:10px;">
+                </div>
+                <label style="display:flex; gap:8px; align-items:center; font-size:13px; color:#374151; margin-bottom:12px;">
+                    <input type="checkbox" name="confirm_overwrite" value="1" required>
+                    I understand that current data will be overwritten.
+                </label>
+                <button type="submit" style="background:#b91c1c; color:white; border:none; border-radius:8px; padding:10px 14px; font-weight:600; cursor:pointer;">Restore Backup</button>
+                <button type="button" id="restore-cancel" style="margin-left:6px; background:#ffffff; color:#111827; border:1px solid #d1d5db; border-radius:8px; padding:10px 14px; cursor:pointer;">Cancel</button>
+            </form>
         </div>
     </div>
 
@@ -628,6 +674,105 @@
     tabButtons.forEach((button) => {
         button.addEventListener('click', () => activateTab(button.dataset.tab));
     });
+
+    // Restore: the backup list is fetched only when the tab is first opened,
+    // so a slow S3 never delays the settings page.
+    const restoreSection = document.getElementById('restore-section');
+    const restoreRows = document.getElementById('restore-backup-rows');
+    const restoreErrors = document.getElementById('restore-errors');
+    const restoreForm = document.getElementById('restore-form');
+    let restoreLoaded = false;
+
+    function formatBytes(bytes) {
+        if (bytes < 1024) return bytes + ' B';
+        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+        return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+    }
+
+    function restoreCell(text) {
+        const cell = document.createElement('td');
+        cell.style.padding = '6px';
+        cell.textContent = text;
+        return cell;
+    }
+
+    function selectBackup(backup) {
+        document.getElementById('restore-source').value = backup.source;
+        document.getElementById('restore-path').value = backup.path;
+        document.getElementById('restore-selected-name').textContent = backup.name + ' (' + (backup.type === 'portal' ? 'portal' : 'configuration files') + ', ' + backup.source + ')';
+        restoreForm.style.display = 'block';
+        restoreForm.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    function loadBackups() {
+        if (!restoreSection || restoreLoaded) return;
+        restoreLoaded = true;
+
+        fetch(restoreSection.dataset.url, { headers: { 'Accept': 'application/json' } })
+            .then((response) => response.json())
+            .then((data) => {
+                restoreRows.innerHTML = '';
+
+                if (data.errors && data.errors.length) {
+                    restoreErrors.textContent = data.errors.join(' ');
+                    restoreErrors.style.display = 'block';
+                }
+
+                if (!data.backups || !data.backups.length) {
+                    const row = document.createElement('tr');
+                    const cell = restoreCell('No backups found.');
+                    cell.colSpan = 6;
+                    cell.style.color = '#6b7280';
+                    row.appendChild(cell);
+                    restoreRows.appendChild(row);
+                    return;
+                }
+
+                data.backups.forEach((backup) => {
+                    const row = document.createElement('tr');
+                    row.style.borderBottom = '1px solid #f3f4f6';
+                    row.appendChild(restoreCell(backup.type === 'portal' ? 'Portal' : 'Configuration files'));
+                    row.appendChild(restoreCell(backup.source === 's3' ? 'S3' : 'Local snapshot'));
+                    row.appendChild(restoreCell(backup.name));
+                    row.appendChild(restoreCell(new Date(backup.last_modified * 1000).toLocaleString()));
+                    row.appendChild(restoreCell(formatBytes(backup.size)));
+
+                    const actionCell = restoreCell('');
+                    const allowed = backup.type !== 'portal' || data.can_restore_portal;
+                    const button = document.createElement('button');
+                    button.type = 'button';
+                    button.textContent = allowed ? 'Restore' : 'Super admin only';
+                    button.disabled = !allowed;
+                    button.style.cssText = 'border:1px solid #d1d5db; border-radius:6px; padding:4px 10px; background:#ffffff; cursor:' + (allowed ? 'pointer' : 'not-allowed') + '; color:' + (allowed ? '#111827' : '#9ca3af') + ';';
+                    button.addEventListener('click', () => selectBackup(backup));
+                    actionCell.appendChild(button);
+                    row.appendChild(actionCell);
+
+                    restoreRows.appendChild(row);
+                });
+            })
+            .catch(() => {
+                restoreRows.innerHTML = '';
+                restoreErrors.textContent = 'Could not load backups.';
+                restoreErrors.style.display = 'block';
+                restoreLoaded = false;
+            });
+    }
+
+    const restoreCancel = document.getElementById('restore-cancel');
+    if (restoreCancel) {
+        restoreCancel.addEventListener('click', () => { restoreForm.style.display = 'none'; });
+    }
+
+    tabButtons.forEach((button) => {
+        if (button.dataset.tab === 'backup-restore') {
+            button.addEventListener('click', loadBackups);
+        }
+    });
+
+    if (@json($activeTab === 'backup-restore')) {
+        loadBackups();
+    }
 
     function updateProviderConfigVisibility() {
         const selectedProviders = new Set(

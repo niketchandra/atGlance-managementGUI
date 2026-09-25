@@ -4,52 +4,28 @@ namespace Tests\Feature;
 
 use App\Models\AdminSetting;
 use App\Models\ConfigurationFile;
-use App\Models\User;
 use App\Support\S3Settings;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
+use Tests\Feature\Concerns\InteractsWithAdminConsole;
 use Tests\TestCase;
 
 class S3StorageSettingsTest extends TestCase
 {
     use RefreshDatabase;
-
-    private string $installedMarker;
-    private bool $createdInstalledMarker = false;
-    private ?string $originalEnv = null;
+    use InteractsWithAdminConsole;
 
     protected function setUp(): void
     {
         parent::setUp();
-
-        // Saved S3 secrets are encrypted; the test env has no APP_KEY of its own.
-        config(['app.key' => 'base64:' . base64_encode(str_repeat('k', 32))]);
-
-        $this->installedMarker = storage_path('app/installer/installed.json');
-        if (!is_file($this->installedMarker)) {
-            @mkdir(dirname($this->installedMarker), 0755, true);
-            file_put_contents($this->installedMarker, '{}');
-            $this->createdInstalledMarker = true;
-        }
-
-        // Migration writes S3_ENABLED to .env; put the file back afterwards.
-        $envPath = base_path('.env');
-        $this->originalEnv = is_file($envPath) ? file_get_contents($envPath) : null;
+        $this->setUpAdminConsole();
     }
 
     protected function tearDown(): void
     {
-        if ($this->createdInstalledMarker) {
-            @unlink($this->installedMarker);
-        }
-
-        if ($this->originalEnv !== null) {
-            file_put_contents(base_path('.env'), $this->originalEnv);
-        }
-
+        $this->tearDownAdminConsole();
         parent::tearDown();
     }
 
@@ -100,26 +76,6 @@ class S3StorageSettingsTest extends TestCase
         $this->assertSame('local', S3Settings::activeDisk());
     }
 
-    private function actingAsAdmin(): User
-    {
-        $admin = new User();
-        $admin->forceFill([
-            'name' => 'Admin',
-            'email' => 'admin@example.test',
-            'password_hash' => Hash::make('secret-pass'),
-            'password' => Hash::make('secret-pass'),
-            'rbac_id' => 101,
-            'org_id' => 200,
-            'status' => 'active',
-            'dob' => '1990-01-01',
-            'pin' => Hash::make('12345'),
-        ])->save();
-
-        $this->actingAs($admin);
-
-        return $admin;
-    }
-
     private function createConfigFileRecord(string $path, string $disk): void
     {
         // Parent user/system rows are irrelevant here; the test transaction rolls back before FKs are checked.
@@ -154,7 +110,7 @@ class S3StorageSettingsTest extends TestCase
         Storage::disk('s3')->put('config_files/1/a.conf', 'listen 80;');
         $this->createConfigFileRecord('config_files/1/a.conf', 'local');
 
-        $this->actingAsAdmin();
+        $this->actingAsRole(101);
         $this->post(route('admin.settings.migration.start'), ['direction' => 'local_to_s3', 'keep_source' => 1])
             ->assertRedirect()
             ->assertSessionHas('success', 'No files pending migration. Source and destination are already synchronized.');
@@ -178,7 +134,7 @@ class S3StorageSettingsTest extends TestCase
         Storage::disk('s3')->put('config_files/1/b.conf', 'listen 81;');
         $this->createConfigFileRecord('config_files/1/b.conf', 's3');
 
-        $this->actingAsAdmin();
+        $this->actingAsRole(101);
         $this->post(route('admin.settings.migration.start'), ['direction' => 's3_to_local', 'keep_source' => 1])
             ->assertRedirect();
 

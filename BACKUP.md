@@ -78,6 +78,39 @@ The scheduler container must share these with the `api` container:
 - The same `.env` file, if the portal backup must contain the `.env` that the
   web UI edits.
 
+## Restore
+
+The **Restore** section of the **Backup & Restore** tab lists:
+
+- Scheduled backups in S3 (`backups/config/...` and `backups/portal/...`), when S3 is enabled.
+- Pre-restore snapshots on this server (`storage/app/private/backups/snapshots/...`).
+
+The list loads when the tab is opened (`GET /admin/settings/backups`). To
+restore, pick a backup, confirm your password, and tick the overwrite
+confirmation.
+
+| Backup type | Who can restore | What it does |
+|---|---|---|
+| Configuration files | Admins (`rbac_id` 100 and 101) | Adds missing `services`, `system_register`, `configuration_files` and `raw_data` records back and resets changed records to their backed-up values. Records created after the backup are kept. Each file's content is written back from `raw_data` to its disk (S3 when S3 is available, otherwise local). |
+| Portal | Super admin only (`rbac_id` 100) | Replaces the whole database with `database.sql`, runs pending migrations, and writes the backup's `.env` back. |
+
+Every restore:
+
+- Needs the current user's password.
+- Saves a snapshot of the current state first, as a local backup of the
+  same type. The success or error message names the snapshot. To undo a
+  restore, restore that snapshot.
+- Writes an entry to `activity_logs` with the backup, the snapshot, and the
+  result.
+
+After a portal restore, restart the app containers so the restored `.env`
+takes effect. The restored `.env` is the one from the container that made the
+backup (the `scheduler` container for scheduled backups). The restored
+`APP_KEY` must match the key used to encrypt the restored admin settings.
+
+The code is in `composer/app/Services/RestoreService.php` and
+`composer/app/Http/Controllers/BackupRestoreController.php`.
+
 ## Checking the schedule
 
 ```bash

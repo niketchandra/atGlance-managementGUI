@@ -4,6 +4,7 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\AdminDashboardController;
+use App\Http\Controllers\BackupRestoreController;
 use App\Http\Controllers\InstallerController;
 use App\Support\InstallationState;
 
@@ -83,6 +84,8 @@ Route::middleware('app.installed')->group(function () {
             Route::post('/settings/site', [AdminDashboardController::class, 'updateSiteSettings'])->name('admin.settings.site');
             Route::post('/settings/s3', [AdminDashboardController::class, 'updateS3Settings'])->name('admin.settings.s3');
             Route::post('/settings/backup-restore', [AdminDashboardController::class, 'updateBackupRestoreSettings'])->name('admin.settings.backup-restore');
+            Route::get('/settings/backups', [BackupRestoreController::class, 'index'])->name('admin.settings.backups');
+            Route::post('/settings/restore', [BackupRestoreController::class, 'restore'])->name('admin.settings.restore');
             Route::post('/settings/migration/config', [AdminDashboardController::class, 'updateMigrationSettings'])->name('admin.settings.migration.config');
             Route::post('/settings/migration/analyze', [AdminDashboardController::class, 'analyzeMigration'])->name('admin.settings.migration.analyze');
             Route::post('/settings/migration/start', [AdminDashboardController::class, 'startMigration'])->name('admin.settings.migration.start');

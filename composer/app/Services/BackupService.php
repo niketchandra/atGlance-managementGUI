@@ -34,7 +34,13 @@ class BackupService
         'monthly' => '0 0 1 * *',
     ];
 
-    private const CONFIG_TABLES = ['services', 'system_register', 'configuration_files', 'raw_data'];
+    public const CONFIG_TABLES = ['services', 'system_register', 'configuration_files', 'raw_data'];
+
+    /**
+     * Where scheduled backups live in S3, and pre-restore snapshots on the local disk.
+     */
+    public const S3_PREFIX = 'backups/';
+    public const SNAPSHOT_PREFIX = 'backups/snapshots/';
 
     /**
      * Returns the scheduler cron expression for a backup type, or null when
@@ -131,6 +137,42 @@ class BackupService
         $decoded = is_string($raw) ? json_decode($raw, true) : null;
 
         return is_array($decoded) ? $decoded : [];
+    }
+
+    /**
+     * Builds a backup of the current state and keeps it on the local disk under
+     * backups/snapshots/{type}/. Used before a restore so it can be undone.
+     * Returns the path on the local disk.
+     */
+    public function createLocalSnapshot(string $type): string
+    {
+        $createdAt = Carbon::now();
+        $workDir = storage_path('app/backups/tmp/snapshot-' . $type . '-' . $createdAt->format('YmdHis') . '-' . bin2hex(random_bytes(4)));
+
+        try {
+            if (!is_dir($workDir) && !mkdir($workDir, 0755, true) && !is_dir($workDir)) {
+                throw new RuntimeException('Could not create snapshot working directory.');
+            }
+
+            [$localFile, $fileName] = $type === self::TYPE_CONFIG
+                ? $this->buildConfigArchive($workDir, $createdAt)
+                : $this->buildPortalArchive($workDir, $createdAt);
+
+            $path = sprintf('%s%s/pre-restore-%s', self::SNAPSHOT_PREFIX, $type, $fileName);
+
+            $stream = fopen($localFile, 'rb');
+            try {
+                Storage::disk('local')->getDriver()->writeStream($path, $stream);
+            } finally {
+                if (is_resource($stream)) {
+                    fclose($stream);
+                }
+            }
+
+            return $path;
+        } finally {
+            $this->removeDirectory($workDir);
+        }
     }
 
     /**
@@ -288,7 +330,7 @@ class BackupService
             : '"' . str_replace('"', '""', $name) . '"';
     }
 
-    private function primaryKeyFor(string $table): string
+    public function primaryKeyFor(string $table): string
     {
         return match ($table) {
             'services' => 'service_id',
