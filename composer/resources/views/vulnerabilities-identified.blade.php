@@ -1,6 +1,6 @@
 @extends('app')
 
-@section('title', 'Vulnerabilities Identified - AtGlance')
+@section('title', 'Vulnerabilities Identified - ' . $brandName)
 
 @section('dashboard-content')
 <div style="padding: 40px;">

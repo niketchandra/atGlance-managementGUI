@@ -1,6 +1,6 @@
 @extends('app')
 
-@section('title', 'Profile - AtGlance')
+@section('title', 'Profile - ' . $brandName)
 
 @section('dashboard-content')
 @php($requiresProfileSetup = !auth()->user()->dob || !auth()->user()->pin)

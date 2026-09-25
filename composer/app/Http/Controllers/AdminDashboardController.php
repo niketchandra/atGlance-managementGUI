@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\AdminSetting;
 use App\Models\ConfigurationFile;
+use App\Models\ContactSubmission;
 use App\Models\Organization;
 use App\Models\Service;
 use App\Models\SystemRegister;
@@ -11,6 +12,8 @@ use App\Models\User;
 use App\Models\Workspace;
 use App\Services\BackupService;
 use App\Support\S3Settings;
+use App\Support\SiteProfile;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -907,6 +910,13 @@ class AdminDashboardController extends Controller
             'siteMetadataText' => json_encode($siteMetadata, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES),
             'siteTagsText' => implode(',', $siteTags),
             'siteFeaturesText' => implode("\n", $siteFeatures),
+            'organizationLogoUrl' => SiteProfile::current()->logoUrl(),
+            'siteAbout' => SiteProfile::current()->about(),
+            'siteFaq' => SiteProfile::current()->faq(),
+            'siteSupport' => SiteProfile::current()->support(),
+            'siteContactEnabled' => SiteProfile::current()->contactEnabled(),
+            'siteContactIntro' => SiteProfile::current()->contactIntro(),
+            'contactSubmissions' => ContactSubmission::query()->latest('id')->limit(50)->get(),
             'useS3Storage' => $useS3Storage,
             's3Region' => $s3Runtime['region'],
             's3Bucket' => $s3Runtime['bucket'],
@@ -955,9 +965,23 @@ class AdminDashboardController extends Controller
     public function updateSiteSettings(Request $request): RedirectResponse
     {
         $validated = $request->validate([
-            'site_logo_url' => ['nullable', 'url', 'max:2048'],
+            'organization_name' => ['required', 'string', 'max:255'],
             'site_logo' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp,svg', 'max:2048'],
+            'remove_site_logo' => ['nullable', 'boolean'],
             'site_description' => ['nullable', 'string', 'max:5000'],
+            'site_about' => ['nullable', 'string', 'max:20000'],
+            'faq_question' => ['nullable', 'array', 'max:100'],
+            'faq_question.*' => ['nullable', 'string', 'max:500'],
+            'faq_answer' => ['nullable', 'array', 'max:100'],
+            'faq_answer.*' => ['nullable', 'string', 'max:5000'],
+            'site_support_contact_name' => ['nullable', 'string', 'max:255'],
+            'site_support_contact_email' => ['nullable', 'email', 'max:255'],
+            'site_support_contact_phone' => ['nullable', 'string', 'max:50'],
+            'site_support_hours' => ['nullable', 'string', 'max:255'],
+            'site_support_request_url' => ['nullable', 'url:http,https', 'max:2048'],
+            'site_support_details' => ['nullable', 'string', 'max:20000'],
+            'site_contact_enabled' => ['nullable', 'boolean'],
+            'site_contact_intro' => ['nullable', 'string', 'max:5000'],
             'site_domain_alias' => ['nullable', 'string', 'max:255', 'regex:/^[A-Za-z0-9.-]+$/'],
             'site_domain_alias_ip' => ['nullable', 'ip'],
             'site_https_enabled' => ['nullable', 'boolean'],
@@ -997,27 +1021,33 @@ class AdminDashboardController extends Controller
             ->values()
             ->all();
 
-        $logoUrl = trim((string) ($validated['site_logo_url'] ?? ''));
         if ($request->hasFile('site_logo')) {
-            $uploadedLogo = $request->file('site_logo');
-            $logoExtension = strtolower((string) ($uploadedLogo?->extension() ?: 'png'));
-            if ($logoExtension === 'jpeg') {
-                $logoExtension = 'jpg';
-            }
-
-            $logoFileName = 'site-logo.' . $logoExtension;
-            $brandingDirectory = public_path('branding');
-            File::ensureDirectoryExists($brandingDirectory);
-
-            $uploadedLogo->move($brandingDirectory, $logoFileName);
-
-            AdminSetting::putValue('site', 'site_logo_disk', 'public_static');
-            AdminSetting::putValue('site', 'site_logo_path', 'branding/' . $logoFileName);
-            $logoUrl = url('/branding/' . $logoFileName);
+            $this->replaceSiteLogo($request->file('site_logo'));
+        } elseif ($request->boolean('remove_site_logo')) {
+            $this->removeSiteLogo();
         }
 
-        AdminSetting::putValue('site', 'site_logo_url', $logoUrl);
-        AdminSetting::putValue('site', 'site_favicon_url', $logoUrl);
+        Organization::query()->updateOrCreate(
+            ['id' => SiteProfile::DEFAULT_ORGANIZATION_ID],
+            ['name' => trim($validated['organization_name'])]
+        );
+
+        $faq = [];
+        foreach (($validated['faq_question'] ?? []) as $index => $question) {
+            $question = trim((string) $question);
+            if ($question !== '') {
+                $faq[] = ['question' => $question, 'answer' => trim((string) ($validated['faq_answer'][$index] ?? ''))];
+            }
+        }
+
+        AdminSetting::putValue('site', 'site_about', trim((string) ($validated['site_about'] ?? '')));
+        AdminSetting::putValue('site', 'site_faq', $faq);
+        foreach (['contact_name', 'contact_email', 'contact_phone', 'hours', 'request_url', 'details'] as $field) {
+            AdminSetting::putValue('site', 'site_support_' . $field, trim((string) ($validated['site_support_' . $field] ?? '')));
+        }
+        AdminSetting::putValue('site', 'site_contact_enabled', $request->boolean('site_contact_enabled') ? 'true' : 'false');
+        AdminSetting::putValue('site', 'site_contact_intro', trim((string) ($validated['site_contact_intro'] ?? '')));
+
         AdminSetting::putValue('site', 'site_description', $validated['site_description'] ?? '');
         AdminSetting::putValue('site', 'site_domain_alias', $domainAlias);
         AdminSetting::putValue('site', 'site_domain_alias_ip', $domainAliasIp);
@@ -1028,6 +1058,51 @@ class AdminDashboardController extends Controller
         AdminSetting::putValue('site', 'site_content', $validated['site_description'] ?? ($validated['site_content'] ?? ''));
 
         return redirect()->route('admin.settings', ['tab' => 'site'])->with('success', 'Site settings updated successfully.');
+    }
+
+    /**
+     * Stores the logo on the public disk (inside the storage volume, so it
+     * survives container rebuilds). It is served through the site.logo route.
+     */
+    private function replaceSiteLogo(UploadedFile $logo): void
+    {
+        $extension = strtolower((string) ($logo->extension() ?: 'png'));
+        if ($extension === 'jpeg') {
+            $extension = 'jpg';
+        }
+
+        $previousPath = trim((string) AdminSetting::getValue('site_logo_path', ''));
+
+        // A new name per upload, so browsers do not keep showing the old logo.
+        $path = $logo->storeAs('branding', 'site-logo-' . now()->format('YmdHis') . '.' . $extension, 'public');
+
+        AdminSetting::putValue('site', 'site_logo_disk', 'public');
+        AdminSetting::putValue('site', 'site_logo_path', $path);
+        AdminSetting::putValue('site', 'site_logo_url', '');
+        AdminSetting::putValue('site', 'site_favicon_url', '');
+
+        if ($previousPath !== '' && $previousPath !== $path) {
+            Storage::disk('public')->delete($previousPath);
+        }
+    }
+
+    private function removeSiteLogo(): void
+    {
+        $previousPath = trim((string) AdminSetting::getValue('site_logo_path', ''));
+        if ($previousPath !== '') {
+            Storage::disk('public')->delete($previousPath);
+        }
+
+        AdminSetting::putValue('site', 'site_logo_path', '');
+        AdminSetting::putValue('site', 'site_logo_url', '');
+        AdminSetting::putValue('site', 'site_favicon_url', '');
+    }
+
+    public function deleteContactSubmission(int $submissionId): RedirectResponse
+    {
+        ContactSubmission::query()->whereKey($submissionId)->delete();
+
+        return redirect()->route('admin.settings', ['tab' => 'site'])->with('success', 'Contact message deleted.');
     }
 
     private function resolveApplicationIpAddress(): string

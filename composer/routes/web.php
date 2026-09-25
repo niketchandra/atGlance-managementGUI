@@ -6,7 +6,9 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\AdminDashboardController;
 use App\Http\Controllers\BackupRestoreController;
 use App\Http\Controllers\InstallerController;
+use App\Http\Controllers\PublicPageController;
 use App\Support\InstallationState;
+use App\Support\SiteProfile;
 
 Route::get('/install', [InstallerController::class, 'show'])->name('install.show');
 Route::post('/install', [InstallerController::class, 'install'])->name('install.run');
@@ -33,7 +35,12 @@ Route::middleware('app.installed')->group(function () {
     Route::get('/auth/sso/{provider}', [AuthController::class, 'redirectToSso'])->name('auth.sso.redirect');
     Route::get('/auth/sso/{provider}/callback', [AuthController::class, 'handleSsoCallback'])->name('auth.sso.callback');
     Route::post('/password/email', [AuthController::class, 'sendPasswordResetLink'])->name('password.email');
-    Route::post('/contact', [AuthController::class, 'storeContact'])->name('contact');
+    Route::post('/contact', [PublicPageController::class, 'submitContact'])
+        ->middleware('throttle:5,1')
+        ->name('contact');
+    Route::get('/{page}', [PublicPageController::class, 'show'])
+        ->whereIn('page', SiteProfile::PAGES)
+        ->name('public.page');
     Route::get('/site-logo/{path?}', [AdminDashboardController::class, 'serveSiteLogo'])
         ->where('path', '.*')
         ->name('site.logo');
@@ -82,6 +89,7 @@ Route::middleware('app.installed')->group(function () {
             Route::get('/users/{user}/services/{serviceId}/versions', [AdminDashboardController::class, 'userServiceVersions'])->name('admin.users.services.versions');
             Route::get('/settings', [AdminDashboardController::class, 'settings'])->name('admin.settings');
             Route::post('/settings/site', [AdminDashboardController::class, 'updateSiteSettings'])->name('admin.settings.site');
+            Route::delete('/settings/contact-submissions/{submissionId}', [AdminDashboardController::class, 'deleteContactSubmission'])->whereNumber('submissionId')->name('admin.settings.contact-submissions.delete');
             Route::post('/settings/s3', [AdminDashboardController::class, 'updateS3Settings'])->name('admin.settings.s3');
             Route::post('/settings/backup-restore', [AdminDashboardController::class, 'updateBackupRestoreSettings'])->name('admin.settings.backup-restore');
             Route::get('/settings/backups', [BackupRestoreController::class, 'index'])->name('admin.settings.backups');

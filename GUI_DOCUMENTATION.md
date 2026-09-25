@@ -114,9 +114,23 @@ API and product management page.
 - Status message display
 
 ### Contact Form
-- Name, email, subject, and message fields
-- Textarea for message
-- Form submission handling
+- Name, email, subject, and message fields on the public Contact page (`/contact`)
+- Shown only when the contact form is turned on in Site Configuration
+- Submissions are stored in `contact_submissions` and listed on the Site Configuration tab, where admins can delete them
+- Rate-limited to 5 submissions per minute per IP
+
+## White-label and Public Pages
+
+The **Site Configuration** tab (`/admin/settings?tab=site`) holds the organization's profile:
+
+- **Organization name**: saved to `organizations` row `id=200`. It replaces "AtGlance" in the page title, headers, welcome text, footer, logo alt text, and page titles. "AtGlance" is the fallback when no name is set.
+- **Organization logo**: uploaded to the `public` disk (`storage/app/public/branding/`) and served through `GET /site-logo/{path}`. It is used in the sidebar and as the favicon. It can be removed.
+- **Site description**: shown under the welcome title on the home page.
+- **Public pages**: About (Markdown), Features (one per line, `Title: description`), FAQ (question and Markdown answer rows), Support (contact person, email, phone, hours, request guide link, Markdown steps), Contact (on/off and Markdown intro).
+
+Each page with content is served at `/about`, `/features`, `/faq`, `/support` or `/contact` and listed in the home page **Quick Links** and the footer. A page with no content returns 404 and is not listed. Markdown is rendered with raw HTML stripped and unsafe links removed.
+
+The values are read per request by `App\Support\SiteProfile` and shared with every view as `$brandName`, `$siteLogoUrl`, `$siteDescription` and `$publicPages`.
 
 ## Controllers
 

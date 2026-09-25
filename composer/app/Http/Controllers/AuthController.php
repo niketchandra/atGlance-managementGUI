@@ -351,29 +351,6 @@ class AuthController extends Controller
         return back()->with('status', 'If an account exists with this email, a password reset link will be sent shortly.');
     }
 
-    /**
-     * Store contact form submission
-     */
-    public function storeContact(Request $request)
-    {
-        $validated = $request->validate([
-            'name' => 'required|string|max:255',
-            'email' => 'required|email',
-            'subject' => 'required|string|max:255',
-            'message' => 'required|string|min:10',
-        ]);
-
-        try {
-            // Here you would typically save the contact message to database
-            // and send it to your email
-            
-            // For now, just return success
-            return back()->with('success', 'Thank you for reaching out! We will get back to you soon.');
-        } catch (\Exception $e) {
-            return back()->withErrors(['contact' => 'Failed to send message. Please try again later.']);
-        }
-    }
-
     private function buildGithubAuthorizeUrl(string $providerUrl, Request $request): string
     {
         [$clientId] = $this->getProviderClientCredentials('github');

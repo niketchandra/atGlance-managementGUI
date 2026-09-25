@@ -1,6 +1,6 @@
 @extends('app')
 
-@section('title', 'Site Setting - AtGlance')
+@section('title', 'Site Setting - ' . $brandName)
 
 @section('dashboard-content')
 <div style="padding:40px;">
@@ -77,22 +77,26 @@
         <h2 style="font-size:18px; margin-bottom:12px;">Site Configuration</h2>
         <form method="POST" action="{{ route('admin.settings.site', ['tab' => 'site']) }}" enctype="multipart/form-data">
             @csrf
+            <h3 style="font-size:15px; font-weight:700; margin-bottom:8px;">Organization</h3>
+            <p style="font-size:13px; color:#6b7280; margin-bottom:10px;">The organization name and logo replace the AtGlance name and logo across the application.</p>
             <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:12px;">
-                {{--
                 <div>
-                    <label style="display:block; font-size:13px; color:#4b5563; margin-bottom:6px;">Logo Image Upload</label>
+                    <label style="display:block; font-size:13px; color:#4b5563; margin-bottom:6px;">Organization Name</label>
+                    <input type="text" name="organization_name" value="{{ old('organization_name', $organizationName) }}" required maxlength="255" style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:10px;">
+                </div>
+                <div>
+                    <label style="display:block; font-size:13px; color:#4b5563; margin-bottom:6px;">Organization Logo</label>
                     <input type="file" name="site_logo" accept=".jpg,.jpeg,.png,.webp,.svg" style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:10px; background:white;">
-                    @if(!empty($siteLogoUrl))
-                        <div style="margin-top:8px;">
-                            <img src="{{ $siteLogoUrl }}" alt="Site Logo" style="max-height:48px; border-radius:6px; border:1px solid #e5e7eb; padding:4px; background:white;">
+                    <div style="font-size:12px; color:#6b7280; margin-top:4px;">JPG, PNG, WebP or SVG, up to 2 MB.</div>
+                    @if(!empty($organizationLogoUrl))
+                        <div style="margin-top:8px; display:flex; align-items:center; gap:12px;">
+                            <img src="{{ $organizationLogoUrl }}" alt="{{ $organizationName }} logo" style="max-height:48px; border-radius:6px; border:1px solid #e5e7eb; padding:4px; background:white;">
+                            <label style="font-size:13px; color:#374151; display:flex; gap:6px; align-items:center;">
+                                <input type="checkbox" name="remove_site_logo" value="1"> Remove logo
+                            </label>
                         </div>
                     @endif
                 </div>
-                <div>
-                    <label style="display:block; font-size:13px; color:#4b5563; margin-bottom:6px;">Logo URL (optional override)</label>
-                    <input type="url" name="site_logo_url" value="{{ old('site_logo_url', $siteLogoUrlOverride ?? '') }}" placeholder="https://example.com/logo.png" style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:10px;">
-                </div>
-                --}}
             </div>
 
             <div style="margin-bottom:12px;">
@@ -142,7 +146,7 @@
                     <input type="text" name="site_tags" value="{{ old('site_tags', $siteTagsText) }}" placeholder="security, api-gateway, monitoring" style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:10px;">
                 </div>
                 <div>
-                    <label style="display:block; font-size:13px; color:#4b5563; margin-bottom:6px;">Features (one per line)</label>
+                    <label style="display:block; font-size:13px; color:#4b5563; margin-bottom:6px;">Features (one per line, "Title: description")</label>
                     <textarea name="site_features" rows="4" style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:10px;">{{ old('site_features', $siteFeaturesText) }}</textarea>
                 </div>
             </div>
@@ -152,8 +156,83 @@
                 <textarea name="site_metadata" rows="6" style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:10px; font-family:'Courier New', monospace;">{{ old('site_metadata', $siteMetadataText) }}</textarea>
             </div>
 
+            <h3 style="font-size:15px; font-weight:700; margin:18px 0 8px; padding-top:14px; border-top:1px solid #e5e7eb;">Public pages</h3>
+            <p style="font-size:13px; color:#6b7280; margin-bottom:10px;">These pages are linked from the home page Quick Links. A page with no content is hidden. Text fields accept Markdown.</p>
+
+            <div style="margin-bottom:12px;">
+                <label style="display:block; font-size:13px; color:#4b5563; margin-bottom:6px;">About page</label>
+                <textarea name="site_about" rows="6" placeholder="## Who we are" style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:10px;">{{ old('site_about', $siteAbout) }}</textarea>
+            </div>
+
+            <div style="margin-bottom:12px;">
+                <label style="display:block; font-size:13px; color:#4b5563; margin-bottom:6px;">FAQ page</label>
+                @php
+                    $faqRows = old('faq_question') !== null
+                        ? collect(old('faq_question'))->map(fn ($question, $index) => ['question' => $question, 'answer' => old('faq_answer')[$index] ?? ''])->all()
+                        : $siteFaq;
+                    if (empty($faqRows)) {
+                        $faqRows = [['question' => '', 'answer' => '']];
+                    }
+                @endphp
+                <div id="faq-rows">
+                    @foreach($faqRows as $faqRow)
+                        <div class="faq-row" style="border:1px solid #e5e7eb; border-radius:8px; padding:10px; margin-bottom:8px; background:#f9fafb;">
+                            <input type="text" name="faq_question[]" value="{{ $faqRow['question'] }}" placeholder="Question" maxlength="500" style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:10px; margin-bottom:6px; background:white;">
+                            <textarea name="faq_answer[]" rows="2" placeholder="Answer (Markdown)" style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:10px; background:white;">{{ $faqRow['answer'] }}</textarea>
+                            <button type="button" class="faq-remove" style="margin-top:6px; background:white; border:1px solid #d1d5db; border-radius:6px; padding:4px 10px; cursor:pointer; font-size:12px;">Remove</button>
+                        </div>
+                    @endforeach
+                </div>
+                <button type="button" id="faq-add" style="background:white; border:1px solid #d1d5db; border-radius:6px; padding:6px 12px; cursor:pointer; font-size:13px;">Add question</button>
+            </div>
+
+            <div style="margin-bottom:12px;">
+                <label style="display:block; font-size:13px; color:#4b5563; margin-bottom:6px;">Support page</label>
+                <p style="font-size:12px; color:#6b7280; margin-bottom:8px;">Who your users contact for support, and how they raise a request.</p>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:10px;">
+                    <input type="text" name="site_support_contact_name" value="{{ old('site_support_contact_name', $siteSupport['contact_name']) }}" placeholder="Support contact person" maxlength="255" style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:10px;">
+                    <input type="email" name="site_support_contact_email" value="{{ old('site_support_contact_email', $siteSupport['contact_email']) }}" placeholder="Support email" maxlength="255" style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:10px;">
+                    <input type="text" name="site_support_contact_phone" value="{{ old('site_support_contact_phone', $siteSupport['contact_phone']) }}" placeholder="Support phone" maxlength="50" style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:10px;">
+                    <input type="text" name="site_support_hours" value="{{ old('site_support_hours', $siteSupport['hours']) }}" placeholder="Support hours, e.g. Mon-Fri 09:00-18:00 IST" maxlength="255" style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:10px;">
+                </div>
+                <input type="url" name="site_support_request_url" value="{{ old('site_support_request_url', $siteSupport['request_url']) }}" placeholder="Link to the guide or portal for raising a request (https://...)" maxlength="2048" style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:10px; margin-bottom:10px;">
+                <textarea name="site_support_details" rows="5" placeholder="Steps to raise a support request (Markdown)" style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:10px;">{{ old('site_support_details', $siteSupport['details']) }}</textarea>
+            </div>
+
+            <div style="margin-bottom:14px;">
+                <label style="display:block; font-size:13px; color:#4b5563; margin-bottom:6px;">Contact page</label>
+                <input type="hidden" name="site_contact_enabled" value="0">
+                <label style="display:flex; gap:8px; align-items:center; font-size:13px; color:#374151; margin-bottom:8px;">
+                    <input type="checkbox" name="site_contact_enabled" value="1" {{ old('site_contact_enabled', $siteContactEnabled ? '1' : '0') === '1' ? 'checked' : '' }}>
+                    Show the contact form. Messages are listed below.
+                </label>
+                <textarea name="site_contact_intro" rows="3" placeholder="Text above the contact form (Markdown)" style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:10px;">{{ old('site_contact_intro', $siteContactIntro) }}</textarea>
+            </div>
+
             <button type="submit" style="background:#000000; color:white; border:none; border-radius:8px; padding:10px 14px; font-weight:600; cursor:pointer;">Save Site Settings</button>
         </form>
+
+        <h3 style="font-size:15px; font-weight:700; margin:18px 0 8px; padding-top:14px; border-top:1px solid #e5e7eb;">Contact messages</h3>
+        @if(($contactSubmissions ?? collect())->isEmpty())
+            <p style="font-size:13px; color:#6b7280;">No messages yet.</p>
+        @else
+            <p style="font-size:13px; color:#6b7280; margin-bottom:8px;">Latest 50 messages sent from the Contact page.</p>
+            @foreach($contactSubmissions as $submission)
+                <div style="border:1px solid #e5e7eb; border-radius:8px; padding:10px; margin-bottom:8px;">
+                    <div style="display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap;">
+                        <div style="font-weight:600; color:#111827;">{{ $submission->subject }}</div>
+                        <div style="font-size:12px; color:#6b7280;">{{ $submission->created_at?->format('Y-m-d H:i') }}</div>
+                    </div>
+                    <div style="font-size:13px; color:#374151; margin:2px 0 6px;">{{ $submission->name }} &lt;<a href="mailto:{{ $submission->email }}" style="color:#1d4ed8;">{{ $submission->email }}</a>&gt;</div>
+                    <div style="font-size:13px; color:#111827; white-space:pre-wrap; word-break:break-word;">{{ $submission->message }}</div>
+                    <form method="POST" action="{{ route('admin.settings.contact-submissions.delete', ['submissionId' => $submission->id]) }}" onsubmit="return confirm('Delete this message?');" style="margin-top:6px;">
+                        @csrf
+                        @method('DELETE')
+                        <button type="submit" style="background:white; border:1px solid #d1d5db; border-radius:6px; padding:4px 10px; cursor:pointer; font-size:12px; color:#b91c1c;">Delete</button>
+                    </form>
+                </div>
+            @endforeach
+        @endif
     </div>
 
     <div id="tab-s3" class="settings-tab-content" style="display:{{ $activeTab === 's3' ? 'block' : 'none' }}; background:white; border:1px solid #b3b3b3; border-radius:10px; padding:22px; box-shadow:0 2px 10px rgba(0,0,0,0.06);">
@@ -674,6 +753,26 @@
     tabButtons.forEach((button) => {
         button.addEventListener('click', () => activateTab(button.dataset.tab));
     });
+
+    // FAQ rows on the Site Configuration tab.
+    const faqRows = document.getElementById('faq-rows');
+    const faqAdd = document.getElementById('faq-add');
+    if (faqRows && faqAdd) {
+        faqAdd.addEventListener('click', () => {
+            const row = faqRows.querySelector('.faq-row').cloneNode(true);
+            row.querySelectorAll('input, textarea').forEach((field) => { field.value = ''; });
+            faqRows.appendChild(row);
+        });
+        faqRows.addEventListener('click', (event) => {
+            if (!event.target.classList.contains('faq-remove')) return;
+            const row = event.target.closest('.faq-row');
+            if (faqRows.querySelectorAll('.faq-row').length > 1) {
+                row.remove();
+            } else {
+                row.querySelectorAll('input, textarea').forEach((field) => { field.value = ''; });
+            }
+        });
+    }
 
     // Restore: the backup list is fetched only when the tab is first opened,
     // so a slow S3 never delays the settings page.

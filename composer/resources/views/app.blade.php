@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>@yield('title', 'AtGlance - Configuration Backup Service')</title>
+    <title>@yield('title', $brandName)</title>
     <link rel="icon" type="image/x-icon" href="{{ $siteFaviconUrl ?? asset('branding/favicon.ico') }}">
 
     <script src="https://cdn.tailwindcss.com"></script>
@@ -733,7 +733,7 @@
         <!-- LEFT SIDEBAR (20%) -->
         <div class="sidebar">
             <div class="sidebar-logo">
-                <img src="{{ !empty($siteLogoUrl) ? $siteLogoUrl : asset('branding/atglance-logo.svg') }}" alt="AtGlance Logo" style="max-width: 250px; max-height: 100px; object-fit: contain;">
+                <img src="{{ !empty($siteLogoUrl) ? $siteLogoUrl : asset('branding/atglance-logo.svg') }}" alt="{{ $brandName }} Logo" style="max-width: 250px; max-height: 100px; object-fit: contain;">
             </div>
 
             <div class="form-container" id="authForm">
@@ -909,24 +909,20 @@
             </div>
 
             <!-- Public Navigation (shown on homepage when not authenticated) -->
+            @php
+                $quickLinkIcons = ['about' => 'fa-lightbulb', 'features' => 'fa-rocket', 'faq' => 'fa-comments', 'support' => 'fa-life-ring', 'contact' => 'fa-paper-plane'];
+            @endphp
             <div id="publicNav" style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #e5e7eb; display: none;">
                 <p style="font-size: 11px; color: #6b7280; margin-bottom: 16px; text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px;">Quick Links</p>
                 <nav style="display: flex; flex-direction: column; gap: 8px;">
-                    <a href="#about" class="nav-link" style="padding: 12px 14px; color: #1f2937; text-decoration: none; border-radius: 8px; transition: all 0.3s ease; background: #f9fafb; border: 1px solid #e5e7eb; display: flex; align-items: center; gap: 12px; font-weight: 500; font-size: 14px;" onmouseover="this.style.background='#f3f4f6'; this.style.borderColor='#d1d5db'; this.style.transform='translateX(4px)'; this.style.boxShadow='0 2px 8px rgba(0,0,0,0.08)';" onmouseout="this.style.background='#f9fafb'; this.style.borderColor='#e5e7eb'; this.style.transform='translateX(0)'; this.style.boxShadow='none';">
-                        <i class="fas fa-lightbulb" style="color: #444444; font-size: 16px; width: 20px; text-align: center;"></i> About
+                    <a href="{{ route('home') }}" class="nav-link" style="padding: 12px 14px; color: #1f2937; text-decoration: none; border-radius: 8px; transition: all 0.3s ease; background: #f9fafb; border: 1px solid #e5e7eb; display: flex; align-items: center; gap: 12px; font-weight: 500; font-size: 14px;" onmouseover="this.style.background='#f3f4f6'; this.style.borderColor='#d1d5db'; this.style.transform='translateX(4px)'; this.style.boxShadow='0 2px 8px rgba(0,0,0,0.08)';" onmouseout="this.style.background='#f9fafb'; this.style.borderColor='#e5e7eb'; this.style.transform='translateX(0)'; this.style.boxShadow='none';">
+                        <i class="fas fa-home" style="color: #444444; font-size: 16px; width: 20px; text-align: center;"></i> Home
                     </a>
-                    <a href="#features" class="nav-link" style="padding: 12px 14px; color: #1f2937; text-decoration: none; border-radius: 8px; transition: all 0.3s ease; background: #f9fafb; border: 1px solid #e5e7eb; display: flex; align-items: center; gap: 12px; font-weight: 500; font-size: 14px;" onmouseover="this.style.background='#f3f4f6'; this.style.borderColor='#d1d5db'; this.style.transform='translateX(4px)'; this.style.boxShadow='0 2px 8px rgba(0,0,0,0.08)';" onmouseout="this.style.background='#f9fafb'; this.style.borderColor='#e5e7eb'; this.style.transform='translateX(0)'; this.style.boxShadow='none';">
-                        <i class="fas fa-rocket" style="color: #444444; font-size: 16px; width: 20px; text-align: center;"></i> Features
-                    </a>
-                    <a href="#faq" class="nav-link" style="padding: 12px 14px; color: #1f2937; text-decoration: none; border-radius: 8px; transition: all 0.3s ease; background: #f9fafb; border: 1px solid #e5e7eb; display: flex; align-items: center; gap: 12px; font-weight: 500; font-size: 14px;" onmouseover="this.style.background='#f3f4f6'; this.style.borderColor='#d1d5db'; this.style.transform='translateX(4px)'; this.style.boxShadow='0 2px 8px rgba(0,0,0,0.08)';" onmouseout="this.style.background='#f9fafb'; this.style.borderColor='#e5e7eb'; this.style.transform='translateX(0)'; this.style.boxShadow='none';">
-                        <i class="fas fa-comments" style="color: #444444; font-size: 16px; width: 20px; text-align: center;"></i> FAQ
-                    </a>
-                    <a href="#support" class="nav-link" style="padding: 12px 14px; color: #1f2937; text-decoration: none; border-radius: 8px; transition: all 0.3s ease; background: #f9fafb; border: 1px solid #e5e7eb; display: flex; align-items: center; gap: 12px; font-weight: 500; font-size: 14px;" onmouseover="this.style.background='#f3f4f6'; this.style.borderColor='#d1d5db'; this.style.transform='translateX(4px)'; this.style.boxShadow='0 2px 8px rgba(0,0,0,0.08)';" onmouseout="this.style.background='#f9fafb'; this.style.borderColor='#e5e7eb'; this.style.transform='translateX(0)'; this.style.boxShadow='none';">
-                        <i class="fas fa-life-ring" style="color: #444444; font-size: 16px; width: 20px; text-align: center;"></i> Support
-                    </a>
-                    <a href="#contact" class="nav-link" style="padding: 12px 14px; color: #1f2937; text-decoration: none; border-radius: 8px; transition: all 0.3s ease; background: #f9fafb; border: 1px solid #e5e7eb; display: flex; align-items: center; gap: 12px; font-weight: 500; font-size: 14px;" onmouseover="this.style.background='#f3f4f6'; this.style.borderColor='#d1d5db'; this.style.transform='translateX(4px)'; this.style.boxShadow='0 2px 8px rgba(0,0,0,0.08)';" onmouseout="this.style.background='#f9fafb'; this.style.borderColor='#e5e7eb'; this.style.transform='translateX(0)'; this.style.boxShadow='none';">
-                        <i class="fas fa-paper-plane" style="color: #444444; font-size: 16px; width: 20px; text-align: center;"></i> Contact
-                    </a>
+                    @foreach($publicPages as $publicPage => $publicPageTitle)
+                        <a href="{{ route('public.page', ['page' => $publicPage]) }}" class="nav-link" style="padding: 12px 14px; color: #1f2937; text-decoration: none; border-radius: 8px; transition: all 0.3s ease; background: #f9fafb; border: 1px solid #e5e7eb; display: flex; align-items: center; gap: 12px; font-weight: 500; font-size: 14px;" onmouseover="this.style.background='#f3f4f6'; this.style.borderColor='#d1d5db'; this.style.transform='translateX(4px)'; this.style.boxShadow='0 2px 8px rgba(0,0,0,0.08)';" onmouseout="this.style.background='#f9fafb'; this.style.borderColor='#e5e7eb'; this.style.transform='translateX(0)'; this.style.boxShadow='none';">
+                            <i class="fas {{ $quickLinkIcons[$publicPage] ?? 'fa-file-alt' }}" style="color: #444444; font-size: 16px; width: 20px; text-align: center;"></i> {{ $publicPageTitle }}
+                        </a>
+                    @endforeach
                 </nav>
             </div>
 
@@ -1016,7 +1012,7 @@
                             <i class="fas fa-bars"></i>
                         </button>
                         <div class="header-logo">
-                            <i class="fas fa-gate"></i> AtGlance - Configuration Backup Service
+                            <i class="fas fa-gate"></i> {{ $brandName }}
                         </div>
                     </div>
                     <div class="header-right">
@@ -1030,7 +1026,7 @@
                 </div>
 
                 <footer style="margin-top:0; padding:14px 8px; border-top:1px solid #e5e7eb; color:#6b7280; font-size:12px; text-align:center;">
-                    <p>&copy; 2026 AtGlance. All rights reserved. | <a href="#" style="color: #000000;">Privacy Policy</a> | <a href="#" style="color: #000000;">Terms of Service</a></p>
+                    <p>&copy; {{ date('Y') }} {{ $brandName }}. All rights reserved.@foreach($publicPages as $publicPage => $publicPageTitle) | <a href="{{ route('public.page', ['page' => $publicPage]) }}" style="color: #000000;">{{ $publicPageTitle }}</a>@endforeach</p>
                 </footer>
             @else
                 <!-- PUBLIC HEADER -->
@@ -1039,18 +1035,21 @@
                         <i class="fas fa-bars"></i>
                     </button>
                     <div class="header-logo">
-                        <i class="fas fa-gate"></i> AtGlance - Configuration Backup Service
+                        <i class="fas fa-gate"></i> {{ $brandName }}
                     </div>
                 </div>
 
+                @hasSection('public-content')
+                    @yield('public-content')
+                @else
                 <!-- WELCOME SECTION -->
                 <div class="welcome-section">
-                    <h1 class="welcome-title">Welcome to AtGlance</h1>
+                    <h1 class="welcome-title">Welcome to {{ $brandName }}</h1>
                     <p class="welcome-subtitle">
-                        @if(!empty($siteContent))
-                            {{ $siteContent }}
+                        @if($siteDescription !== '')
+                            {{ $siteDescription }}
                         @else
-                            AtGlance is a Configuration Files Backup as a Service platform built for Linux environments.<br>
+                            {{ $brandName }} is a Configuration Files Backup as a Service platform built for Linux environments.<br>
                             Securely back up critical server configuration files, monitor service health, and restore faster with centralized management.
                         @endif
                     </p>
@@ -1060,12 +1059,13 @@
                 <div class="features-section" id="features">
                     <h2 class="section-title">Powerful Features</h2>
                     <div class="features-grid">
-                        @if(!empty($siteFeatures))
-                            @foreach($siteFeatures as $feature)
+                        @php($homeFeatures = \App\Support\SiteProfile::current()->features())
+                        @if(!empty($homeFeatures))
+                            @foreach($homeFeatures as $feature)
                                 <div class="feature-card">
                                     <div class="feature-icon"><i class="fas fa-check-circle"></i></div>
-                                    <div class="feature-title">Custom Feature</div>
-                                    <div class="feature-desc">{{ $feature }}</div>
+                                    <div class="feature-title">{{ $feature['title'] }}</div>
+                                    <div class="feature-desc">{{ $feature['description'] }}</div>
                                 </div>
                             @endforeach
                         @else
@@ -1149,9 +1149,11 @@
                 </div>
                 --}}
 
+                @endif
+
                 <!-- FOOTER -->
                 <footer style="padding: 40px; background: #f3f3f3; border-top: 1px solid #b3b3b3; text-align: center; color: #444; font-size: 14px;">
-                    <p>&copy; 2026 AtGlance. All rights reserved. | <a href="#" style="color: #000000;">Privacy Policy</a> | <a href="#" style="color: #000000;">Terms of Service</a></p>
+                    <p>&copy; {{ date('Y') }} {{ $brandName }}. All rights reserved.@foreach($publicPages as $publicPage => $publicPageTitle) | <a href="{{ route('public.page', ['page' => $publicPage]) }}" style="color: #000000;">{{ $publicPageTitle }}</a>@endforeach</p>
                 </footer>
             @endif
         </div>
