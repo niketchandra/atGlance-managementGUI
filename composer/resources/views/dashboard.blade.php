@@ -1,6 +1,6 @@
 @extends('app')
 
-@section('title', 'Dashboard - AtGlance')
+@section('title', 'Dashboard - ' . $brandName)
 
 @section('dashboard-content')
 <style>

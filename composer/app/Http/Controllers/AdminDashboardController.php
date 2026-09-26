@@ -4,11 +4,16 @@ namespace App\Http\Controllers;
 
 use App\Models\AdminSetting;
 use App\Models\ConfigurationFile;
+use App\Models\ContactSubmission;
 use App\Models\Organization;
 use App\Models\Service;
 use App\Models\SystemRegister;
 use App\Models\User;
 use App\Models\Workspace;
+use App\Services\BackupService;
+use App\Support\S3Settings;
+use App\Support\SiteProfile;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -843,12 +848,15 @@ class AdminDashboardController extends Controller
             $backupPortalCron = '';
         }
 
+        $backupService = app(BackupService::class);
         $configuredCronSetups = [];
         if ($backupConfigToS3 && $backupConfigCron !== '') {
             $configuredCronSetups[] = [
                 'name' => 'Configuration files backup to S3',
                 'frequency' => $this->cronFrequencyLabel($backupConfigCron),
                 'expression' => $this->cronFrequencyExpression($backupConfigCron),
+                'command' => 'backup:config',
+                'last_run' => $backupService->lastRun(BackupService::TYPE_CONFIG),
             ];
         }
 
@@ -857,6 +865,8 @@ class AdminDashboardController extends Controller
                 'name' => 'Portal backup (.env, settings, DB) to S3',
                 'frequency' => $this->cronFrequencyLabel($backupPortalCron),
                 'expression' => $this->cronFrequencyExpression($backupPortalCron),
+                'command' => 'backup:portal',
+                'last_run' => $backupService->lastRun(BackupService::TYPE_PORTAL),
             ];
         }
 
@@ -900,6 +910,13 @@ class AdminDashboardController extends Controller
             'siteMetadataText' => json_encode($siteMetadata, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES),
             'siteTagsText' => implode(',', $siteTags),
             'siteFeaturesText' => implode("\n", $siteFeatures),
+            'organizationLogoUrl' => SiteProfile::current()->logoUrl(),
+            'siteAbout' => SiteProfile::current()->about(),
+            'siteFaq' => SiteProfile::current()->faq(),
+            'siteSupport' => SiteProfile::current()->support(),
+            'siteContactEnabled' => SiteProfile::current()->contactEnabled(),
+            'siteContactIntro' => SiteProfile::current()->contactIntro(),
+            'contactSubmissions' => ContactSubmission::query()->latest('id')->limit(50)->get(),
             'useS3Storage' => $useS3Storage,
             's3Region' => $s3Runtime['region'],
             's3Bucket' => $s3Runtime['bucket'],
@@ -948,9 +965,23 @@ class AdminDashboardController extends Controller
     public function updateSiteSettings(Request $request): RedirectResponse
     {
         $validated = $request->validate([
-            'site_logo_url' => ['nullable', 'url', 'max:2048'],
+            'organization_name' => ['required', 'string', 'max:255'],
             'site_logo' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp,svg', 'max:2048'],
+            'remove_site_logo' => ['nullable', 'boolean'],
             'site_description' => ['nullable', 'string', 'max:5000'],
+            'site_about' => ['nullable', 'string', 'max:20000'],
+            'faq_question' => ['nullable', 'array', 'max:100'],
+            'faq_question.*' => ['nullable', 'string', 'max:500'],
+            'faq_answer' => ['nullable', 'array', 'max:100'],
+            'faq_answer.*' => ['nullable', 'string', 'max:5000'],
+            'site_support_contact_name' => ['nullable', 'string', 'max:255'],
+            'site_support_contact_email' => ['nullable', 'email', 'max:255'],
+            'site_support_contact_phone' => ['nullable', 'string', 'max:50'],
+            'site_support_hours' => ['nullable', 'string', 'max:255'],
+            'site_support_request_url' => ['nullable', 'url:http,https', 'max:2048'],
+            'site_support_details' => ['nullable', 'string', 'max:20000'],
+            'site_contact_enabled' => ['nullable', 'boolean'],
+            'site_contact_intro' => ['nullable', 'string', 'max:5000'],
             'site_domain_alias' => ['nullable', 'string', 'max:255', 'regex:/^[A-Za-z0-9.-]+$/'],
             'site_domain_alias_ip' => ['nullable', 'ip'],
             'site_https_enabled' => ['nullable', 'boolean'],
@@ -990,27 +1021,33 @@ class AdminDashboardController extends Controller
             ->values()
             ->all();
 
-        $logoUrl = trim((string) ($validated['site_logo_url'] ?? ''));
         if ($request->hasFile('site_logo')) {
-            $uploadedLogo = $request->file('site_logo');
-            $logoExtension = strtolower((string) ($uploadedLogo?->extension() ?: 'png'));
-            if ($logoExtension === 'jpeg') {
-                $logoExtension = 'jpg';
-            }
-
-            $logoFileName = 'site-logo.' . $logoExtension;
-            $brandingDirectory = public_path('branding');
-            File::ensureDirectoryExists($brandingDirectory);
-
-            $uploadedLogo->move($brandingDirectory, $logoFileName);
-
-            AdminSetting::putValue('site', 'site_logo_disk', 'public_static');
-            AdminSetting::putValue('site', 'site_logo_path', 'branding/' . $logoFileName);
-            $logoUrl = url('/branding/' . $logoFileName);
+            $this->replaceSiteLogo($request->file('site_logo'));
+        } elseif ($request->boolean('remove_site_logo')) {
+            $this->removeSiteLogo();
         }
 
-        AdminSetting::putValue('site', 'site_logo_url', $logoUrl);
-        AdminSetting::putValue('site', 'site_favicon_url', $logoUrl);
+        Organization::query()->updateOrCreate(
+            ['id' => SiteProfile::DEFAULT_ORGANIZATION_ID],
+            ['name' => trim($validated['organization_name'])]
+        );
+
+        $faq = [];
+        foreach (($validated['faq_question'] ?? []) as $index => $question) {
+            $question = trim((string) $question);
+            if ($question !== '') {
+                $faq[] = ['question' => $question, 'answer' => trim((string) ($validated['faq_answer'][$index] ?? ''))];
+            }
+        }
+
+        AdminSetting::putValue('site', 'site_about', trim((string) ($validated['site_about'] ?? '')));
+        AdminSetting::putValue('site', 'site_faq', $faq);
+        foreach (['contact_name', 'contact_email', 'contact_phone', 'hours', 'request_url', 'details'] as $field) {
+            AdminSetting::putValue('site', 'site_support_' . $field, trim((string) ($validated['site_support_' . $field] ?? '')));
+        }
+        AdminSetting::putValue('site', 'site_contact_enabled', $request->boolean('site_contact_enabled') ? 'true' : 'false');
+        AdminSetting::putValue('site', 'site_contact_intro', trim((string) ($validated['site_contact_intro'] ?? '')));
+
         AdminSetting::putValue('site', 'site_description', $validated['site_description'] ?? '');
         AdminSetting::putValue('site', 'site_domain_alias', $domainAlias);
         AdminSetting::putValue('site', 'site_domain_alias_ip', $domainAliasIp);
@@ -1021,6 +1058,51 @@ class AdminDashboardController extends Controller
         AdminSetting::putValue('site', 'site_content', $validated['site_description'] ?? ($validated['site_content'] ?? ''));
 
         return redirect()->route('admin.settings', ['tab' => 'site'])->with('success', 'Site settings updated successfully.');
+    }
+
+    /**
+     * Stores the logo on the public disk (inside the storage volume, so it
+     * survives container rebuilds). It is served through the site.logo route.
+     */
+    private function replaceSiteLogo(UploadedFile $logo): void
+    {
+        $extension = strtolower((string) ($logo->extension() ?: 'png'));
+        if ($extension === 'jpeg') {
+            $extension = 'jpg';
+        }
+
+        $previousPath = trim((string) AdminSetting::getValue('site_logo_path', ''));
+
+        // A new name per upload, so browsers do not keep showing the old logo.
+        $path = $logo->storeAs('branding', 'site-logo-' . now()->format('YmdHis') . '.' . $extension, 'public');
+
+        AdminSetting::putValue('site', 'site_logo_disk', 'public');
+        AdminSetting::putValue('site', 'site_logo_path', $path);
+        AdminSetting::putValue('site', 'site_logo_url', '');
+        AdminSetting::putValue('site', 'site_favicon_url', '');
+
+        if ($previousPath !== '' && $previousPath !== $path) {
+            Storage::disk('public')->delete($previousPath);
+        }
+    }
+
+    private function removeSiteLogo(): void
+    {
+        $previousPath = trim((string) AdminSetting::getValue('site_logo_path', ''));
+        if ($previousPath !== '') {
+            Storage::disk('public')->delete($previousPath);
+        }
+
+        AdminSetting::putValue('site', 'site_logo_path', '');
+        AdminSetting::putValue('site', 'site_logo_url', '');
+        AdminSetting::putValue('site', 'site_favicon_url', '');
+    }
+
+    public function deleteContactSubmission(int $submissionId): RedirectResponse
+    {
+        ContactSubmission::query()->whereKey($submissionId)->delete();
+
+        return redirect()->route('admin.settings', ['tab' => 'site'])->with('success', 'Contact message deleted.');
     }
 
     private function resolveApplicationIpAddress(): string
@@ -1259,6 +1341,10 @@ class AdminDashboardController extends Controller
         $analysis = $this->analyzeStorageMigrationDirection($validated['direction']);
 
         if (($analysis['files_pending_migration'] ?? 0) === 0) {
+            // Files can already be at the destination (e.g. a kept source from an
+            // earlier migration); the file records must still switch disks.
+            $this->applyMigrationCompletion($validated['direction']);
+
             return redirect()
                 ->route('admin.settings', ['tab' => 'migration'])
                 ->with('success', 'No files pending migration. Source and destination are already synchronized.')
@@ -1282,7 +1368,7 @@ class AdminDashboardController extends Controller
         $postAnalysis = $this->analyzeStorageMigrationDirection($validated['direction']);
 
         if ($validated['direction'] === 's3_to_local' && (($postAnalysis['files_pending_migration'] ?? 0) === 0)) {
-            $this->setEnvironmentValues(['S3_ENABLED' => 'false']);
+            $this->disableS3AfterMigration();
         }
 
         if (!empty($result['errors'])) {
@@ -1295,20 +1381,7 @@ class AdminDashboardController extends Controller
                 ->with('migration_keep_source', $keepSource);
         }
 
-        if ($validated['direction'] === 'local_to_s3') {
-            AdminSetting::putValue('storage', 'migration_local_to_s3_completed_at', now()->toDateTimeString());
-            AdminSetting::putValue('site', 'site_logo_disk', 's3');
-            if ($this->hasStorageDiskColumn()) {
-                ConfigurationFile::query()->whereNotNull('file_location')->update(['storage_disk' => 's3']);
-            }
-        } else {
-            AdminSetting::putValue('storage', 'migration_s3_to_local_completed_at', now()->toDateTimeString());
-            $this->setEnvironmentValues(['S3_ENABLED' => 'false']);
-            AdminSetting::putValue('site', 'site_logo_disk', 'public');
-            if ($this->hasStorageDiskColumn()) {
-                ConfigurationFile::query()->whereNotNull('file_location')->update(['storage_disk' => 'local']);
-            }
-        }
+        $this->applyMigrationCompletion($validated['direction']);
 
         return redirect()
             ->route('admin.settings', ['tab' => 'migration'])
@@ -1317,6 +1390,38 @@ class AdminDashboardController extends Controller
             ->with('migration_analysis', $postAnalysis)
                 ->with('migration_direction', $validated['direction'])
                 ->with('migration_keep_source', $keepSource);
+    }
+
+    /**
+     * Points file records and the site logo at the migration's destination disk.
+     */
+    private function applyMigrationCompletion(string $direction): void
+    {
+        if ($direction === 'local_to_s3') {
+            AdminSetting::putValue('storage', 'migration_local_to_s3_completed_at', now()->toDateTimeString());
+            AdminSetting::putValue('site', 'site_logo_disk', 's3');
+            if ($this->hasStorageDiskColumn()) {
+                ConfigurationFile::query()->whereNotNull('file_location')->update(['storage_disk' => 's3']);
+            }
+
+            return;
+        }
+
+        AdminSetting::putValue('storage', 'migration_s3_to_local_completed_at', now()->toDateTimeString());
+        $this->disableS3AfterMigration();
+        AdminSetting::putValue('site', 'site_logo_disk', 'public');
+        if ($this->hasStorageDiskColumn()) {
+            ConfigurationFile::query()->whereNotNull('file_location')->update(['storage_disk' => 'local']);
+        }
+    }
+
+    /**
+     * Turns S3 off in both places it is read from, so the UI and the API agree.
+     */
+    private function disableS3AfterMigration(): void
+    {
+        $this->setEnvironmentValues(['S3_ENABLED' => 'false']);
+        AdminSetting::putValue('storage', 's3_enabled', 'false');
     }
 
     public function serveSiteLogo(?string $path = null)
@@ -2090,37 +2195,24 @@ class AdminDashboardController extends Controller
 
     private function resolveS3RuntimeCredentials(): array
     {
-        $storedKey = $this->normalizeSettingValue(AdminSetting::getValue('s3_access_key', ''));
-        $storedSecret = $this->normalizeSettingValue(AdminSetting::getValue('s3_secret_key', ''));
-        $storedRegion = $this->normalizeSettingValue(AdminSetting::getValue('s3_region', ''));
-        $storedBucket = $this->normalizeSettingValue(AdminSetting::getValue('s3_bucket', ''));
+        // Saved settings win; .env is only a fallback, since `artisan serve`
+        // keeps the environment it started with.
+        $credentials = S3Settings::credentials();
 
-        $configKey = $this->normalizeSettingValue(config('filesystems.disks.s3.key', ''));
-        $configSecret = $this->normalizeSettingValue(config('filesystems.disks.s3.secret', ''));
-        $configRegion = $this->normalizeSettingValue(config('filesystems.disks.s3.region', ''));
-        $configBucket = $this->normalizeSettingValue(config('filesystems.disks.s3.bucket', ''));
-
-        $envKey = $this->normalizeSettingValue($this->getEnvValue('AWS_ACCESS_KEY_ID', ''));
-        $envSecret = $this->normalizeSettingValue($this->getSecretEnvValue('AWS_SECRET_ACCESS_KEY', ''));
-        $envRegion = $this->normalizeSettingValue($this->getEnvValue('AWS_DEFAULT_REGION', ''));
-        $envBucket = $this->normalizeSettingValue($this->getEnvValue('AWS_BUCKET', ''));
-
-        $fileKey = $this->normalizeSettingValue($this->getEnvFileValue('AWS_ACCESS_KEY_ID', ''));
-        $fileSecret = $this->normalizeSettingValue($this->decryptSecretFromEnvironment($this->getEnvFileValue('AWS_SECRET_ACCESS_KEY', '')));
-        $fileRegion = $this->normalizeSettingValue($this->getEnvFileValue('AWS_DEFAULT_REGION', ''));
-        $fileBucket = $this->normalizeSettingValue($this->getEnvFileValue('AWS_BUCKET', ''));
-
-        $key = $configKey !== '' ? $configKey : ($envKey !== '' ? $envKey : ($fileKey !== '' ? $fileKey : $storedKey));
-        $secret = $configSecret !== '' ? $configSecret : ($envSecret !== '' ? $envSecret : ($fileSecret !== '' ? $fileSecret : $storedSecret));
-        $region = $configRegion !== '' ? $configRegion : ($envRegion !== '' ? $envRegion : ($fileRegion !== '' ? $fileRegion : $storedRegion));
-        $bucket = $configBucket !== '' ? $configBucket : ($envBucket !== '' ? $envBucket : ($fileBucket !== '' ? $fileBucket : $storedBucket));
-
-        return [
-            'key' => $key,
-            'secret' => $secret,
-            'region' => $region,
-            'bucket' => $bucket,
+        $fallbacks = [
+            'key' => fn () => $this->getEnvFileValue('AWS_ACCESS_KEY_ID', $this->getEnvValue('AWS_ACCESS_KEY_ID', '')),
+            'secret' => fn () => $this->decryptSecretFromEnvironment($this->getEnvFileValue('AWS_SECRET_ACCESS_KEY', $this->getEnvValue('AWS_SECRET_ACCESS_KEY', ''))),
+            'region' => fn () => $this->getEnvFileValue('AWS_DEFAULT_REGION', $this->getEnvValue('AWS_DEFAULT_REGION', '')),
+            'bucket' => fn () => $this->getEnvFileValue('AWS_BUCKET', $this->getEnvValue('AWS_BUCKET', '')),
         ];
+
+        foreach ($fallbacks as $name => $fallback) {
+            if ($credentials[$name] === '') {
+                $credentials[$name] = $this->normalizeSettingValue($fallback());
+            }
+        }
+
+        return $credentials;
     }
 
     private function getEnvFileValue(string $key, string $default = ''): string

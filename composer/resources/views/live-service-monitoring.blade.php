@@ -1,6 +1,6 @@
 @extends('app')
 
-@section('title', 'Live Service Monitoring - AtGlance')
+@section('title', 'Live Service Monitoring - ' . $brandName)
 
 @section('dashboard-content')
 <div style="padding: 40px;">

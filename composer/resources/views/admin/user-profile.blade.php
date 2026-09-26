@@ -1,6 +1,6 @@
 @extends('app')
 
-@section('title', 'User Profile - Admin - AtGlance')
+@section('title', 'User Profile - Admin - ' . $brandName)
 
 @section('dashboard-content')
 <div style="padding: 40px;">

@@ -1,6 +1,6 @@
 @extends('app')
 
-@section('title', 'Site Setting - AtGlance')
+@section('title', 'Site Setting - ' . $brandName)
 
 @section('dashboard-content')
 <div style="padding:40px;">
@@ -39,6 +39,8 @@
         <button type="button" class="settings-tab-btn" data-tab="backup-restore" style="padding:10px 14px; border-radius:8px; border:1px solid #b3b3b3; background:{{ $activeTab === 'backup-restore' ? '#7a7a7a' : '#ffffff' }}; color:{{ $activeTab === 'backup-restore' ? '#ffffff' : '#111827' }}; cursor:pointer; font-weight:600;">Backup &amp; Restore</button>
         <button type="button" class="settings-tab-btn" data-tab="plugins" style="padding:10px 14px; border-radius:8px; border:1px solid #b3b3b3; background:{{ $activeTab === 'plugins' ? '#7a7a7a' : '#ffffff' }}; color:{{ $activeTab === 'plugins' ? '#ffffff' : '#111827' }}; cursor:pointer; font-weight:600;">Plugins</button>
         <button type="button" class="settings-tab-btn" data-tab="crons" style="padding:10px 14px; border-radius:8px; border:1px solid #b3b3b3; background:{{ $activeTab === 'crons' ? '#7a7a7a' : '#ffffff' }}; color:{{ $activeTab === 'crons' ? '#ffffff' : '#111827' }}; cursor:pointer; font-weight:600;">Crons</button>
+        <button type="button" class="settings-tab-btn" data-tab="ai-connect" style="padding:10px 14px; border-radius:8px; border:1px solid #b3b3b3; background:{{ $activeTab === 'ai-connect' ? '#7a7a7a' : '#ffffff' }}; color:{{ $activeTab === 'ai-connect' ? '#ffffff' : '#111827' }}; cursor:pointer; font-weight:600;">AI Connect</button>
+        <button type="button" class="settings-tab-btn" data-tab="notification" style="padding:10px 14px; border-radius:8px; border:1px solid #b3b3b3; background:{{ $activeTab === 'notification' ? '#7a7a7a' : '#ffffff' }}; color:{{ $activeTab === 'notification' ? '#ffffff' : '#111827' }}; cursor:pointer; font-weight:600;">Notification</button>
     </div>
 
     <div id="tab-info" class="settings-tab-content" style="display:{{ $activeTab === 'info' ? 'block' : 'none' }}; background:white; border:1px solid #b3b3b3; border-radius:10px; padding:22px; box-shadow:0 2px 10px rgba(0,0,0,0.06);">
@@ -75,22 +77,26 @@
         <h2 style="font-size:18px; margin-bottom:12px;">Site Configuration</h2>
         <form method="POST" action="{{ route('admin.settings.site', ['tab' => 'site']) }}" enctype="multipart/form-data">
             @csrf
+            <h3 style="font-size:15px; font-weight:700; margin-bottom:8px;">Organization</h3>
+            <p style="font-size:13px; color:#6b7280; margin-bottom:10px;">The organization name and logo replace the AtGlance name and logo across the application.</p>
             <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:12px;">
-                {{--
                 <div>
-                    <label style="display:block; font-size:13px; color:#4b5563; margin-bottom:6px;">Logo Image Upload</label>
+                    <label style="display:block; font-size:13px; color:#4b5563; margin-bottom:6px;">Organization Name</label>
+                    <input type="text" name="organization_name" value="{{ old('organization_name', $organizationName) }}" required maxlength="255" style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:10px;">
+                </div>
+                <div>
+                    <label style="display:block; font-size:13px; color:#4b5563; margin-bottom:6px;">Organization Logo</label>
                     <input type="file" name="site_logo" accept=".jpg,.jpeg,.png,.webp,.svg" style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:10px; background:white;">
-                    @if(!empty($siteLogoUrl))
-                        <div style="margin-top:8px;">
-                            <img src="{{ $siteLogoUrl }}" alt="Site Logo" style="max-height:48px; border-radius:6px; border:1px solid #e5e7eb; padding:4px; background:white;">
+                    <div style="font-size:12px; color:#6b7280; margin-top:4px;">JPG, PNG, WebP or SVG, up to 2 MB.</div>
+                    @if(!empty($organizationLogoUrl))
+                        <div style="margin-top:8px; display:flex; align-items:center; gap:12px;">
+                            <img src="{{ $organizationLogoUrl }}" alt="{{ $organizationName }} logo" style="max-height:48px; border-radius:6px; border:1px solid #e5e7eb; padding:4px; background:white;">
+                            <label style="font-size:13px; color:#374151; display:flex; gap:6px; align-items:center;">
+                                <input type="checkbox" name="remove_site_logo" value="1"> Remove logo
+                            </label>
                         </div>
                     @endif
                 </div>
-                <div>
-                    <label style="display:block; font-size:13px; color:#4b5563; margin-bottom:6px;">Logo URL (optional override)</label>
-                    <input type="url" name="site_logo_url" value="{{ old('site_logo_url', $siteLogoUrlOverride ?? '') }}" placeholder="https://example.com/logo.png" style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:10px;">
-                </div>
-                --}}
             </div>
 
             <div style="margin-bottom:12px;">
@@ -140,7 +146,7 @@
                     <input type="text" name="site_tags" value="{{ old('site_tags', $siteTagsText) }}" placeholder="security, api-gateway, monitoring" style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:10px;">
                 </div>
                 <div>
-                    <label style="display:block; font-size:13px; color:#4b5563; margin-bottom:6px;">Features (one per line)</label>
+                    <label style="display:block; font-size:13px; color:#4b5563; margin-bottom:6px;">Features (one per line, "Title: description")</label>
                     <textarea name="site_features" rows="4" style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:10px;">{{ old('site_features', $siteFeaturesText) }}</textarea>
                 </div>
             </div>
@@ -150,8 +156,83 @@
                 <textarea name="site_metadata" rows="6" style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:10px; font-family:'Courier New', monospace;">{{ old('site_metadata', $siteMetadataText) }}</textarea>
             </div>
 
+            <h3 style="font-size:15px; font-weight:700; margin:18px 0 8px; padding-top:14px; border-top:1px solid #e5e7eb;">Public pages</h3>
+            <p style="font-size:13px; color:#6b7280; margin-bottom:10px;">These pages are linked from the home page Quick Links. A page with no content is hidden. Text fields accept Markdown.</p>
+
+            <div style="margin-bottom:12px;">
+                <label style="display:block; font-size:13px; color:#4b5563; margin-bottom:6px;">About page</label>
+                <textarea name="site_about" rows="6" placeholder="## Who we are" style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:10px;">{{ old('site_about', $siteAbout) }}</textarea>
+            </div>
+
+            <div style="margin-bottom:12px;">
+                <label style="display:block; font-size:13px; color:#4b5563; margin-bottom:6px;">FAQ page</label>
+                @php
+                    $faqRows = old('faq_question') !== null
+                        ? collect(old('faq_question'))->map(fn ($question, $index) => ['question' => $question, 'answer' => old('faq_answer')[$index] ?? ''])->all()
+                        : $siteFaq;
+                    if (empty($faqRows)) {
+                        $faqRows = [['question' => '', 'answer' => '']];
+                    }
+                @endphp
+                <div id="faq-rows">
+                    @foreach($faqRows as $faqRow)
+                        <div class="faq-row" style="border:1px solid #e5e7eb; border-radius:8px; padding:10px; margin-bottom:8px; background:#f9fafb;">
+                            <input type="text" name="faq_question[]" value="{{ $faqRow['question'] }}" placeholder="Question" maxlength="500" style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:10px; margin-bottom:6px; background:white;">
+                            <textarea name="faq_answer[]" rows="2" placeholder="Answer (Markdown)" style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:10px; background:white;">{{ $faqRow['answer'] }}</textarea>
+                            <button type="button" class="faq-remove" style="margin-top:6px; background:white; border:1px solid #d1d5db; border-radius:6px; padding:4px 10px; cursor:pointer; font-size:12px;">Remove</button>
+                        </div>
+                    @endforeach
+                </div>
+                <button type="button" id="faq-add" style="background:white; border:1px solid #d1d5db; border-radius:6px; padding:6px 12px; cursor:pointer; font-size:13px;">Add question</button>
+            </div>
+
+            <div style="margin-bottom:12px;">
+                <label style="display:block; font-size:13px; color:#4b5563; margin-bottom:6px;">Support page</label>
+                <p style="font-size:12px; color:#6b7280; margin-bottom:8px;">Who your users contact for support, and how they raise a request.</p>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:10px;">
+                    <input type="text" name="site_support_contact_name" value="{{ old('site_support_contact_name', $siteSupport['contact_name']) }}" placeholder="Support contact person" maxlength="255" style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:10px;">
+                    <input type="email" name="site_support_contact_email" value="{{ old('site_support_contact_email', $siteSupport['contact_email']) }}" placeholder="Support email" maxlength="255" style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:10px;">
+                    <input type="text" name="site_support_contact_phone" value="{{ old('site_support_contact_phone', $siteSupport['contact_phone']) }}" placeholder="Support phone" maxlength="50" style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:10px;">
+                    <input type="text" name="site_support_hours" value="{{ old('site_support_hours', $siteSupport['hours']) }}" placeholder="Support hours, e.g. Mon-Fri 09:00-18:00 IST" maxlength="255" style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:10px;">
+                </div>
+                <input type="url" name="site_support_request_url" value="{{ old('site_support_request_url', $siteSupport['request_url']) }}" placeholder="Link to the guide or portal for raising a request (https://...)" maxlength="2048" style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:10px; margin-bottom:10px;">
+                <textarea name="site_support_details" rows="5" placeholder="Steps to raise a support request (Markdown)" style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:10px;">{{ old('site_support_details', $siteSupport['details']) }}</textarea>
+            </div>
+
+            <div style="margin-bottom:14px;">
+                <label style="display:block; font-size:13px; color:#4b5563; margin-bottom:6px;">Contact page</label>
+                <input type="hidden" name="site_contact_enabled" value="0">
+                <label style="display:flex; gap:8px; align-items:center; font-size:13px; color:#374151; margin-bottom:8px;">
+                    <input type="checkbox" name="site_contact_enabled" value="1" {{ old('site_contact_enabled', $siteContactEnabled ? '1' : '0') === '1' ? 'checked' : '' }}>
+                    Show the contact form. Messages are listed below.
+                </label>
+                <textarea name="site_contact_intro" rows="3" placeholder="Text above the contact form (Markdown)" style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:10px;">{{ old('site_contact_intro', $siteContactIntro) }}</textarea>
+            </div>
+
             <button type="submit" style="background:#000000; color:white; border:none; border-radius:8px; padding:10px 14px; font-weight:600; cursor:pointer;">Save Site Settings</button>
         </form>
+
+        <h3 style="font-size:15px; font-weight:700; margin:18px 0 8px; padding-top:14px; border-top:1px solid #e5e7eb;">Contact messages</h3>
+        @if(($contactSubmissions ?? collect())->isEmpty())
+            <p style="font-size:13px; color:#6b7280;">No messages yet.</p>
+        @else
+            <p style="font-size:13px; color:#6b7280; margin-bottom:8px;">Latest 50 messages sent from the Contact page.</p>
+            @foreach($contactSubmissions as $submission)
+                <div style="border:1px solid #e5e7eb; border-radius:8px; padding:10px; margin-bottom:8px;">
+                    <div style="display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap;">
+                        <div style="font-weight:600; color:#111827;">{{ $submission->subject }}</div>
+                        <div style="font-size:12px; color:#6b7280;">{{ $submission->created_at?->format('Y-m-d H:i') }}</div>
+                    </div>
+                    <div style="font-size:13px; color:#374151; margin:2px 0 6px;">{{ $submission->name }} &lt;<a href="mailto:{{ $submission->email }}" style="color:#1d4ed8;">{{ $submission->email }}</a>&gt;</div>
+                    <div style="font-size:13px; color:#111827; white-space:pre-wrap; word-break:break-word;">{{ $submission->message }}</div>
+                    <form method="POST" action="{{ route('admin.settings.contact-submissions.delete', ['submissionId' => $submission->id]) }}" onsubmit="return confirm('Delete this message?');" style="margin-top:6px;">
+                        @csrf
+                        @method('DELETE')
+                        <button type="submit" style="background:white; border:1px solid #d1d5db; border-radius:6px; padding:4px 10px; cursor:pointer; font-size:12px; color:#b91c1c;">Delete</button>
+                    </form>
+                </div>
+            @endforeach
+        @endif
     </div>
 
     <div id="tab-s3" class="settings-tab-content" style="display:{{ $activeTab === 's3' ? 'block' : 'none' }}; background:white; border:1px solid #b3b3b3; border-radius:10px; padding:22px; box-shadow:0 2px 10px rgba(0,0,0,0.06);">
@@ -430,8 +511,54 @@
             <button type="submit" style="background:#000000; color:white; border:none; border-radius:8px; padding:10px 14px; font-weight:600; cursor:pointer;">Save Backup Settings</button>
         </form>
 
-        <div style="margin-top:14px; padding:10px; border-radius:8px; background:#f9fafb; border:1px solid #e5e7eb; color:#374151;">
-            <strong>Restore:</strong> Coming Soon
+        <div id="restore-section" data-url="{{ route('admin.settings.backups') }}" style="margin-top:18px; padding-top:16px; border-top:1px solid #e5e7eb;">
+            <h3 style="font-size:16px; margin-bottom:6px;">Restore</h3>
+            <p style="font-size:13px; color:#6b7280; margin-bottom:10px;">
+                Backups from S3 and pre-restore snapshots on this server. A snapshot of the current state is saved before every restore.
+            </p>
+            <div style="margin-bottom:12px; padding:10px; border-radius:8px; background:#fef2f2; border:1px solid #fecaca; color:#991b1b; font-size:13px; line-height:1.5;">
+                <strong>Warning:</strong> a restore overwrites current data.
+                <br>
+                Configuration files backup: adds missing records back and resets changed records to their backed-up values. Records created after the backup are kept.
+                <br>
+                Portal backup: replaces the whole database and the .env file. Only the super admin can run it. Restart the app containers afterwards.
+            </div>
+
+            <div id="restore-errors" style="display:none; margin-bottom:10px; font-size:13px; color:#b91c1c;"></div>
+            <div style="overflow-x:auto; margin-bottom:12px;">
+                <table style="width:100%; border-collapse:collapse; font-size:13px;">
+                    <thead>
+                        <tr style="text-align:left; border-bottom:1px solid #e5e7eb; color:#4b5563;">
+                            <th style="padding:6px;">Type</th>
+                            <th style="padding:6px;">Source</th>
+                            <th style="padding:6px;">Backup</th>
+                            <th style="padding:6px;">Created</th>
+                            <th style="padding:6px;">Size</th>
+                            <th style="padding:6px;"></th>
+                        </tr>
+                    </thead>
+                    <tbody id="restore-backup-rows">
+                        <tr><td colspan="6" style="padding:8px; color:#6b7280;">Loading backups...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <form method="POST" action="{{ route('admin.settings.restore') }}" id="restore-form" style="display:none; padding:12px; border:1px solid #e5e7eb; border-radius:8px; background:#f9fafb;">
+                @csrf
+                <input type="hidden" name="source" id="restore-source">
+                <input type="hidden" name="path" id="restore-path">
+                <div style="font-size:13px; color:#111827; margin-bottom:10px;">Selected backup: <strong id="restore-selected-name"></strong></div>
+                <div style="margin-bottom:10px; max-width:320px;">
+                    <label style="display:block; font-size:13px; color:#4b5563; margin-bottom:6px;">Confirm your password</label>
+                    <input type="password" name="password" required autocomplete="current-password" style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:10px;">
+                </div>
+                <label style="display:flex; gap:8px; align-items:center; font-size:13px; color:#374151; margin-bottom:12px;">
+                    <input type="checkbox" name="confirm_overwrite" value="1" required>
+                    I understand that current data will be overwritten.
+                </label>
+                <button type="submit" style="background:#b91c1c; color:white; border:none; border-radius:8px; padding:10px 14px; font-weight:600; cursor:pointer;">Restore Backup</button>
+                <button type="button" id="restore-cancel" style="margin-left:6px; background:#ffffff; color:#111827; border:1px solid #d1d5db; border-radius:8px; padding:10px 14px; cursor:pointer;">Cancel</button>
+            </form>
         </div>
     </div>
 
@@ -446,12 +573,123 @@
                         <div style="font-weight:600; color:#111827;">{{ $cronSetup['name'] ?? 'Cron' }}</div>
                         <div style="font-size:13px; color:#374151;">{{ $cronSetup['frequency'] ?? 'Not configured' }}</div>
                         <div style="font-size:13px; color:#374151; margin-top:4px;">CRON: <span style="font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;">{{ $cronSetup['expression'] ?? '* * * * * *' }}</span></div>
+                        @php
+                            $lastRun = $cronSetup['last_run'] ?? [];
+                            $lastRunStatus = $lastRun['status'] ?? '';
+                            $lastRunColor = match ($lastRunStatus) {
+                                'success' => '#15803d',
+                                'failed' => '#b91c1c',
+                                default => '#92400e',
+                            };
+                        @endphp
+                        <div style="font-size:13px; color:#374151; margin-top:4px;">
+                            Last run:
+                            @if(!empty($lastRun))
+                                <span style="font-weight:600; color:{{ $lastRunColor }};">{{ ucfirst($lastRunStatus) }}</span>
+                                at {{ \Illuminate\Support\Carbon::parse($lastRun['finished_at'] ?? $lastRun['started_at'])->format('Y-m-d H:i:s T') }}
+                                @if(!empty($lastRun['message']))
+                                    <div style="font-size:12px; color:#6b7280; margin-top:2px; word-break:break-all;">{{ $lastRun['message'] }}</div>
+                                @endif
+                            @else
+                                <span style="color:#6b7280;">Never</span>
+                            @endif
+                        </div>
                     </div>
                 @endforeach
             </div>
         @else
             <p style="color:#6b7280;">No cron schedules configured yet.</p>
         @endif
+    </div>
+
+    <div id="tab-ai-connect" class="settings-tab-content" style="display:{{ $activeTab === 'ai-connect' ? 'block' : 'none' }}; background:white; border:1px solid #b3b3b3; border-radius:10px; padding:22px; box-shadow:0 2px 10px rgba(0,0,0,0.06);">
+        <h2 style="font-size:18px; margin-bottom:8px;">AI Connect</h2>
+        <p style="font-size:13px; color:#6b7280; margin-bottom:10px;">Connect an AI provider to AtGlance.</p>
+        <p style="color:#6b7280;">Coming Soon</p>
+    </div>
+
+    <div id="tab-notification" class="settings-tab-content" style="display:{{ $activeTab === 'notification' ? 'block' : 'none' }}; background:white; border:1px solid #b3b3b3; border-radius:10px; padding:22px; box-shadow:0 2px 10px rgba(0,0,0,0.06);">
+        <h2 style="font-size:18px; margin-bottom:8px;">Notification</h2>
+        @php
+            $notifyCanEdit = (int) auth()->user()->rbac_id === 100;
+        @endphp
+        <p style="font-size:13px; color:#6b7280; margin-bottom:10px;">
+            Allow the channels that workspace admins can use, and set the organization-level connection for each one.
+            Workspace admins then add their own groups (email lists, channels, chats) on the
+            <a href="{{ route('admin.notifications') }}" style="color:#1d4ed8; text-decoration:underline;">Notifications</a> page.
+        </p>
+        @unless($notifyCanEdit)
+            <div style="margin-bottom:12px; padding:10px; border-radius:8px; background:#f9fafb; border:1px solid #e5e7eb; color:#374151; font-size:13px;">Only the super admin can change these settings.</div>
+        @endunless
+
+        <form method="POST" action="{{ route('admin.settings.notifications') }}">
+            @csrf
+            <fieldset {{ $notifyCanEdit ? '' : 'disabled' }} style="border:none; padding:0; margin:0;">
+                <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(280px, 1fr)); gap:12px; margin-bottom:14px;">
+                    @foreach(\App\Support\NotificationSettings::CHANNELS as $notifyChannel => $notifyMeta)
+                        @php
+                            $notifyAllowed = \App\Support\NotificationSettings::isAllowed($notifyChannel);
+                            $notifyMissing = $notifyAllowed ? \App\Support\NotificationSettings::missingSetup($notifyChannel) : null;
+                        @endphp
+                        <div style="border:1px solid #e5e7eb; border-radius:8px; padding:12px; background:{{ $notifyMeta['available'] ? '#ffffff' : '#f9fafb' }};">
+                            <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:6px;">
+                                <strong style="font-size:14px;">{{ $notifyMeta['label'] }}</strong>
+                                @if(!$notifyMeta['available'])
+                                    <span style="font-size:11px; color:#92400e; background:#fef3c7; border-radius:999px; padding:2px 8px;">Waiting for provider API details</span>
+                                @elseif($notifyAllowed && $notifyMissing === null)
+                                    <span style="font-size:11px; color:#065f46; background:#d1fae5; border-radius:999px; padding:2px 8px;">Ready</span>
+                                @elseif($notifyAllowed)
+                                    <span style="font-size:11px; color:#991b1b; background:#fee2e2; border-radius:999px; padding:2px 8px;">Setup needed</span>
+                                @endif
+                            </div>
+                            <div style="font-size:12px; color:#6b7280; margin-bottom:8px;">Groups enter: {{ $notifyMeta['target'] }}</div>
+
+                            @if($notifyMeta['available'])
+                                <label style="display:flex; gap:8px; align-items:center; font-size:13px; color:#374151; margin-bottom:8px;">
+                                    <input type="hidden" name="allowed[{{ $notifyChannel }}]" value="0">
+                                    <input type="checkbox" name="allowed[{{ $notifyChannel }}]" value="1" {{ $notifyAllowed ? 'checked' : '' }}>
+                                    Allow workspace admins to use this channel
+                                </label>
+                            @endif
+
+                            @if($notifyChannel === 'email')
+                                <div style="font-size:12px; color:#374151;">
+                                    SMTP server: {{ \App\Support\NotificationSettings::mailConfigured() ? 'configured' : 'not configured' }} on the
+                                    <a href="{{ route('admin.settings', ['tab' => 'email']) }}" style="color:#1d4ed8; text-decoration:underline;">Email Configuration</a> tab.
+                                </div>
+                            @endif
+
+                            @foreach(\App\Support\NotificationSettings::CREDENTIALS[$notifyChannel] ?? [] as $notifyKey => $notifyCredential)
+                                @php
+                                    $notifySaved = \App\Support\NotificationSettings::credential($notifyKey);
+                                @endphp
+                                <div style="margin-top:8px;">
+                                    <label style="display:block; font-size:12px; color:#4b5563; margin-bottom:4px;">{{ $notifyCredential['label'] }}</label>
+                                    @if($notifyCredential['secret'])
+                                        <input type="password" name="{{ $notifyKey }}" autocomplete="new-password" placeholder="{{ $notifySaved !== '' ? 'Saved; leave blank to keep' : 'Not set' }}" style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:8px;">
+                                        @if($notifySaved !== '')
+                                            <label style="display:flex; gap:6px; align-items:center; font-size:12px; color:#6b7280; margin-top:4px;">
+                                                <input type="checkbox" name="clear[{{ $notifyKey }}]" value="1"> Remove saved value
+                                            </label>
+                                        @endif
+                                    @else
+                                        <input type="text" name="{{ $notifyKey }}" value="{{ old($notifyKey, $notifySaved) }}" style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:8px;">
+                                    @endif
+                                </div>
+                            @endforeach
+
+                            @if($notifyMissing)
+                                <div style="font-size:12px; color:#b91c1c; margin-top:8px;">{{ $notifyMissing }}</div>
+                            @endif
+                        </div>
+                    @endforeach
+                </div>
+
+                @if($notifyCanEdit)
+                    <button type="submit" style="background:#000000; color:white; border:none; border-radius:8px; padding:10px 14px; font-weight:600; cursor:pointer;">Save Notification Channels</button>
+                @endif
+            </fieldset>
+        </form>
     </div>
 
     <div id="tab-sso" class="settings-tab-content" style="display:{{ $activeTab === 'sso' ? 'block' : 'none' }}; background:white; border:1px solid #b3b3b3; border-radius:10px; padding:22px; box-shadow:0 2px 10px rgba(0,0,0,0.06);">
@@ -593,6 +831,125 @@
     tabButtons.forEach((button) => {
         button.addEventListener('click', () => activateTab(button.dataset.tab));
     });
+
+    // FAQ rows on the Site Configuration tab.
+    const faqRows = document.getElementById('faq-rows');
+    const faqAdd = document.getElementById('faq-add');
+    if (faqRows && faqAdd) {
+        faqAdd.addEventListener('click', () => {
+            const row = faqRows.querySelector('.faq-row').cloneNode(true);
+            row.querySelectorAll('input, textarea').forEach((field) => { field.value = ''; });
+            faqRows.appendChild(row);
+        });
+        faqRows.addEventListener('click', (event) => {
+            if (!event.target.classList.contains('faq-remove')) return;
+            const row = event.target.closest('.faq-row');
+            if (faqRows.querySelectorAll('.faq-row').length > 1) {
+                row.remove();
+            } else {
+                row.querySelectorAll('input, textarea').forEach((field) => { field.value = ''; });
+            }
+        });
+    }
+
+    // Restore: the backup list is fetched only when the tab is first opened,
+    // so a slow S3 never delays the settings page.
+    const restoreSection = document.getElementById('restore-section');
+    const restoreRows = document.getElementById('restore-backup-rows');
+    const restoreErrors = document.getElementById('restore-errors');
+    const restoreForm = document.getElementById('restore-form');
+    let restoreLoaded = false;
+
+    function formatBytes(bytes) {
+        if (bytes < 1024) return bytes + ' B';
+        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+        return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+    }
+
+    function restoreCell(text) {
+        const cell = document.createElement('td');
+        cell.style.padding = '6px';
+        cell.textContent = text;
+        return cell;
+    }
+
+    function selectBackup(backup) {
+        document.getElementById('restore-source').value = backup.source;
+        document.getElementById('restore-path').value = backup.path;
+        document.getElementById('restore-selected-name').textContent = backup.name + ' (' + (backup.type === 'portal' ? 'portal' : 'configuration files') + ', ' + backup.source + ')';
+        restoreForm.style.display = 'block';
+        restoreForm.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    function loadBackups() {
+        if (!restoreSection || restoreLoaded) return;
+        restoreLoaded = true;
+
+        fetch(restoreSection.dataset.url, { headers: { 'Accept': 'application/json' } })
+            .then((response) => response.json())
+            .then((data) => {
+                restoreRows.innerHTML = '';
+
+                if (data.errors && data.errors.length) {
+                    restoreErrors.textContent = data.errors.join(' ');
+                    restoreErrors.style.display = 'block';
+                }
+
+                if (!data.backups || !data.backups.length) {
+                    const row = document.createElement('tr');
+                    const cell = restoreCell('No backups found.');
+                    cell.colSpan = 6;
+                    cell.style.color = '#6b7280';
+                    row.appendChild(cell);
+                    restoreRows.appendChild(row);
+                    return;
+                }
+
+                data.backups.forEach((backup) => {
+                    const row = document.createElement('tr');
+                    row.style.borderBottom = '1px solid #f3f4f6';
+                    row.appendChild(restoreCell(backup.type === 'portal' ? 'Portal' : 'Configuration files'));
+                    row.appendChild(restoreCell(backup.source === 's3' ? 'S3' : 'Local snapshot'));
+                    row.appendChild(restoreCell(backup.name));
+                    row.appendChild(restoreCell(new Date(backup.last_modified * 1000).toLocaleString()));
+                    row.appendChild(restoreCell(formatBytes(backup.size)));
+
+                    const actionCell = restoreCell('');
+                    const allowed = backup.type !== 'portal' || data.can_restore_portal;
+                    const button = document.createElement('button');
+                    button.type = 'button';
+                    button.textContent = allowed ? 'Restore' : 'Super admin only';
+                    button.disabled = !allowed;
+                    button.style.cssText = 'border:1px solid #d1d5db; border-radius:6px; padding:4px 10px; background:#ffffff; cursor:' + (allowed ? 'pointer' : 'not-allowed') + '; color:' + (allowed ? '#111827' : '#9ca3af') + ';';
+                    button.addEventListener('click', () => selectBackup(backup));
+                    actionCell.appendChild(button);
+                    row.appendChild(actionCell);
+
+                    restoreRows.appendChild(row);
+                });
+            })
+            .catch(() => {
+                restoreRows.innerHTML = '';
+                restoreErrors.textContent = 'Could not load backups.';
+                restoreErrors.style.display = 'block';
+                restoreLoaded = false;
+            });
+    }
+
+    const restoreCancel = document.getElementById('restore-cancel');
+    if (restoreCancel) {
+        restoreCancel.addEventListener('click', () => { restoreForm.style.display = 'none'; });
+    }
+
+    tabButtons.forEach((button) => {
+        if (button.dataset.tab === 'backup-restore') {
+            button.addEventListener('click', loadBackups);
+        }
+    });
+
+    if (@json($activeTab === 'backup-restore')) {
+        loadBackups();
+    }
 
     function updateProviderConfigVisibility() {
         const selectedProviders = new Set(

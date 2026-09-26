@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use App\Models\AdminSetting;
 use App\Models\Workspace;
+use App\Support\SiteProfile;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -128,6 +129,20 @@ class AppServiceProvider extends ServiceProvider
         }
 
         View::share($sharedSettings);
+
+        // White-label profile, read per request so a change shows on the next page.
+        View::composer('*', function ($view) use ($defaultLogoUrl) {
+            $profile = SiteProfile::current();
+            $logoUrl = $profile->logoUrl();
+
+            $view->with('brandName', $profile->name());
+            $view->with('siteDescription', $profile->description());
+            $view->with('publicPages', $profile->availablePages());
+            $view->with('siteLogoUrl', $logoUrl !== '' ? $logoUrl : $defaultLogoUrl);
+            if ($logoUrl !== '') {
+                $view->with('siteFaviconUrl', $logoUrl);
+            }
+        });
 
         View::composer('*', function ($view) {
             $workspaceSelectorWorkspaces = collect();
