@@ -174,7 +174,7 @@
                         @forelse($users as $item)
                             <tr class="user-row" data-search="{{ strtolower($item->name . ' ' . $item->email) }}" style="border-bottom:1px solid #f3f4f6;">
                                 <td style="padding:12px;">{{ $item->id }}</td>
-                                <td style="padding:12px;">{{ $item->name }}</td>
+                                <td style="padding:12px;"><span style="display:inline-flex; align-items:center; gap:8px;"><x-user-avatar :user="$item" size="28" />{{ $item->name }}</span></td>
                                 <td style="padding:12px;">{{ $item->email }}</td>
                                 <td style="padding:12px;">{{ $item->system_count }}</td>
                                 <td style="padding:12px;">{{ $item->service_count }}</td>
@@ -222,7 +222,7 @@
                         @forelse($adminUsers as $item)
                             <tr class="admin-row" data-search="{{ strtolower($item->name . ' ' . $item->email) }}" style="border-bottom:1px solid #f3f4f6;">
                                 <td style="padding:12px;">{{ $item->id }}</td>
-                                <td style="padding:12px;">{{ $item->name }}</td>
+                                <td style="padding:12px;"><span style="display:inline-flex; align-items:center; gap:8px;"><x-user-avatar :user="$item" size="28" />{{ $item->name }}</span></td>
                                 <td style="padding:12px;">{{ $item->email }}</td>
                                 <td style="padding:12px;">{{ $item->system_count }}</td>
                                 <td style="padding:12px;">{{ $item->service_count }}</td>

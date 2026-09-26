@@ -58,7 +58,7 @@
             </div>
             <div>
                 <div style="font-size:12px; color:#6b7280; text-transform:uppercase; margin-bottom:6px;">Name</div>
-                <div style="font-size:16px; color:#111827; font-weight:700;">{{ $user->name }}</div>
+                <div style="display:flex; align-items:center; gap:10px; font-size:16px; color:#111827; font-weight:700;"><x-user-avatar :user="$user" size="40" />{{ $user->name }}</div>
             </div>
             <div>
                 <div style="font-size:12px; color:#6b7280; text-transform:uppercase; margin-bottom:6px;">Email</div>
@@ -177,6 +177,11 @@
                 </ul>
             @endif
         </div>
+    </div>
+
+    <div style="background:white; border-radius:10px; padding:24px; border:1px solid #b3b3b3; box-shadow:0 2px 10px rgba(0,0,0,0.08); margin-top:20px;">
+        <h2 style="font-size:18px; color:#111827; margin:0 0 12px 0;"><i class="fas fa-history"></i> Recent Activity</h2>
+        @include('partials.activity-list', ['activityItems' => $recentActivity, 'activityEmpty' => 'No activity recorded for this user yet.'])
     </div>
 </div>
 @endsection

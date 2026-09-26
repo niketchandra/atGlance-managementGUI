@@ -37,7 +37,7 @@
                 </div>
                 <div>
                     <div style="font-size: 11px; opacity: 0.8; margin-bottom: 4px;">Created At</div>
-                    <div style="font-size: 15px; font-weight: 600;">{{ \Carbon\Carbon::parse($config->created_at)->format('M d, Y') }}</div>
+                    <div style="font-size: 15px; font-weight: 600;">{{ \App\Support\UserPreferences::date($config->created_at) }}</div>
                 </div>
             </div>
         </div>

@@ -4,6 +4,7 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\AdminDashboardController;
+use App\Http\Controllers\AiConnectController;
 use App\Http\Controllers\BackupRestoreController;
 use App\Http\Controllers\InstallerController;
 use App\Http\Controllers\NotificationSettingsController;
@@ -72,7 +73,12 @@ Route::middleware('app.installed')->group(function () {
         Route::post('/settings/api-keys/view', [DashboardController::class, 'viewApiKey'])->name('settings.api-keys.view');
         Route::post('/settings/api-keys/revoke', [DashboardController::class, 'revokeApiKey'])->name('settings.api-keys.revoke');
         Route::post('/password/update', [DashboardController::class, 'updatePassword'])->name('password.update');
+        Route::post('/settings/preferences', [DashboardController::class, 'updatePreferences'])->name('settings.preferences');
+        Route::post('/settings/preferences/timezone', [DashboardController::class, 'detectTimezone'])->name('settings.preferences.timezone');
+        Route::delete('/settings/sessions/{session}', [DashboardController::class, 'endSession'])->name('settings.sessions.end');
+        Route::post('/settings/sessions/others', [DashboardController::class, 'endOtherSessions'])->name('settings.sessions.others');
         Route::get('/profile', [DashboardController::class, 'profile'])->name('profile');
+        Route::get('/profile/activity', [DashboardController::class, 'profileActivity'])->name('profile.activity');
         Route::post('/profile/setup', [DashboardController::class, 'updateProfileSetup'])->name('profile.update');
         Route::get('/products', [DashboardController::class, 'products'])->name('products');
 
@@ -97,6 +103,9 @@ Route::middleware('app.installed')->group(function () {
             Route::get('/settings/backups', [BackupRestoreController::class, 'index'])->name('admin.settings.backups');
             Route::post('/settings/restore', [BackupRestoreController::class, 'restore'])->name('admin.settings.restore');
             Route::post('/settings/notifications', [NotificationSettingsController::class, 'update'])->name('admin.settings.notifications');
+            Route::post('/settings/ai', [AiConnectController::class, 'update'])->name('admin.settings.ai');
+            Route::post('/settings/ai/test', [AiConnectController::class, 'test'])->name('admin.settings.ai.test');
+            Route::post('/settings/ai/models', [AiConnectController::class, 'models'])->name('admin.settings.ai.models');
             Route::get('/notifications', [NotificationsController::class, 'index'])->name('admin.notifications');
             Route::post('/notifications/groups', [NotificationsController::class, 'store'])->name('admin.notifications.store');
             Route::put('/notifications/groups/{group}', [NotificationsController::class, 'update'])->name('admin.notifications.update');

@@ -7,7 +7,7 @@
     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
         <div>
             <h1 style="font-size:28px; color:#111827;">User Dashboard</h1>
-            <p style="color:#6b7280; margin-top:6px;">{{ $user->name }} ({{ $user->email }})</p>
+            <p style="display:flex; align-items:center; gap:8px; color:#6b7280; margin-top:6px;"><x-user-avatar :user="$user" size="28" />{{ $user->name }} ({{ $user->email }})</p>
         </div>
         <a href="{{ route('admin.users') }}" style="text-decoration:none; color:#4f46e5;">← Back to Users</a>
     </div>
@@ -109,7 +109,7 @@
                             </div>
                             <div style="background: #f8f9ff; border-radius: 8px; padding: 10px;">
                                 <div style="font-size: 10px; color: #777; font-weight: 600;">REGISTERED</div>
-                                <div style="font-size: 14px; color: #333; font-weight: 700;">{{ \Carbon\Carbon::parse($item->created_at)->format('M d, Y') }}</div>
+                                <div style="font-size: 14px; color: #333; font-weight: 700;">{{ \App\Support\UserPreferences::date($item->created_at) }}</div>
                             </div>
                         </div>
 

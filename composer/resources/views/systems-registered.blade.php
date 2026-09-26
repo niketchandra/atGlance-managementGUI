@@ -203,7 +203,7 @@
                             </div>
                             <div style="display:flex; align-items:center; justify-content:space-between; gap:10px;">
                                 <div style="font-size: 13px; color: #666;">
-                                    {{ \Carbon\Carbon::parse($item->created_at)->format('M d, Y H:i A') }}
+                                    {{ \App\Support\UserPreferences::datetime($item->created_at) }}
                                 </div>
                                 @if($canEditSystemInfo)
                                     <a href="{{ route('systems-registered.edit', ['systemId' => $item->id]) }}"
@@ -267,6 +267,7 @@
             @endforeach
         </div>
     @endif
+    @include('partials.simple-pager', ['pager' => $items])
 </div>
 
 <script>

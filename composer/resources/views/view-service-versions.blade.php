@@ -108,9 +108,9 @@
                                 <i class="fas fa-clock" style="margin-right: 4px;"></i> Timeline
                             </div>
                             <div style="font-size: 12px; color: #666; line-height: 1.6;">
-                                <div><strong>Created:</strong> {{ \Carbon\Carbon::parse($version->created_at)->format('M d, Y H:i A') }}</div>
+                                <div><strong>Created:</strong> {{ \App\Support\UserPreferences::datetime($version->created_at) }}</div>
                                 @if($version->updated_at && $version->updated_at != $version->created_at)
-                                    <div><strong>Updated:</strong> {{ \Carbon\Carbon::parse($version->updated_at)->format('M d, Y H:i A') }}</div>
+                                    <div><strong>Updated:</strong> {{ \App\Support\UserPreferences::datetime($version->updated_at) }}</div>
                                 @endif
                             </div>
                         </div>

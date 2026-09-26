@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\ActivityRecorder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -9,6 +10,24 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class ConfigurationFile extends Model
 {
+    /**
+     * Every upload shows in the owner's Recent Activity.
+     */
+    protected static function booted(): void
+    {
+        static::created(function (ConfigurationFile $file) {
+            $systemName = $file->system_register_id
+                ? SystemRegister::query()->whereKey($file->system_register_id)->value('system_name')
+                : null;
+
+            ActivityRecorder::record(
+                (int) $file->user_id,
+                'config.uploaded',
+                'Backed up ' . $file->file_name . ($systemName ? ' on ' . $systemName : ''),
+            );
+        });
+    }
+
     use HasFactory;
 
     protected $fillable = [

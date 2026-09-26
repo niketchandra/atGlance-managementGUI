@@ -1019,7 +1019,10 @@
                         </div>
                     </div>
                     <div class="header-right">
-                        <span style="color: #333; font-weight: 500;">Hello, {{ auth()->user()->name }}!</span>
+                        <a href="{{ route('profile') }}" style="display: inline-flex; align-items: center; gap: 10px; color: #333; font-weight: 500; text-decoration: none;">
+                            <span>Hello, {{ auth()->user()->name }}!</span>
+                            <x-user-avatar :user="auth()->user()" size="36" />
+                        </a>
                     </div>
                 </div>
 
@@ -1273,5 +1276,24 @@
         @endif
     </script>
 
+    @if(auth()->check() && \App\Support\UserPreferences::get(auth()->user(), 'timezone') === null)
+        <script>
+            // First visit with no time zone set: save the browser's, so dates show in local time.
+            (function () {
+                try {
+                    const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+                    if (!zone) {
+                        return;
+                    }
+                    const body = new FormData();
+                    body.append('_token', @json(csrf_token()));
+                    body.append('timezone', zone);
+                    fetch(@json(route('settings.preferences.timezone')), { method: 'POST', body: body, credentials: 'same-origin' });
+                } catch (error) {
+                    // Keep the server default.
+                }
+            })();
+        </script>
+    @endif
 </body>
 </html>

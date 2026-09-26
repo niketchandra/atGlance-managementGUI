@@ -85,7 +85,7 @@
                         Last delivery:
                         @if($group->last_sent_at)
                             <span style="font-weight:600; color:{{ $group->last_status === 'sent' ? '#15803d' : '#b91c1c' }};">{{ ucfirst($group->last_status) }}</span>
-                            at {{ $group->last_sent_at->format('Y-m-d H:i') }}
+                            at {{ \App\Support\UserPreferences::datetime($group->last_sent_at) }}
                             @if($group->last_error)
                                 <div style="color:#b91c1c; word-break:break-word;">{{ $group->last_error }}</div>
                             @endif

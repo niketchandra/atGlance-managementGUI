@@ -221,7 +221,7 @@
                 <div style="border:1px solid #e5e7eb; border-radius:8px; padding:10px; margin-bottom:8px;">
                     <div style="display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap;">
                         <div style="font-weight:600; color:#111827;">{{ $submission->subject }}</div>
-                        <div style="font-size:12px; color:#6b7280;">{{ $submission->created_at?->format('Y-m-d H:i') }}</div>
+                        <div style="font-size:12px; color:#6b7280;">{{ \App\Support\UserPreferences::datetime($submission->created_at) }}</div>
                     </div>
                     <div style="font-size:13px; color:#374151; margin:2px 0 6px;">{{ $submission->name }} &lt;<a href="mailto:{{ $submission->email }}" style="color:#1d4ed8;">{{ $submission->email }}</a>&gt;</div>
                     <div style="font-size:13px; color:#111827; white-space:pre-wrap; word-break:break-word;">{{ $submission->message }}</div>
@@ -586,7 +586,7 @@
                             Last run:
                             @if(!empty($lastRun))
                                 <span style="font-weight:600; color:{{ $lastRunColor }};">{{ ucfirst($lastRunStatus) }}</span>
-                                at {{ \Illuminate\Support\Carbon::parse($lastRun['finished_at'] ?? $lastRun['started_at'])->format('Y-m-d H:i:s T') }}
+                                at {{ \App\Support\UserPreferences::datetime($lastRun['finished_at'] ?? $lastRun['started_at']) }}
                                 @if(!empty($lastRun['message']))
                                     <div style="font-size:12px; color:#6b7280; margin-top:2px; word-break:break-all;">{{ $lastRun['message'] }}</div>
                                 @endif
@@ -604,8 +604,88 @@
 
     <div id="tab-ai-connect" class="settings-tab-content" style="display:{{ $activeTab === 'ai-connect' ? 'block' : 'none' }}; background:white; border:1px solid #b3b3b3; border-radius:10px; padding:22px; box-shadow:0 2px 10px rgba(0,0,0,0.06);">
         <h2 style="font-size:18px; margin-bottom:8px;">AI Connect</h2>
-        <p style="font-size:13px; color:#6b7280; margin-bottom:10px;">Connect an AI provider to AtGlance.</p>
-        <p style="color:#6b7280;">Coming Soon</p>
+        @php
+            $aiCanEdit = (int) auth()->user()->rbac_id === 100;
+            $aiProviders = \App\Support\AiSettings::PROVIDERS;
+            $aiProvider = old('ai_provider', \App\Support\AiSettings::provider());
+            $aiProvider = isset($aiProviders[$aiProvider]) ? $aiProvider : 'anthropic';
+            $aiHasKey = \App\Support\AiSettings::apiKey() !== '';
+            $aiLastTest = \App\Support\AiSettings::lastTest();
+        @endphp
+        <p style="font-size:13px; color:#6b7280; margin-bottom:10px;">
+            Connect an AI provider to {{ $brandName ?? 'AtGlance' }}. Cloud providers need an API key; self-hosted models (Ollama, LM Studio, OpenClaw) need a base URL the server can reach.
+        </p>
+        @unless($aiCanEdit)
+            <div style="margin-bottom:12px; padding:10px; border-radius:8px; background:#f9fafb; border:1px solid #e5e7eb; color:#374151; font-size:13px;">Only the super admin can change these settings.</div>
+        @endunless
+
+        <form id="ai-connect-form" method="POST" action="{{ route('admin.settings.ai') }}" data-test-url="{{ route('admin.settings.ai.test') }}" data-models-url="{{ route('admin.settings.ai.models') }}">
+            @csrf
+            <fieldset {{ $aiCanEdit ? '' : 'disabled' }} style="border:none; padding:0; margin:0;">
+                <label style="display:flex; gap:8px; align-items:center; font-size:14px; margin-bottom:14px;">
+                    <input type="checkbox" name="ai_enabled" value="1" {{ old('ai_enabled', \App\Support\AiSettings::enabled()) ? 'checked' : '' }}>
+                    Enable AI features
+                </label>
+
+                <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:12px; margin-bottom:12px;">
+                    <div>
+                        <label for="ai-provider" style="display:block; font-size:12px; color:#4b5563; margin-bottom:4px;">Provider</label>
+                        <select id="ai-provider" name="ai_provider" style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:8px; background:white;">
+                            @foreach($aiProviders as $aiKey => $aiMeta)
+                                <option value="{{ $aiKey }}" {{ $aiProvider === $aiKey ? 'selected' : '' }}>{{ $aiMeta['label'] }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div>
+                        <label for="ai-base-url" style="display:block; font-size:12px; color:#4b5563; margin-bottom:4px;">Base URL <span id="ai-base-url-note" style="color:#6b7280;"></span></label>
+                        <input id="ai-base-url" type="text" name="ai_base_url" value="{{ old('ai_base_url', \App\Support\AiSettings::baseUrl()) }}" style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:8px;">
+                    </div>
+                    <div id="ai-key-wrap">
+                        <label for="ai-api-key" style="display:block; font-size:12px; color:#4b5563; margin-bottom:4px;">API key <span id="ai-key-note" style="color:#6b7280;"></span></label>
+                        <input id="ai-api-key" type="password" name="ai_api_key" autocomplete="new-password" data-saved="{{ $aiHasKey ? '1' : '0' }}" placeholder="{{ $aiHasKey ? 'Saved; leave blank to keep' : 'Not set' }}" style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:8px;">
+                        @if($aiHasKey)
+                            <label style="display:flex; gap:6px; align-items:center; font-size:12px; color:#6b7280; margin-top:4px;">
+                                <input type="checkbox" name="ai_clear_api_key" value="1"> Remove saved key
+                            </label>
+                        @endif
+                    </div>
+                    <div>
+                        <label for="ai-model" style="display:block; font-size:12px; color:#4b5563; margin-bottom:4px;">Model</label>
+                        <div style="display:flex; gap:6px;">
+                            <input id="ai-model" type="text" name="ai_model" list="ai-model-options" value="{{ old('ai_model', \App\Support\AiSettings::model()) }}" style="flex:1; min-width:0; border:1px solid #d1d5db; border-radius:8px; padding:8px;">
+                            @if($aiCanEdit)
+                                <button type="button" id="ai-load-models" style="border:1px solid #d1d5db; background:#ffffff; border-radius:8px; padding:8px 10px; cursor:pointer; white-space:nowrap;">Load models</button>
+                            @endif
+                        </div>
+                        <datalist id="ai-model-options"></datalist>
+                        <div id="ai-model-hint" style="font-size:12px; color:#6b7280; margin-top:4px;"></div>
+                    </div>
+                </div>
+
+                <div style="border:1px solid #e5e7eb; border-radius:8px; padding:12px; background:#f9fafb; margin-bottom:14px;">
+                    <strong id="ai-steps-title" style="font-size:13px;">Setup</strong>
+                    <ol id="ai-steps" style="margin:6px 0 0 18px; padding:0; font-size:13px; color:#374151; line-height:1.6;"></ol>
+                </div>
+
+                <div id="ai-result" role="status" style="display:none; margin-bottom:12px; padding:10px; border-radius:8px; font-size:13px; word-break:break-word;"></div>
+
+                @if($aiLastTest)
+                    <div id="ai-last-test" style="font-size:12px; color:#6b7280; margin-bottom:12px;">
+                        Last test: <span style="color:{{ $aiLastTest['ok'] ? '#065f46' : '#b91c1c' }}; font-weight:600;">{{ $aiLastTest['ok'] ? 'Success' : 'Failed' }}</span>
+                        ({{ $aiProviders[$aiLastTest['provider']]['label'] ?? $aiLastTest['provider'] }}{{ $aiLastTest['model'] ? ', ' . $aiLastTest['model'] : '' }})
+                        {{ \Illuminate\Support\Carbon::parse($aiLastTest['at'])->diffForHumans() }} - {{ $aiLastTest['message'] }}
+                    </div>
+                @endif
+
+                @if($aiCanEdit)
+                    <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                        <button type="button" id="ai-test" style="background:#ffffff; color:#111827; border:1px solid #111827; border-radius:8px; padding:10px 14px; font-weight:600; cursor:pointer;">Test connection</button>
+                        <button type="submit" style="background:#000000; color:white; border:none; border-radius:8px; padding:10px 14px; font-weight:600; cursor:pointer;">Save AI Connection</button>
+                    </div>
+                @endif
+            </fieldset>
+        </form>
+        <script type="application/json" id="ai-provider-catalog">@json(\App\Support\AiSettings::catalogForView())</script>
     </div>
 
     <div id="tab-notification" class="settings-tab-content" style="display:{{ $activeTab === 'notification' ? 'block' : 'none' }}; background:white; border:1px solid #b3b3b3; border-radius:10px; padding:22px; box-shadow:0 2px 10px rgba(0,0,0,0.06);">
@@ -1027,6 +1107,108 @@
     updateProviderConfigVisibility();
     updateSsoDependentVisibility();
     updateBackupVisibility();
+})();
+
+// AI Connect tab: per-provider hints, "Load models" and "Test connection".
+(function () {
+    const form = document.getElementById('ai-connect-form');
+    const catalogEl = document.getElementById('ai-provider-catalog');
+    if (!form || !catalogEl) {
+        return;
+    }
+
+    const catalog = JSON.parse(catalogEl.textContent);
+    const providerSelect = document.getElementById('ai-provider');
+    const baseUrlInput = document.getElementById('ai-base-url');
+    const baseUrlNote = document.getElementById('ai-base-url-note');
+    const keyWrap = document.getElementById('ai-key-wrap');
+    const keyInput = document.getElementById('ai-api-key');
+    const keyNote = document.getElementById('ai-key-note');
+    const modelHint = document.getElementById('ai-model-hint');
+    const modelOptions = document.getElementById('ai-model-options');
+    const stepsTitle = document.getElementById('ai-steps-title');
+    const stepsList = document.getElementById('ai-steps');
+    const result = document.getElementById('ai-result');
+    const savedProvider = providerSelect.value;
+    const savedKeyPlaceholder = keyInput.placeholder;
+
+    function updateProviderHints() {
+        const meta = catalog[providerSelect.value];
+        baseUrlInput.placeholder = meta.base_url_hint;
+        baseUrlNote.textContent = meta.base_url ? '(optional, default shown)' : '(required)';
+        keyWrap.style.display = meta.key === 'none' ? 'none' : 'block';
+        keyNote.textContent = meta.key === 'required' ? '(required)' : '(optional)';
+        // A saved key is only reused for the provider it was saved with.
+        keyInput.placeholder = providerSelect.value === savedProvider ? savedKeyPlaceholder : 'Not set';
+        modelHint.textContent = meta.model_hint;
+        stepsTitle.textContent = 'Setup: ' + meta.label;
+        stepsList.replaceChildren(...meta.steps.map((step) => {
+            const item = document.createElement('li');
+            item.textContent = step;
+            return item;
+        }));
+        modelOptions.replaceChildren();
+    }
+
+    function showResult(ok, message) {
+        result.style.display = 'block';
+        result.style.background = ok ? '#ecfdf5' : '#fef2f2';
+        result.style.border = '1px solid ' + (ok ? '#a7f3d0' : '#fecaca');
+        result.style.color = ok ? '#065f46' : '#991b1b';
+        result.textContent = message;
+    }
+
+    async function post(url) {
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Accept': 'application/json' },
+            body: new FormData(form),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (response.status === 422 && data.errors) {
+            return { ok: false, message: Object.values(data.errors).flat().join(' ') };
+        }
+        if (!response.ok && !data.message) {
+            return { ok: false, message: 'Request failed (HTTP ' + response.status + ').' };
+        }
+        return data;
+    }
+
+    async function run(button, busyText, url, onDone) {
+        const label = button.textContent;
+        button.disabled = true;
+        button.textContent = busyText;
+        try {
+            onDone(await post(url));
+        } catch (error) {
+            showResult(false, 'Request failed: ' + error.message);
+        } finally {
+            button.disabled = false;
+            button.textContent = label;
+        }
+    }
+
+    const testButton = document.getElementById('ai-test');
+    if (testButton) {
+        testButton.addEventListener('click', () => run(testButton, 'Testing...', form.dataset.testUrl, (data) => {
+            showResult(data.ok, data.message + (data.ok && data.reply ? ' Reply: "' + data.reply + '"' : ''));
+        }));
+    }
+
+    const loadModelsButton = document.getElementById('ai-load-models');
+    if (loadModelsButton) {
+        loadModelsButton.addEventListener('click', () => run(loadModelsButton, 'Loading...', form.dataset.modelsUrl, (data) => {
+            showResult(data.ok, data.message);
+            modelOptions.replaceChildren(...(data.models || []).map((id) => {
+                const option = document.createElement('option');
+                option.value = id;
+                return option;
+            }));
+        }));
+    }
+
+    providerSelect.addEventListener('change', updateProviderHints);
+    updateProviderHints();
 })();
 </script>
 @endsection
