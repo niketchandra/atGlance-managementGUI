@@ -58,7 +58,7 @@
             </div>
             <div>
                 <div style="font-size:12px; color:#6b7280; text-transform:uppercase; margin-bottom:6px;">Name</div>
-                <div style="font-size:16px; color:#111827; font-weight:700;">{{ $user->name }}</div>
+                <div style="display:flex; align-items:center; gap:10px; font-size:16px; color:#111827; font-weight:700;"><x-user-avatar :user="$user" size="40" />{{ $user->name }}</div>
             </div>
             <div>
                 <div style="font-size:12px; color:#6b7280; text-transform:uppercase; margin-bottom:6px;">Email</div>

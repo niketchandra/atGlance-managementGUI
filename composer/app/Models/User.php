@@ -137,6 +137,14 @@ class User extends Authenticatable
     }
 
     /**
+     * Avatar initials: first letter of the first name + first letter of the last name.
+     */
+    public function initials(): string
+    {
+        return \App\Support\UserAvatar::initials($this);
+    }
+
+    /**
      * Check if user is super admin.
      */
     public function isSuperAdmin(): bool

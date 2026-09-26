@@ -7,7 +7,7 @@
     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
         <div>
             <h1 style="font-size:28px; color:#111827;">User Dashboard</h1>
-            <p style="color:#6b7280; margin-top:6px;">{{ $user->name }} ({{ $user->email }})</p>
+            <p style="display:flex; align-items:center; gap:8px; color:#6b7280; margin-top:6px;"><x-user-avatar :user="$user" size="28" />{{ $user->name }} ({{ $user->email }})</p>
         </div>
         <a href="{{ route('admin.users') }}" style="text-decoration:none; color:#4f46e5;">← Back to Users</a>
     </div>

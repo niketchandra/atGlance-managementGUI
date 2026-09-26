@@ -101,9 +101,7 @@
     <div style="display: grid; grid-template-columns: auto 1fr auto; gap: 30px; align-items: start; margin-bottom: 40px;">
         <!-- Profile Picture and Name -->
         <div style="text-align: center; margin-top: -10px;">
-            <div style="width: 150px; height: 150px; background: #000000; border-radius: 50%; border: 5px solid white; box-shadow: 0 5px 15px rgba(0,0,0,0.2); display: flex; align-items: center; justify-content: center; font-size: 60px; color: white; margin: 0 auto;">
-                <i class="fas fa-user"></i>
-            </div>
+            <x-user-avatar :user="auth()->user()" size="150" style="border: 5px solid white; box-shadow: 0 5px 15px rgba(0,0,0,0.2);" />
         </div>
 
         <!-- Info -->

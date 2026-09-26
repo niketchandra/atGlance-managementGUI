@@ -133,7 +133,7 @@
                         <tbody>
                             @foreach($admins as $admin)
                                 <tr style="border-bottom:1px solid #f3f4f6;">
-                                    <td style="padding:10px; font-size:13px;">{{ $admin->name }}</td>
+                                    <td style="padding:10px; font-size:13px;"><span style="display:inline-flex; align-items:center; gap:8px;"><x-user-avatar :user="$admin" size="26" />{{ $admin->name }}</span></td>
                                     <td style="padding:10px; font-size:13px;">{{ $admin->email }}</td>
                                     <td style="padding:10px;">
                                         @if($canManageAdmins)
@@ -176,7 +176,7 @@
                         <tbody>
                             @foreach($regularUsers as $user)
                                 <tr style="border-bottom:1px solid #f3f4f6;">
-                                    <td style="padding:10px; font-size:13px;">{{ $user->name }}</td>
+                                    <td style="padding:10px; font-size:13px;"><span style="display:inline-flex; align-items:center; gap:8px;"><x-user-avatar :user="$user" size="26" />{{ $user->name }}</span></td>
                                     <td style="padding:10px; font-size:13px;">{{ $user->email }}</td>
                                     <td style="padding:10px;">
                                         <form method="POST" action="{{ route($workspaceRemoveUserRouteName, [$workspace->id, $user->id]) }}" style="display:inline;">

@@ -1019,7 +1019,10 @@
                         </div>
                     </div>
                     <div class="header-right">
-                        <span style="color: #333; font-weight: 500;">Hello, {{ auth()->user()->name }}!</span>
+                        <a href="{{ route('profile') }}" style="display: inline-flex; align-items: center; gap: 10px; color: #333; font-weight: 500; text-decoration: none;">
+                            <span>Hello, {{ auth()->user()->name }}!</span>
+                            <x-user-avatar :user="auth()->user()" size="36" />
+                        </a>
                     </div>
                 </div>
 
