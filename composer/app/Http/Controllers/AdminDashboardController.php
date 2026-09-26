@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Support\ActivityRecorder;
 use App\Models\AdminSetting;
 use App\Models\ConfigurationFile;
 use App\Models\ContactSubmission;
@@ -229,6 +230,8 @@ class AdminDashboardController extends Controller
             'org_id' => (int) ($actor->org_id ?? 200),
         ]);
 
+        ActivityRecorder::record($newUser->id, 'account.created_by_admin', 'Account created by ' . ($actor->name ?: 'an admin'), ActivityRecorder::SUCCESS, $request);
+
         if ($workspace !== null) {
             $newUser->workspaces()->syncWithoutDetaching([
                 $workspaceId => ['is_admin' => $rbacId === 101],
@@ -257,7 +260,34 @@ class AdminDashboardController extends Controller
 
         $canEditUserProfile = $this->canEditTargetUser($actor, $user);
 
-        return view('admin.user-profile', compact('user', 'stats', 'assignedWorkspaces', 'canEditUserProfile'));
+        $recentActivity = \App\Support\ActivityFeed::latest((int) $user->id, 20);
+
+        return view('admin.user-profile', compact('user', 'stats', 'assignedWorkspaces', 'canEditUserProfile', 'recentActivity'));
+    }
+
+    /**
+     * Readable list of the fields an admin is about to change, e.g. "role to Admin".
+     *
+     * @return list<string>
+     */
+    private function describeAdminChanges(User $user): array
+    {
+        $changes = [];
+
+        if ($user->isDirty('rbac_id')) {
+            $changes[] = 'role to ' . ((int) $user->rbac_id === 101 ? 'Admin' : 'User');
+        }
+        if ($user->isDirty('status')) {
+            $changes[] = 'status to ' . $user->status;
+        }
+        if ($user->isDirty('email')) {
+            $changes[] = 'email to ' . $user->email;
+        }
+        if ($user->isDirty(['name', 'first_name', 'last_name'])) {
+            $changes[] = 'name';
+        }
+
+        return $changes;
     }
 
     public function updateUser(Request $request, User $user): RedirectResponse
@@ -286,7 +316,12 @@ class AdminDashboardController extends Controller
         $user->email = $validated['email'];
         $user->status = $validated['status'];
         $user->rbac_id = $validated['role'] === 'admin' ? 101 : 102;
+        $changes = $this->describeAdminChanges($user);
         $user->save();
+
+        if ($changes !== []) {
+            ActivityRecorder::record($user->id, 'account.changed_by_admin', ($actor->name ?: 'An admin') . ' changed your ' . implode(', ', $changes), ActivityRecorder::SUCCESS, $request);
+        }
 
         return redirect()
             ->route('admin.users.profile', ['user' => $user->id])

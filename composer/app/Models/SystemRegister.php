@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use App\Notifications\NotificationEvents;
 use App\Services\Notifier;
+use App\Support\ActivityRecorder;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class SystemRegister extends Model
@@ -64,6 +65,8 @@ class SystemRegister extends Model
     protected static function booted(): void
     {
         static::created(function (SystemRegister $system) {
+            ActivityRecorder::record((int) $system->user_id, 'system.registered', 'Registered system ' . $system->system_name);
+
             if ($system->status === 'active') {
                 $system->notifyWorkspace(NotificationEvents::SYSTEM_REGISTERED, 'System registered');
             }
@@ -75,8 +78,13 @@ class SystemRegister extends Model
             }
 
             if ($system->status === 'active') {
+                ActivityRecorder::record((int) $system->user_id, 'system.reactivated', 'Reactivated system ' . $system->system_name);
                 $system->notifyWorkspace(NotificationEvents::SYSTEM_REGISTERED, 'System reactivated');
             } elseif ($system->getOriginal('status') === 'active') {
+                ActivityRecorder::record((int) $system->user_id, 'system.deregistered', 'Deregistered system ' . $system->system_name);
+                if ($owner = User::find($system->user_id)) {
+                    \App\Support\AccountAlerts::systemDeregistered($owner, (string) $system->system_name);
+                }
                 $system->notifyWorkspace(NotificationEvents::SYSTEM_DEREGISTERED, 'System deregistered');
             }
         });

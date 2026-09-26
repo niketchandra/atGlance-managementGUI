@@ -1276,5 +1276,24 @@
         @endif
     </script>
 
+    @if(auth()->check() && \App\Support\UserPreferences::get(auth()->user(), 'timezone') === null)
+        <script>
+            // First visit with no time zone set: save the browser's, so dates show in local time.
+            (function () {
+                try {
+                    const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+                    if (!zone) {
+                        return;
+                    }
+                    const body = new FormData();
+                    body.append('_token', @json(csrf_token()));
+                    body.append('timezone', zone);
+                    fetch(@json(route('settings.preferences.timezone')), { method: 'POST', body: body, credentials: 'same-origin' });
+                } catch (error) {
+                    // Keep the server default.
+                }
+            })();
+        </script>
+    @endif
 </body>
 </html>

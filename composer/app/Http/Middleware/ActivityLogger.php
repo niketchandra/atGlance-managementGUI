@@ -60,6 +60,11 @@ class ActivityLogger
                 return $response;
             }
 
+            // The controller already recorded a readable event for this request.
+            if ($request->attributes->get(\App\Support\ActivityRecorder::REQUEST_FLAG)) {
+                return $response;
+            }
+
             if (!$this->shouldLog($request)) {
                 return $response;
             }

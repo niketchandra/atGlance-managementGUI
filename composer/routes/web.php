@@ -73,7 +73,12 @@ Route::middleware('app.installed')->group(function () {
         Route::post('/settings/api-keys/view', [DashboardController::class, 'viewApiKey'])->name('settings.api-keys.view');
         Route::post('/settings/api-keys/revoke', [DashboardController::class, 'revokeApiKey'])->name('settings.api-keys.revoke');
         Route::post('/password/update', [DashboardController::class, 'updatePassword'])->name('password.update');
+        Route::post('/settings/preferences', [DashboardController::class, 'updatePreferences'])->name('settings.preferences');
+        Route::post('/settings/preferences/timezone', [DashboardController::class, 'detectTimezone'])->name('settings.preferences.timezone');
+        Route::delete('/settings/sessions/{session}', [DashboardController::class, 'endSession'])->name('settings.sessions.end');
+        Route::post('/settings/sessions/others', [DashboardController::class, 'endOtherSessions'])->name('settings.sessions.others');
         Route::get('/profile', [DashboardController::class, 'profile'])->name('profile');
+        Route::get('/profile/activity', [DashboardController::class, 'profileActivity'])->name('profile.activity');
         Route::post('/profile/setup', [DashboardController::class, 'updateProfileSetup'])->name('profile.update');
         Route::get('/products', [DashboardController::class, 'products'])->name('products');
 

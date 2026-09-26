@@ -142,7 +142,7 @@
                                 <i class="fas fa-clock" style="margin-right: 4px;"></i> Created At
                             </div>
                             <div style="font-size: 13px; color: #666;">
-                                {{ \Carbon\Carbon::parse($item->created_at)->format('M d, Y H:i A') }}
+                                {{ \App\Support\UserPreferences::datetime($item->created_at) }}
                             </div>
                         </div>
 
@@ -164,6 +164,7 @@
             @endforeach
         </div>
     @endif
+    @include('partials.simple-pager', ['pager' => $items])
 </div>
 
 <script>

@@ -109,7 +109,7 @@
                             </div>
                             <div style="background: #f8f9ff; border-radius: 8px; padding: 10px;">
                                 <div style="font-size: 10px; color: #777; font-weight: 600;">REGISTERED</div>
-                                <div style="font-size: 14px; color: #333; font-weight: 700;">{{ \Carbon\Carbon::parse($item->created_at)->format('M d, Y') }}</div>
+                                <div style="font-size: 14px; color: #333; font-weight: 700;">{{ \App\Support\UserPreferences::date($item->created_at) }}</div>
                             </div>
                         </div>
 

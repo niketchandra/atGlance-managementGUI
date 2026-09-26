@@ -221,7 +221,7 @@
                 <div style="border:1px solid #e5e7eb; border-radius:8px; padding:10px; margin-bottom:8px;">
                     <div style="display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap;">
                         <div style="font-weight:600; color:#111827;">{{ $submission->subject }}</div>
-                        <div style="font-size:12px; color:#6b7280;">{{ $submission->created_at?->format('Y-m-d H:i') }}</div>
+                        <div style="font-size:12px; color:#6b7280;">{{ \App\Support\UserPreferences::datetime($submission->created_at) }}</div>
                     </div>
                     <div style="font-size:13px; color:#374151; margin:2px 0 6px;">{{ $submission->name }} &lt;<a href="mailto:{{ $submission->email }}" style="color:#1d4ed8;">{{ $submission->email }}</a>&gt;</div>
                     <div style="font-size:13px; color:#111827; white-space:pre-wrap; word-break:break-word;">{{ $submission->message }}</div>
@@ -586,7 +586,7 @@
                             Last run:
                             @if(!empty($lastRun))
                                 <span style="font-weight:600; color:{{ $lastRunColor }};">{{ ucfirst($lastRunStatus) }}</span>
-                                at {{ \Illuminate\Support\Carbon::parse($lastRun['finished_at'] ?? $lastRun['started_at'])->format('Y-m-d H:i:s T') }}
+                                at {{ \App\Support\UserPreferences::datetime($lastRun['finished_at'] ?? $lastRun['started_at']) }}
                                 @if(!empty($lastRun['message']))
                                     <div style="font-size:12px; color:#6b7280; margin-top:2px; word-break:break-all;">{{ $lastRun['message'] }}</div>
                                 @endif

@@ -4,6 +4,7 @@ use App\Services\BackupService;
 use App\Support\InstallationState;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schedule;
 
@@ -30,6 +31,24 @@ Artisan::command('backup:config', $runBackup(BackupService::TYPE_CONFIG))
 
 Artisan::command('backup:portal', $runBackup(BackupService::TYPE_PORTAL))
     ->purpose('Back up the portal (.env, admin settings, database dump) to S3');
+
+Artisan::command('activity:prune {--days= : Keep this many days (default ACTIVITY_RETENTION_DAYS, 180)}', function () {
+    $days = (int) ($this->option('days') ?: config('app.activity_retention_days', 180));
+    if ($days < 1) {
+        $this->error('--days must be at least 1.');
+
+        return 1;
+    }
+
+    $deleted = DB::table('activity_logs')->where('created_at', '<', now()->subDays($days))->delete();
+    $this->info("Deleted {$deleted} activity log entries older than {$days} days.");
+
+    return 0;
+})->purpose('Delete activity log entries older than the retention period');
+
+if (InstallationState::isInstalled()) {
+    Schedule::command('activity:prune')->dailyAt('03:30')->withoutOverlapping();
+}
 
 // Frequencies come from the Backup & Restore tab. The scheduler re-reads them on
 // every schedule:run (cron) or each minute (schedule:work), so changes apply

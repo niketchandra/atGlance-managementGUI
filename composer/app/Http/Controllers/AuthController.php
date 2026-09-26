@@ -2,6 +2,10 @@
 
 namespace App\Http\Controllers;
 
+use App\Support\AccountAlerts;
+use App\Support\ActivityRecorder;
+use App\Support\UserAgent;
+
 use App\Models\AdminSetting;
 use App\Models\User;
 use Illuminate\Http\Request;
@@ -184,9 +188,13 @@ class AuthController extends Controller
                 'email' => $email,
                 'password' => Str::random(32),
             ]);
+            // The random password is never shown, so the account has no password the user chose.
+            $user->forceFill(['password_changed_at' => null])->saveQuietly();
         }
 
         if (strtolower((string) ($user->status ?? 'active')) !== 'active') {
+            ActivityRecorder::record($user->id, 'auth.login_blocked', 'Sign-in with ' . ucfirst($provider) . ' blocked: account inactive', ActivityRecorder::FAILURE, $request);
+
             return redirect()->route('home')->withErrors([
                 'login' => 'Your account is inactive. Please contact your administrator.',
             ]);
@@ -206,6 +214,7 @@ class AuthController extends Controller
             if (preg_match('/^\d{5}$/', $pendingPin) === 1) {
                 $currentUser->pin = Hash::make($pendingPin);
                 $currentUser->save();
+                ActivityRecorder::record($currentUser->id, 'pin.reset', 'Reset PIN (verified with ' . ucfirst($provider) . ')', ActivityRecorder::SUCCESS, $request);
 
                 return redirect()->route('settings')->with('success', 'SSO authentication successful. PIN reset completed.');
             }
@@ -225,6 +234,9 @@ class AuthController extends Controller
 
         Auth::login($user, true);
         $request->session()->regenerate();
+        AccountAlerts::signedIn($user, $request);
+        ActivityRecorder::record($user->id, 'auth.login', 'Signed in with ' . ucfirst($provider) . ' from ' . UserAgent::describe($request->userAgent()), ActivityRecorder::SUCCESS, $request);
+        $user->recordLogin($request->ip());
         $request->session()->put('auth_method', 'sso');
         $request->session()->put('auth_sso_provider', $provider);
         $targetRoute = in_array((int) $user->rbac_id, [100, 101], true) ? 'admin.dashboard' : 'dashboard';
@@ -255,6 +267,8 @@ class AuthController extends Controller
                 'email' => $validated['email'],
                 'password' => Hash::make($validated['password']),
             ]);
+
+            ActivityRecorder::record($user->id, 'account.registered', 'Created account', ActivityRecorder::SUCCESS, $request);
 
             // Log the user in
             Auth::login($user);
@@ -296,6 +310,8 @@ class AuthController extends Controller
 
         if ($user && $passwordMatches) {
             if (strtolower((string) ($user->status ?? 'active')) !== 'active') {
+                ActivityRecorder::record($user->id, 'auth.login_blocked', 'Sign-in blocked: account inactive', ActivityRecorder::FAILURE, $request);
+
                 return back()
                     ->withInput($request->only('email'))
                     ->with('inactive_user', 'User is Inactive please reachout to the Administrator');
@@ -304,12 +320,18 @@ class AuthController extends Controller
             // Log the user in
             Auth::login($user, $request->boolean('remember'));
             $request->session()->regenerate();
+            AccountAlerts::signedIn($user, $request);
+            ActivityRecorder::record($user->id, 'auth.login', 'Signed in from ' . UserAgent::describe($request->userAgent()), ActivityRecorder::SUCCESS, $request);
+            $user->recordLogin($request->ip());
             $request->session()->put('auth_method', 'password');
             $request->session()->forget(['auth_sso_provider', 'sso_pin_verified_at', 'sso_intent']);
             $targetRoute = in_array((int) $user->rbac_id, [100, 101], true) ? 'admin.dashboard' : 'dashboard';
 
             return redirect()->route($targetRoute)->with('success', 'Welcome back!');
         }
+
+        // Unknown emails are kept with no user, so they appear in no one's activity.
+        ActivityRecorder::record($user?->id, 'auth.login_failed', 'Failed sign-in attempt from ' . UserAgent::describe($request->userAgent()), ActivityRecorder::FAILURE, $request);
 
         return back()->withErrors([
             'login' => 'The provided credentials do not match our records.',
@@ -321,6 +343,10 @@ class AuthController extends Controller
      */
     public function logout(Request $request)
     {
+        if (Auth::check()) {
+            ActivityRecorder::record((int) Auth::id(), 'auth.logout', 'Signed out', ActivityRecorder::SUCCESS, $request);
+        }
+
         Auth::logout();
         $request->session()->invalidate();
         $request->session()->regenerateToken();

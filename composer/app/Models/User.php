@@ -56,7 +56,37 @@ class User extends Authenticatable
         return [
             'dob' => 'date',
             'email_verified_at' => 'datetime',
+            'password_changed_at' => 'datetime',
+            'last_login_at' => 'datetime',
+            'previous_login_at' => 'datetime',
+            'preferences' => 'array',
         ];
+    }
+
+    /**
+     * Any code path that sets a new password (web, API, admin, installer,
+     * reset) stamps password_changed_at.
+     */
+    protected static function booted(): void
+    {
+        static::saving(function (User $user) {
+            if ($user->isDirty('password_hash') && !$user->isDirty('password_changed_at')) {
+                $user->password_changed_at = now();
+            }
+        });
+    }
+
+    /**
+     * Keeps the last two sign-ins, so the user can spot one they do not recognise.
+     */
+    public function recordLogin(?string $ip): void
+    {
+        $this->forceFill([
+            'previous_login_at' => $this->last_login_at,
+            'previous_login_ip' => $this->last_login_ip,
+            'last_login_at' => now(),
+            'last_login_ip' => $ip,
+        ])->saveQuietly();
     }
 
     /**

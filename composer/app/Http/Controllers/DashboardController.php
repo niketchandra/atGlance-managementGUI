@@ -4,6 +4,10 @@ namespace App\Http\Controllers;
 
 use App\Models\SystemRegister;
 use App\Models\Workspace;
+use App\Support\AccountAlerts;
+use App\Support\ActivityRecorder;
+use App\Support\UserPreferences;
+use App\Support\WebSessions;
 use App\Support\S3Settings;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -236,8 +240,8 @@ class DashboardController extends Controller
         }
 
         $items = $query->orderByDesc('cf.created_at')
-            ->limit(50)
-            ->get();
+            ->paginate(UserPreferences::get($actor, 'per_page'))
+            ->withQueryString();
 
         return view('configuration-backups', compact('items'));
     }
@@ -283,8 +287,8 @@ class DashboardController extends Controller
         }
 
         $items = $query->orderByDesc('created_at')
-            ->limit(50)
-            ->get();
+            ->paginate(UserPreferences::get($actor, 'per_page'))
+            ->withQueryString();
 
         return view('systems-registered', compact('items'));
     }
@@ -724,7 +728,10 @@ class DashboardController extends Controller
             ->latest()
             ->get();
 
-        return view('settings', compact('apiKeys'));
+        $webSessions = WebSessions::forUser(Auth::user(), request()->session()->getId());
+        $sessionsListed = WebSessions::isAvailable();
+
+        return view('settings', compact('apiKeys', 'webSessions', 'sessionsListed'));
     }
 
     /**
@@ -747,6 +754,7 @@ class DashboardController extends Controller
         /** @var User $user */
         $user = Auth::user();
         $user->update($updateData);
+        ActivityRecorder::record($user->id, 'profile.updated', 'Updated profile', ActivityRecorder::SUCCESS, $request);
 
         return redirect()->back()->with('success', 'Settings updated successfully');
     }
@@ -779,6 +787,9 @@ class DashboardController extends Controller
             'expires_at' => $expiresAt,
             'status' => 'active',
         ]);
+
+        ActivityRecorder::record($user->id, 'apikey.created', 'Created API key "' . $token->name . '"', ActivityRecorder::SUCCESS, $request);
+        AccountAlerts::apiKey($user, 'created', (string) $token->name);
 
         return response()->json([
             'success' => true,
@@ -830,6 +841,8 @@ class DashboardController extends Controller
         }
 
         if (!$authenticated) {
+            ActivityRecorder::record($user->id, $request->routeIs('settings.api-keys.revoke') ? 'apikey.revoked' : 'apikey.viewed', 'Wrong password or PIN while confirming an API key action', ActivityRecorder::FAILURE, $request);
+
             return response()->json([
                 'success' => false,
                 'message' => 'Invalid password or PIN',
@@ -862,6 +875,8 @@ class DashboardController extends Controller
                 'message' => 'This key was created before secure display was enabled. Please create a new key to view full token value.',
             ], 422);
         }
+
+        ActivityRecorder::record($user->id, 'apikey.viewed', 'Viewed API key "' . $token->name . '"', ActivityRecorder::SUCCESS, $request);
 
         return response()->json([
             'success' => true,
@@ -911,6 +926,8 @@ class DashboardController extends Controller
         }
 
         if (!$authenticated) {
+            ActivityRecorder::record($user->id, $request->routeIs('settings.api-keys.revoke') ? 'apikey.revoked' : 'apikey.viewed', 'Wrong password or PIN while confirming an API key action', ActivityRecorder::FAILURE, $request);
+
             return response()->json([
                 'success' => false,
                 'message' => 'Invalid password or PIN',
@@ -929,11 +946,110 @@ class DashboardController extends Controller
         }
 
         $token->update(['status' => 'revoked']);
+        ActivityRecorder::record($user->id, 'apikey.revoked', 'Revoked API key "' . $token->name . '"', ActivityRecorder::SUCCESS, $request);
+        AccountAlerts::apiKey($user, 'revoked', (string) $token->name);
 
         return response()->json([
             'success' => true,
             'message' => 'API key revoked successfully',
         ]);
+    }
+
+    /**
+     * Sign out one of the user's other browser sessions.
+     */
+    public function endSession(Request $request, string $session): RedirectResponse
+    {
+        /** @var User $user */
+        $user = Auth::user();
+        $back = redirect()->to(route('settings') . '#security');
+
+        if (!WebSessions::end($user, $session, $request)) {
+            return $back->withErrors(['session' => 'That session was not found. It may have already ended.']);
+        }
+
+        ActivityRecorder::record($user->id, 'session.ended', 'Signed out another session', ActivityRecorder::SUCCESS, $request);
+
+        return $back->with('success', 'Session signed out.');
+    }
+
+    /**
+     * Sign out every other browser session. Needs the password or PIN.
+     */
+    public function endOtherSessions(Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'password' => 'nullable|string',
+            'pin' => 'nullable|string',
+        ]);
+
+        /** @var User $user */
+        $user = Auth::user();
+        $back = redirect()->to(route('settings') . '#security');
+
+        $confirmed = (!empty($validated['password']) && Hash::check($validated['password'], (string) ($user->password_hash ?? $user->password)))
+            || (!empty($validated['pin']) && !empty($user->pin) && Hash::check($validated['pin'], (string) $user->pin));
+
+        if (!$confirmed) {
+            ActivityRecorder::record($user->id, 'session.ended_others', 'Wrong password or PIN while signing out other sessions', ActivityRecorder::FAILURE, $request);
+
+            return $back->withErrors(['session' => 'Enter your current password or PIN to sign out other sessions.']);
+        }
+
+        $ended = WebSessions::endOthers($user, $request);
+        ActivityRecorder::record($user->id, 'session.ended_others', 'Signed out all other sessions (' . $ended . ')', ActivityRecorder::SUCCESS, $request);
+
+        return $back->with('success', $ended === 0 ? 'No other sessions were active.' : 'Signed out ' . $ended . ' other ' . ($ended === 1 ? 'session.' : 'sessions.'));
+    }
+
+    /**
+     * Save the Preferences tab of /settings.
+     */
+    public function updatePreferences(Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'timezone' => ['nullable', 'string', function (string $attribute, mixed $value, \Closure $fail) {
+                if ($value !== null && $value !== '' && !UserPreferences::isValidTimezone($value)) {
+                    $fail('Choose a time zone from the list.');
+                }
+            }],
+            'date_format' => ['required', \Illuminate\Validation\Rule::in(array_keys(UserPreferences::DATE_FORMATS))],
+            'per_page' => ['required', 'integer', \Illuminate\Validation\Rule::in(UserPreferences::PAGE_SIZES)],
+            'alerts' => ['nullable', 'array'],
+        ]);
+
+        /** @var User $user */
+        $user = Auth::user();
+        $alerts = [];
+        foreach (array_keys(UserPreferences::ALERTS) as $alert) {
+            $alerts[$alert] = $request->boolean('alerts.' . $alert);
+        }
+
+        UserPreferences::save($user, [
+            'timezone' => ($validated['timezone'] ?? '') !== '' ? $validated['timezone'] : null,
+            'date_format' => $validated['date_format'],
+            'per_page' => (int) $validated['per_page'],
+            'alerts' => $alerts,
+        ]);
+        ActivityRecorder::record($user->id, 'preferences.updated', 'Updated preferences', ActivityRecorder::SUCCESS, $request);
+
+        return redirect()->to(route('settings') . '#preferences')->with('success', 'Preferences saved.');
+    }
+
+    /**
+     * Saves the browser's time zone the first time, when none is set yet.
+     */
+    public function detectTimezone(Request $request)
+    {
+        /** @var User $user */
+        $user = Auth::user();
+        $timezone = (string) $request->input('timezone', '');
+
+        if (UserPreferences::get($user, 'timezone') === null && UserPreferences::isValidTimezone($timezone)) {
+            UserPreferences::save($user, ['timezone' => $timezone]);
+        }
+
+        return response()->noContent();
     }
 
     /**
@@ -950,8 +1066,12 @@ class DashboardController extends Controller
         $user = Auth::user();
         $user->password = Hash::make($validated['password']);
         $user->save();
+        ActivityRecorder::record($user->id, 'password.changed', 'Changed password', ActivityRecorder::SUCCESS, $request);
+        AccountAlerts::passwordChanged($user, $request);
 
-        return redirect()->back()->with('success', 'Password updated successfully');
+        $ended = WebSessions::endOthers($user, $request);
+
+        return redirect()->back()->with('success', 'Password updated successfully' . ($ended > 0 ? '. Signed out ' . $ended . ' other ' . ($ended === 1 ? 'session' : 'sessions') . '.' : '.'));
     }
 
     /**
@@ -959,7 +1079,49 @@ class DashboardController extends Controller
      */
     public function profile()
     {
-        return view('profile');
+        /** @var User $user */
+        $user = Auth::user();
+
+        $overview = \App\Support\ProfileOverview::for($user);
+        $apiKeyLastUsed = PatToken::query()
+            ->where('user_id', $user->id)
+            ->where('status', 'active')
+            ->max('last_used_at');
+        $session = request()->session();
+
+        return view('profile', [
+            'security' => [
+                'password_changed_at' => $user->password_changed_at,
+                // No chosen password yet and signed in through SSO: show the provider instead.
+                'sso_provider' => $user->password_changed_at === null && $session->get('auth_method') === 'sso'
+                    ? ucfirst((string) $session->get('auth_sso_provider', 'SSO'))
+                    : null,
+                'last_login_at' => $user->last_login_at,
+                'last_login_ip' => $user->last_login_ip,
+                'previous_login_at' => $user->previous_login_at,
+                'previous_login_ip' => $user->previous_login_ip,
+                'api_keys' => $overview['mine']['api_keys'],
+                'api_key_last_used' => $apiKeyLastUsed ? Carbon::parse($apiKeyLastUsed) : null,
+                'sessions' => WebSessions::isAvailable() ? WebSessions::count($user) : null,
+            ],
+            'overview' => $overview,
+            'roleLabel' => \App\Support\ProfileOverview::roleLabel($user),
+            'recentActivity' => \App\Support\ActivityFeed::latest((int) $user->id, 10),
+        ]);
+    }
+
+    /**
+     * The signed-in user's full activity history, filterable by type.
+     */
+    public function profileActivity(Request $request)
+    {
+        $type = $request->query('type');
+        $type = is_string($type) && isset(\App\Support\ActivityFeed::TYPES[$type]) ? $type : null;
+
+        return view('profile-activity', [
+            'activityPage' => \App\Support\ActivityFeed::paginate((int) Auth::id(), $type),
+            'activityType' => $type,
+        ]);
     }
 
     /**
@@ -977,6 +1139,7 @@ class DashboardController extends Controller
         $user->dob = $validated['dob'];
         $user->pin = Hash::make($validated['pin']);
         $user->save();
+        ActivityRecorder::record($user->id, 'profile.setup', 'Set date of birth and PIN', ActivityRecorder::SUCCESS, $request);
 
         return redirect()->route('dashboard')->with('success', 'Profile setup completed successfully.');
     }
@@ -1022,6 +1185,7 @@ class DashboardController extends Controller
         $user->pin = Hash::make($validated['pin']);
         $user->save();
         $request->session()->forget('sso_pin_verified_at');
+        ActivityRecorder::record($user->id, 'pin.reset', 'Reset PIN', ActivityRecorder::SUCCESS, $request);
 
         return redirect()->back()->with('success', 'PIN reset successfully.');
     }

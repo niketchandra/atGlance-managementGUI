@@ -17,6 +17,9 @@ return [
 
     'version' => env('VERSION', '0.1.0'),
 
+    // Days of activity_logs kept by the daily activity:prune command.
+    'activity_retention_days' => (int) env('ACTIVITY_RETENTION_DAYS', 180),
+
     /*
     |--------------------------------------------------------------------------
     | Application Environment

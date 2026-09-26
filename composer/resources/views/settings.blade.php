@@ -30,8 +30,8 @@
         <button class="settings-tab" onclick="switchSettingsTab('security', this)">
             <i class="fas fa-shield-alt"></i> Security
         </button>
-        <button class="settings-tab" onclick="switchSettingsTab('notifications', this)">
-            <i class="fas fa-bell"></i> Notifications
+        <button class="settings-tab" onclick="switchSettingsTab('preferences', this)">
+            <i class="fas fa-sliders-h"></i> Preferences
         </button>
         <button class="settings-tab" onclick="switchSettingsTab('billing', this)">
             <i class="fas fa-credit-card"></i> Billing
@@ -348,10 +348,10 @@
                 <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 15px;">Two-Factor Authentication</h3>
                 <div class="toggle-switch">
                     <div>
-                        <strong>Enable 2FA</strong>
-                        <p style="color: #666; font-size: 13px; margin-top: 5px;">Enhance your account security with two-factor authentication</p>
+                        <strong>Two-factor authentication</strong>
+                        <p style="color: #666; font-size: 13px; margin-top: 5px;">Coming soon.</p>
                     </div>
-                    <div class="toggle" onclick="this.classList.toggle('active')"></div>
+                    <span class="status-badge" style="background: #f3f4f6; color: #6b7280;">Coming soon</span>
                 </div>
             </div>
 
@@ -384,59 +384,114 @@
                 </form>
             </div>
 
-            <div style="border-top: 1px solid #e0e0e0; padding-top: 30px; margin-top: 30px;">
-                <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 15px;">Active Sessions</h3>
-                <div class="api-key-item">
-                    <div>
-                        <strong>Current Session</strong>
-                        <p style="color: #666; font-size: 13px; margin-top: 5px;">Chrome on Windows • Last active 2 minutes ago</p>
-                    </div>
-                    <span class="status-badge status-active">Active</span>
-                </div>
+            <div id="active-sessions" style="border-top: 1px solid #e0e0e0; padding-top: 30px; margin-top: 30px;">
+                <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 6px;">Active Sessions</h3>
+                <p style="color: #666; font-size: 13px; margin-bottom: 15px;">Browsers signed in to your account. Sign out any you do not recognise, then change your password.</p>
+
+                @if(!$sessionsListed)
+                    <p style="color: #666; font-size: 13px;">Session listing needs <code>SESSION_DRIVER=database</code>. Ask your administrator.</p>
+                @else
+                    @foreach($webSessions as $webSession)
+                        <div class="api-key-item">
+                            <div>
+                                <strong>{{ $webSession['device'] }}</strong>
+                                @if($webSession['current'])
+                                    <span class="status-badge status-active" style="margin-left: 6px;">This device</span>
+                                @endif
+                                <p style="color: #666; font-size: 13px; margin-top: 5px;">
+                                    {{ $webSession['ip'] ?: 'Unknown IP' }} &bull; Last active {{ $webSession['last_active']->diffForHumans() }}
+                                </p>
+                            </div>
+                            @unless($webSession['current'])
+                                <form method="POST" action="{{ route('settings.sessions.end', ['session' => $webSession['id']]) }}">
+                                    @csrf
+                                    @method('DELETE')
+                                    <button type="submit" class="btn-save" style="background: #ffffff; color: #111111; border: 1px solid #111111; padding: 8px 12px;"><i class="fas fa-sign-out-alt"></i> Sign out</button>
+                                </form>
+                            @endunless
+                        </div>
+                    @endforeach
+
+                    @if($webSessions->where('current', false)->isNotEmpty())
+                        <form method="POST" action="{{ route('settings.sessions.others') }}" style="margin-top: 16px; display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end;">
+                            @csrf
+                            <div class="settings-form-group" style="margin-bottom: 0; flex: 1; min-width: 220px;">
+                                <label for="sessions_password">Current password or PIN</label>
+                                <input type="password" id="sessions_password" name="password" autocomplete="current-password" placeholder="Password">
+                            </div>
+                            <div class="settings-form-group" style="margin-bottom: 0; width: 140px;">
+                                <label for="sessions_pin">&nbsp;</label>
+                                <input type="password" id="sessions_pin" name="pin" inputmode="numeric" maxlength="5" placeholder="or 5-digit PIN">
+                            </div>
+                            <button type="submit" class="btn-save"><i class="fas fa-user-slash"></i> Sign out all other sessions</button>
+                        </form>
+                    @endif
+                @endif
             </div>
         </div>
     </div>
 
-    <!-- NOTIFICATIONS -->
-    <div class="settings-content" id="notifications">
+    <!-- PREFERENCES -->
+    <div class="settings-content" id="preferences">
         <div class="settings-card">
-            <h2 style="font-size: 20px; font-weight: bold; margin-bottom: 25px;"><i class="fas fa-bell"></i> Notification Settings</h2>
-
-            <form>
-                <div class="toggle-switch">
-                    <div>
-                        <strong>Email Notifications</strong>
-                        <p style="color: #666; font-size: 13px; margin-top: 5px;">Receive important alerts via email</p>
+            <h2 style="font-size: 20px; font-weight: bold; margin-bottom: 25px;"><i class="fas fa-sliders-h"></i> Preferences</h2>
+            @php
+                $prefs = \App\Support\UserPreferences::all(auth()->user());
+                $prefTimezone = old('timezone', $prefs['timezone']);
+            @endphp
+            <form method="POST" action="{{ route('settings.preferences') }}">
+                @csrf
+                <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 15px;">Dates and times</h3>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px;">
+                    <div class="settings-form-group">
+                        <label for="pref_timezone">Time zone</label>
+                        <select id="pref_timezone" name="timezone">
+                            <option value="" {{ $prefTimezone ? '' : 'selected' }}>Server default ({{ config('app.timezone') }})</option>
+                            @foreach(\DateTimeZone::listIdentifiers() as $zone)
+                                <option value="{{ $zone }}" {{ $prefTimezone === $zone ? 'selected' : '' }}>{{ str_replace('_', ' ', $zone) }}</option>
+                            @endforeach
+                        </select>
                     </div>
-                    <div class="toggle active" onclick="this.classList.toggle('active')"></div>
+                    <div class="settings-form-group">
+                        <label for="pref_date_format">Date format</label>
+                        <select id="pref_date_format" name="date_format">
+                            @foreach(\App\Support\UserPreferences::DATE_FORMATS as $formatKey => $formatMeta)
+                                <option value="{{ $formatKey }}" {{ old('date_format', $prefs['date_format']) === $formatKey ? 'selected' : '' }}>{{ $formatMeta[2] }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div class="settings-form-group">
+                        <label for="pref_per_page">Rows per page</label>
+                        <select id="pref_per_page" name="per_page">
+                            @foreach(\App\Support\UserPreferences::PAGE_SIZES as $size)
+                                <option value="{{ $size }}" {{ (int) old('per_page', $prefs['per_page']) === $size ? 'selected' : '' }}>{{ $size }}</option>
+                            @endforeach
+                        </select>
+                        <p style="color: #666; font-size: 12px; margin-top: 5px;">Systems Registered and Configuration Backups.</p>
+                    </div>
                 </div>
 
-                <div class="toggle-switch">
-                    <div>
-                        <strong>API Failures Alert</strong>
-                        <p style="color: #666; font-size: 13px; margin-top: 5px;">Get notified when your APIs fail</p>
-                    </div>
-                    <div class="toggle active" onclick="this.classList.toggle('active')"></div>
-                </div>
+                <h3 style="font-size: 16px; font-weight: 600; margin: 15px 0;">Email me about my account</h3>
+                @unless(\App\Support\NotificationSettings::mailConfigured())
+                    <p style="color: #92400e; background: #fef3c7; border-radius: 6px; padding: 8px 10px; font-size: 13px; margin-bottom: 12px;">Email is not set up on this server yet, so no alerts are sent. Ask your administrator to complete the Email Configuration.</p>
+                @endunless
+                @foreach(\App\Support\UserPreferences::ALERTS as $alertKey => $alertMeta)
+                    <label class="toggle-switch" style="cursor: {{ $alertMeta[2] ? 'pointer' : 'default' }};">
+                        <div>
+                            <strong>{{ $alertMeta[0] }}</strong>
+                            <p style="color: #666; font-size: 13px; margin-top: 5px;">{{ $alertMeta[1] }}</p>
+                        </div>
+                        @if($alertMeta[2])
+                            <input type="hidden" name="alerts[{{ $alertKey }}]" value="0">
+                            <input type="checkbox" name="alerts[{{ $alertKey }}]" value="1" {{ $prefs['alerts'][$alertKey] ? 'checked' : '' }} style="width: 20px; height: 20px;">
+                        @else
+                            <input type="checkbox" checked disabled style="width: 20px; height: 20px;" aria-label="Always on">
+                        @endif
+                    </label>
+                @endforeach
 
-                <div class="toggle-switch">
-                    <div>
-                        <strong>High Response Time Alert</strong>
-                        <p style="color: #666; font-size: 13px; margin-top: 5px;">Alert when response time exceeds threshold</p>
-                    </div>
-                    <div class="toggle active" onclick="this.classList.toggle('active')"></div>
-                </div>
-
-                <div class="toggle-switch">
-                    <div>
-                        <strong>Weekly Summary</strong>
-                        <p style="color: #666; font-size: 13px; margin-top: 5px;">Receive weekly performance summary</p>
-                    </div>
-                    <div class="toggle" onclick="this.classList.toggle('active')"></div>
-                </div>
-
-                <div style="margin-top: 30px;">
-                    <button type="button" class="btn-save"><i class="fas fa-save"></i> Save Preferences</button>
+                <div style="margin-top: 20px;">
+                    <button type="submit" class="btn-save"><i class="fas fa-save"></i> Save Preferences</button>
                 </div>
             </form>
         </div>
@@ -514,9 +569,9 @@
                             </div>
                             <div id="token-display-{{ $apiKey->id }}" class="api-key-display" style="max-width: 50%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;">{{ substr($apiKey->token, 0, 16) }}...</div>
                             <div style="display: flex; gap: 10px; margin-top: 8px; font-size: 12px; color: #666;">
-                                <span><i class="fas fa-calendar"></i> Created {{ $apiKey->created_at?->format('F j, Y') }}</span>
+                                <span><i class="fas fa-calendar"></i> Created {{ \App\Support\UserPreferences::date($apiKey->created_at) }}</span>
                                 @if($apiKey->expires_at)
-                                    <span><i class="fas fa-hourglass-end"></i> Expires {{ $apiKey->expires_at->format('F j, Y') }}</span>
+                                    <span><i class="fas fa-hourglass-end"></i> Expires {{ \App\Support\UserPreferences::date($apiKey->expires_at) }}</span>
                                 @else
                                     <span><i class="fas fa-infinity"></i> No expiry</span>
                                 @endif
@@ -686,6 +741,17 @@
     let currentAction = '';
     let currentKeyId = '';
     let currentKeyName = '';
+
+    // Open the tab named in the URL hash, e.g. /settings#api from the profile page.
+    document.addEventListener('DOMContentLoaded', function () {
+        const tabName = window.location.hash.slice(1);
+        const button = /^[a-z-]+$/.test(tabName)
+            ? document.querySelector('.settings-tab[onclick*="\'' + tabName + '\'"]')
+            : null;
+        if (button && document.getElementById(tabName)) {
+            switchSettingsTab(tabName, button);
+        }
+    });
 
     function switchSettingsTab(tabName, buttonEl) {
         document.querySelectorAll('.settings-content').forEach(tab => {
