@@ -71,6 +71,7 @@ class ActivityLogger
                 'current_password',
                 'pin',
                 'pin_confirmation',
+                'ai_api_key',
             ]);
 
             ActivityLog::create([

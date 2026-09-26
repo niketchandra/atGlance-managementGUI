@@ -24,6 +24,8 @@ services:
 
   api:
     build: .
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       APP_ENV: local
       APP_DEBUG: "true"
@@ -50,6 +52,8 @@ services:
 
   queue-worker:
     build: .
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     working_dir: /app
     command: php artisan queue:work redis --tries=5 --backoff=30,60,120,300,600 --timeout=60 --sleep=3 --max-jobs=1000 --verbose
     environment:
@@ -75,6 +79,8 @@ services:
   # Runs Laravel's scheduler (scheduled S3 backups, see BACKUP.md).
   scheduler:
     build: .
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     working_dir: /app
     command: php artisan schedule:work
     environment:
