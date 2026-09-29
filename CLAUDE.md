@@ -19,7 +19,8 @@ Two audiences hit this backend:
   `/` (`routes/web.php`).
 
 Laravel app lives in `composer/`. Root-level `*.md` files are living docs —
-read them, don't duplicate them here: `API.md` (full endpoint reference),
+read them, don't duplicate them here: `INSTALLATION.md` (VM and
+container-service deploy), `API.md` (full endpoint reference),
 `resilience.md` / `CircuitBreak.md` / `QUEUE.md` (resilience deep-dives),
 `KONG.md` (gateway config), `PersonalAccessToken.md` (PAT flow),
 `GUI_DOCUMENTATION.md` (web UI layout/pages), `BACKUP.md` (scheduled S3
@@ -38,13 +39,20 @@ Browser (admin/user)  ──▶  Laravel web (routes/web.php)
                                             │
                                      MySQL 8.0 + Redis 7
                                             │
-                              queue-worker (php artisan queue:work redis)
+                              worker (php artisan queue:work redis)
 ```
 
-- **Kong** (`kong/kong.yml`, `docker-compose-kong.yml`) is the only public
+- **Kong** (`kong/kong.yml`, baked into `kong/Dockerfile`; compose profile
+  `gateway`, container `ce-atglance-gateway`) is the only public
   entrypoint for API traffic (port 8002 → proxies to Laravel :8000). Add new
   API routes here too when adding a Kong route — see `KONG.md`.
-- **MySQL** (`atglance` db, root/no password in dev) via Eloquent.
+- **Containers / deploy**: `docker-compose.yml` is pull-only (images
+  `atglance/ce-atglance-app` and `atglance/ce-atglance-gateway` on Docker
+  Hub, containers named `ce-atglance-*`); `docker-compose.dev.yml` overlays
+  source builds. `install.sh` is the one-line installer. `docker/entrypoint.sh`
+  keeps the app `.env` on the storage volume (`/app/.env` is a symlink),
+  generates `APP_KEY` and runs migrations on app start.
+- **MySQL** (`atglance` db, user `atglance`, password from compose `.env`) via Eloquent.
 - **Redis**: cache store, queue backend, and circuit-breaker state
   (`CACHE_STORE=redis`, `QUEUE_CONNECTION=redis`).
 - **Queue worker**: `php artisan queue:work redis --tries=5

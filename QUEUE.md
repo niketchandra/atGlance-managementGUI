@@ -49,7 +49,7 @@ In outages, jobs are usually delayed, so `queue:monitor` might show 0 pending wh
 - Check queue health:
   - `php artisan queue:monitor redis`
 - Watch worker logs:
-  - `docker compose logs -f queue-worker`
+  - `docker compose logs -f worker`
 - Failed jobs:
   - `php artisan queue:failed`
 - Retry failed job:

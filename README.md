@@ -26,113 +26,110 @@ Browser (admins, users) ─────────────▶ Web ──┘
 - **White-label**: your organization's name and logo, plus About, Features, FAQ, Support and Contact pages.
 - **Resilience**: if MySQL goes down, writes are queued in Redis and replayed when it comes back.
 
-## Deploy
+## Installation Steps
 
-You need Docker with Docker Compose on the server. Nothing else: PHP, Composer and MySQL run in containers.
+> [!IMPORTANT]
+> **Choose how to deploy.** Both ways use the same images from Docker Hub. Full steps: **[INSTALLATION.md](INSTALLATION.md)**.
+>
+> | | **Part A: VM** | **Part B: Container service** |
+> |---|---|---|
+> | Where | Any Linux server: EC2, Azure VM, VPS, bare metal | AWS ECS (Fargate/EC2), Kubernetes, Azure Container Apps, Cloud Run |
+> | MySQL and Redis | Included, as containers | Managed services (RDS, ElastiCache, and so on) |
+> | Effort | One command | Task definitions or manifests, load balancer, shared storage |
+> | Guide | [Part A](INSTALLATION.md#part-a-deploy-on-a-vm) | [Part B](INSTALLATION.md#part-b-deploy-on-a-container-service) |
 
-**1. Get the code**
+### Part A: Deploy on a VM
 
-```bash
-git clone https://github.com/niketchandra/atGlance-managementGUI.git
-cd atGlance-managementGUI
-```
-
-**2. Create the app settings file with a fixed key**
-
-```bash
-cp composer/.env.example composer/.env
-sed -i "s|^APP_KEY=.*|APP_KEY=base64:$(openssl rand -base64 32)|" composer/.env
-```
-
-The key encrypts stored secrets, such as S3, SMTP and SSO passwords and API keys. Back it up. If it changes, those secrets can no longer be read. On macOS, use `sed -i ''` instead of `sed -i`.
-
-**3. Start everything**
+Run one command on a Linux server (amd64 or arm64). Docker is installed for you if it is missing.
 
 ```bash
-docker compose up -d --build
+curl -fsSL https://raw.githubusercontent.com/niketchandra/atGlance-managementGUI/main/install.sh | sudo bash
 ```
 
-This starts the app on port 8000, MySQL, Redis, the queue worker and the scheduler. The first build takes a few minutes.
+1. The installer checks the server (root, OS, CPU, disk, memory, ports) and installs Docker and Docker Compose if needed.
+2. It creates `/opt/atglance` with random database passwords, pulls the images and starts the containers.
+3. Open the printed URL, `http://<server-ip>:8000`, and complete the setup wizard.
 
-**4. Run the setup wizard**
+Add the Kong API gateway or pin a version with `| sudo bash -s -- --with-gateway --version 1.2.1`. To upgrade, run the installer again. It keeps your data and passwords.
 
-Open `http://<server-ip>:8000` in a browser. The installer creates the database tables and asks for:
+### Part B: Deploy on ECS or another container service
 
-- organization name
-- your super admin account
-- the domain or IP address, and whether it uses HTTPS
+Run the images as separate services next to managed MySQL 8.0 and Redis 7:
 
-The installer ends on a summary page. Then log in at `http://<server-ip>:8000` with the super admin account you created.
+| Service | Image | Command | Count |
+|---|---|---|---|
+| app | `atglance/ce-atglance-app` | default (port 8000, health `GET /up`) | 1 during install, then scale |
+| worker | `atglance/ce-atglance-app` | `php artisan queue:work redis --tries=5 --backoff=30,60,120,300,600 --timeout=60` | 1 or more |
+| scheduler | `atglance/ce-atglance-app` | `php artisan schedule:work` | exactly 1 |
+| gateway (optional) | `atglance/ce-atglance-gateway` | default (port 8002) | 1 or more |
 
-**5. Connect a server**
+1. Create MySQL (database and user `atglance`), Redis and a shared file system (EFS, Azure Files, a `ReadWriteMany` volume).
+2. Mount the shared file system at `/app/storage` in the app, worker and scheduler. It holds the app key and stored files.
+3. Set `ATGLANCE_ROLE`, `DB_HOST`, `DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD`, `REDIS_HOST`, `CACHE_STORE=redis` and `QUEUE_CONNECTION=redis` on all three.
+4. Start the app first, behind a load balancer with HTTPS. When it is healthy, start the worker and the scheduler.
+5. Open `https://<your-domain>` and complete the setup wizard.
 
-1. In the console, open **Settings** and create an API key. It starts with `atgla-`.
-2. On the Linux server, install the `atglance` CLI.
-3. Point the CLI at `http://<server-ip>:8000/api` and give it the key.
+[INSTALLATION.md](INSTALLATION.md#ecs-on-fargate-step-by-step) has a full ECS Fargate walkthrough with task definitions, plus Kubernetes, Azure Container Apps and Cloud Run notes.
 
-The API is described in [API.md](API.md).
+### After installing
 
-### Optional: API gateway (Kong)
+- **Back up the app key.** It encrypts stored secrets (S3, SMTP and SSO passwords, API keys). On a VM: `docker exec ce-atglance-app grep APP_KEY /app/storage/.env`.
+- **Connect a server.** In the console, open **Settings** and create an API key (it starts with `atgla-`). Point the `atglance` CLI at `https://<your-domain>/api` with that key. The API is described in [API.md](API.md).
 
-To put the API behind Kong (rate limiting, one public port for the CLI):
+### Containers
 
-```bash
-docker compose -f docker-compose.yml -f docker-compose-kong.yml up -d --build
-```
+| Container | Image | What it does |
+|---|---|---|
+| `ce-atglance-app` | `atglance/ce-atglance-app` | Web console and API. Runs database migrations on start. |
+| `ce-atglance-worker` | `atglance/ce-atglance-app` | Queue worker. Replays writes that were queued while MySQL was down. |
+| `ce-atglance-scheduler` | `atglance/ce-atglance-app` | Laravel scheduler. Runs scheduled S3 backups, see [BACKUP.md](BACKUP.md). |
+| `ce-atglance-db` | `mysql:8.0` | Database (VM install) |
+| `ce-atglance-redis` | `redis:7-alpine` | Cache, queue and circuit-breaker state (VM install) |
+| `ce-atglance-gateway` | `atglance/ce-atglance-gateway` | Kong with the AtGlance routes built in. Optional. |
+| `ce-atglance-dbadmin` | `phpmyadmin:5.2` | Optional (compose profile `tools`), bound to 127.0.0.1:8080 |
 
-The CLI then uses `http://<server-ip>:8002` (Kong forwards `/<path>` to the app's `/api/<path>`). See [KONG.md](KONG.md).
+Only the two `atglance/ce-atglance-*` images are built by this project. The others are public images.
 
-### Ports
+### Before going to production
 
-| Port | Service |
-|---|---|
-| 8000 | Web console and API |
-| 8002 | Kong proxy (only with the Kong file) |
-| 8080 | phpMyAdmin (development only; do not expose it) |
-| 3306, 6379 | MySQL and Redis (do not expose them) |
-
-## Update to a new version
-
-```bash
-git pull
-docker compose up -d --build
-docker compose exec api php artisan migrate --force
-docker compose exec api php artisan view:clear
-```
-
-Keep `composer/.env` between updates. It holds the app key.
-
-## Before going to production
-
-The current setup is fine for a single server you control. These improvements are planned:
-
-| Issue | What |
-|---|---|
-| [#4](https://github.com/niketchandra/atGlance-managementGUI/issues/4) | Supply the app key from outside the image; MySQL user with a password (it runs as `root` with no password today) |
-| [#5](https://github.com/niketchandra/atGlance-managementGUI/issues/5) | Keep settings only in the database, not in `.env` |
-| [#8](https://github.com/niketchandra/atGlance-managementGUI/issues/8) | Production web server, HTTPS, and fewer containers |
-
-Until then:
-- Put a reverse proxy with HTTPS (nginx, Caddy, Traefik) in front of port 8000.
-- Keep ports 3306, 6379 and 8080 closed to the internet.
+- Put HTTPS in front of port 8000: a reverse proxy (Caddy, nginx, Traefik) on a VM, or the load balancer on a container service.
+- [#5](https://github.com/niketchandra/atGlance-managementGUI/issues/5): keep settings only in the database, not in `.env`.
+- [#8](https://github.com/niketchandra/atGlance-managementGUI/issues/8): production web server.
 
 ## Development
 
-The Laravel app lives in `composer/`.
+The Laravel app lives in `composer/`. The dev overlay builds the images from source, bind-mounts `composer/storage` and uses `composer/.env`:
+
+```bash
+cp .env.example .env                    # compose settings (ports, DB passwords)
+cp composer/.env.example composer/.env  # then set APP_KEY
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+```
+
+Add `--profile gateway` or `--profile tools` to start Kong or phpMyAdmin.
 
 Run the tests in a container (no local PHP needed):
 
 ```bash
-docker compose build api
-docker run --rm -e VIEW_COMPILED_PATH=/tmp/views -v "$(pwd)/composer:/app" -w /app atglance-managementgui-api php artisan test
+docker run --rm -e VIEW_COMPILED_PATH=/tmp/views -v "$(pwd)/composer:/app" -w /app --entrypoint php ce-atglance-app:dev artisan test
 ```
 
 `VIEW_COMPILED_PATH` keeps the test run from writing compiled views into the storage folder that the running app shares.
+
+### Publish images
+
+```bash
+docker buildx build --platform linux/amd64,linux/arm64 \
+  -t atglance/ce-atglance-app:<version> -t atglance/ce-atglance-app:latest --push .
+docker buildx build --platform linux/amd64,linux/arm64 \
+  -t atglance/ce-atglance-gateway:<version> -t atglance/ce-atglance-gateway:latest --push kong
+```
 
 ## Documentation
 
 | Topic | File |
 |---|---|
+| Installation (VM, ECS, Kubernetes) | [INSTALLATION.md](INSTALLATION.md) |
 | API endpoints | [API.md](API.md) |
 | Web console pages, white-label pages | [GUI_DOCUMENTATION.md](GUI_DOCUMENTATION.md) |
 | Scheduled backups and restore | [BACKUP.md](BACKUP.md) |

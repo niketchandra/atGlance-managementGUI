@@ -9,16 +9,16 @@ This project runs Kong in DB-less mode and loads kong/kong.yml at startup.
 
 ## kong/kong.yml structure
 - services:
-  - users-service: proxies to http://api:8000 (Laravel app in composer/)
+  - users-service: proxies to http://app:8000 (Laravel app in composer/)
     - routes:
       - /users (GET, POST, PUT, DELETE)
       - /products (GET, POST, PUT, DELETE)
     - plugin: rate-limiting (minute: 4)
-  - auth-service: proxies to http://api:8000
+  - auth-service: proxies to http://app:8000
     - routes:
       - /auth/login (POST)
       - /auth/logout (POST)
-  - files-service: proxies to http://api:8000
+  - files-service: proxies to http://app:8000
     - routes:
       - /files/upload (POST)
       - /files (GET)
@@ -31,7 +31,7 @@ Add to the users-service routes (or create a new products-service if you prefer)
 
 ```yaml
   - name: users-service
-    url: http://api:8000
+    url: http://app:8000
     routes:
       - name: users-route
         paths:
@@ -50,7 +50,7 @@ Add these routes so Kong forwards file traffic to the API:
 
 ```yaml
   - name: files-service
-    url: http://api:8000
+    url: http://app:8000
     routes:
       - name: files-upload-route
         paths:
@@ -77,21 +77,17 @@ Notes:
 2. Run migrations:
 
 ```bash
-docker compose exec api php artisan migrate --force
+docker compose exec app php artisan migrate --force
 ```
 
 3. Expose the new route in kong/kong.yml under an existing service or a new service.
-4. Restart Kong to load changes:
-
-```bash
-docker compose -f docker-compose.yml -f docker-compose-kong.yml restart kong
-```
+4. Rebuild the gateway image (see Reloading config), then push a new `atglance/ce-atglance-gateway` tag for deployed servers.
 
 ## Reloading config
-Kong does not auto-reload this file. After edits, restart the container:
+Kong config is baked into the `atglance/ce-atglance-gateway` image. Rebuild the gateway after edits:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose-kong.yml restart kong
+docker compose -f docker-compose.yml -f docker-compose.dev.yml --profile gateway up -d --build gateway
 ```
 
 ## Common issues
