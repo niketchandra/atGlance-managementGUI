@@ -40,22 +40,22 @@ This project implements production-ready resilience patterns:
 3. Queue worker processes jobs when database recovers
 4. Read operations return 503 with circuit state information
 
-See [IMPLEMENTATION.md](IMPLEMENTATION.md) for complete guide and testing instructions.
+See [resilience-implementation.md](resilience-implementation.md) for complete guide and testing instructions.
 
 ## Docs
-- Main README: [README.md](README.md)
-- **API Documentation**: [API.md](API.md) - Complete API endpoint reference (Auth, Users, Products, PAT Tokens, System Registration, System Deregistration, Configuration Files, File Operations)
-- Implementation Guide (Circuit Breaker + Queue): [IMPLEMENTATION.md](IMPLEMENTATION.md)
-- Laravel API details: [LARAVEL.md](LARAVEL.md)
-- Kong config and routing: [KONG.md](KONG.md)
-- Resilience patterns (Circuit Breakers & Queues): [resilience.md](resilience.md)
-- Circuit breaker details: [CircuitBreak.md](CircuitBreak.md)
-- Queue system details: [QUEUE.md](QUEUE.md)
-- Scenario notes: [scenerio.md](scenerio.md)
+- Main README: [README.md](../README.md)
+- **API Documentation**: [api-reference.md](api-reference.md) - Complete API endpoint reference (Auth, Users, Products, PAT Tokens, System Registration, System Deregistration, Configuration Files, File Operations)
+- Implementation Guide (Circuit Breaker + Queue): [resilience-implementation.md](resilience-implementation.md)
+- Laravel API details: [backend-guide.md](backend-guide.md)
+- Kong config and routing: [api-gateway.md](api-gateway.md)
+- Resilience patterns (Circuit Breakers & Queues): [resilience-patterns.md](resilience-patterns.md)
+- Circuit breaker details: [circuit-breaker.md](circuit-breaker.md)
+- Queue system details: [queue.md](queue.md)
+- Scenario notes: [tested-scenarios.md](tested-scenarios.md)
 - Redis branch: https://github.com/niketchandra/api-gateway-testing/tree/Redis-Integration
 - Redis docs (branch): https://github.com/niketchandra/api-gateway-testing/blob/Redis-Integration/redis.md
-- Composer app README: [composer/README.md](composer/README.md)
-- Copilot instructions: [.github/copilot-instructions.md](.github/copilot-instructions.md)
+- Composer app README: [composer/README.md](../composer/README.md)
+- Copilot instructions: [.github/copilot-instructions.md](../.github/copilot-instructions.md)
 
 ## End-to-end workflow (Laravel + Kong + MySQL + Redis + Circuit Breaker)
 High-level flow for a typical request:
@@ -149,7 +149,7 @@ Kong runs in DB-less mode and loads kong/kong.yml at startup. The config defines
 - An auth service with /auth/login and /auth/logout.
 - A rate-limiting plugin on the users service.
 
-Details: [KONG.md](KONG.md)
+Details: [api-gateway.md](api-gateway.md)
 
 ## CRUD commands (via Kong)
 ## File Storage Location

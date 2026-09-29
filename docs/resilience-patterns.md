@@ -975,6 +975,5 @@ graph TD
 7. Document runbooks for common issues
 
 For more information, see:
-- [redis.md](redis.md) - Redis caching integration
-- [KONG.md](KONG.md) - API Gateway configuration
-- [README.md](README.md) - Project overview
+- [api-gateway.md](api-gateway.md) - API Gateway configuration
+- [README.md](../README.md) - Project overview

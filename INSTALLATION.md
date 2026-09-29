@@ -396,7 +396,7 @@ On a container service, read it from the shared file system or with `aws ecs exe
 
 1. In the console, open **Settings** and create an API key. It starts with `atgla-`.
 2. On the Linux server, install the `atglance` CLI.
-3. Point the CLI at `https://<your-domain>/api` (or `http://<server-ip>:8000/api`) and give it the key. With the gateway, use the gateway URL instead. Kong forwards `/<path>` to the app's `/api/<path>`, see [KONG.md](KONG.md).
+3. Point the CLI at `https://<your-domain>/api` (or `http://<server-ip>:8000/api`) and give it the key. With the gateway, use the gateway URL instead. Kong forwards `/<path>` to the app's `/api/<path>`, see [api-gateway.md](docs/api-gateway.md).
 
 ## Troubleshooting
 
