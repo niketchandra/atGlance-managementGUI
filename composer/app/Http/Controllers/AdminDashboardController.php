@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Support\ActivityRecorder;
+use App\Support\License;
 use App\Models\AdminSetting;
 use App\Models\ConfigurationFile;
 use App\Models\ContactSubmission;
@@ -190,6 +191,10 @@ class AdminDashboardController extends Controller
 
     public function createUser(Request $request): RedirectResponse
     {
+        if (!License::isActive()) {
+            return redirect()->back()->withInput()->withErrors(['licence' => License::REQUIRED_MESSAGE]);
+        }
+
         $actor = Auth::user();
         $validated = $request->validate([
             'username' => ['required', 'string', 'max:255'],

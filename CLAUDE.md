@@ -25,7 +25,8 @@ read them, don't duplicate them here: `API.md` (full endpoint reference),
 `GUI_DOCUMENTATION.md` (web UI layout/pages), `BACKUP.md` (scheduled S3
 backups and the scheduler container), `NOTIFICATIONS.md` (notification
 channels, workspace groups and events), `AI_CONNECT.md` (AI provider
-connection and per-provider setup), `scenerio.md` (tested failure
+connection and per-provider setup), `LICENCE.md` (licence verification and
+what an unlicensed instance blocks), `scenerio.md` (tested failure
 scenarios), `LARAVEL.md` / `IMPLEMENTATION.md` (original API layout notes).
 
 ## Architecture

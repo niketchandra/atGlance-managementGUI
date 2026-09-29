@@ -908,6 +908,8 @@
                     emptyMsg.parentElement.remove();
                 }
                 apiKeysList.insertAdjacentHTML('afterbegin', newKeyHtml);
+            } else if (data.message) {
+                alert(data.message);
             }
         })
         .catch(error => console.error('Error:', error));

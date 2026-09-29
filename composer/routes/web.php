@@ -7,6 +7,7 @@ use App\Http\Controllers\AdminDashboardController;
 use App\Http\Controllers\AiConnectController;
 use App\Http\Controllers\BackupRestoreController;
 use App\Http\Controllers\InstallerController;
+use App\Http\Controllers\LicenseController;
 use App\Http\Controllers\NotificationSettingsController;
 use App\Http\Controllers\NotificationsController;
 use App\Http\Controllers\PublicPageController;
@@ -15,6 +16,9 @@ use App\Support\SiteProfile;
 
 Route::get('/install', [InstallerController::class, 'show'])->name('install.show');
 Route::post('/install', [InstallerController::class, 'install'])->name('install.run');
+Route::post('/install/license/verify', [InstallerController::class, 'verifyLicense'])
+    ->middleware('throttle:10,1')
+    ->name('install.license.verify');
 Route::get('/install/info', [InstallerController::class, 'info'])->name('install.info');
 
 // Root route - installer first, then login/registration app page
@@ -104,6 +108,7 @@ Route::middleware('app.installed')->group(function () {
             Route::post('/settings/restore', [BackupRestoreController::class, 'restore'])->name('admin.settings.restore');
             Route::post('/settings/notifications', [NotificationSettingsController::class, 'update'])->name('admin.settings.notifications');
             Route::post('/settings/ai', [AiConnectController::class, 'update'])->name('admin.settings.ai');
+            Route::post('/settings/licence', [LicenseController::class, 'update'])->name('admin.settings.licence');
             Route::post('/settings/ai/test', [AiConnectController::class, 'test'])->name('admin.settings.ai.test');
             Route::post('/settings/ai/models', [AiConnectController::class, 'models'])->name('admin.settings.ai.models');
             Route::get('/notifications', [NotificationsController::class, 'index'])->name('admin.notifications');

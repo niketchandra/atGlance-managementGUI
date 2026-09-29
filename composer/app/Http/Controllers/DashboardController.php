@@ -6,6 +6,7 @@ use App\Models\SystemRegister;
 use App\Models\Workspace;
 use App\Support\AccountAlerts;
 use App\Support\ActivityRecorder;
+use App\Support\License;
 use App\Support\UserPreferences;
 use App\Support\WebSessions;
 use App\Support\S3Settings;
@@ -764,6 +765,10 @@ class DashboardController extends Controller
      */
     public function createApiKey(Request $request)
     {
+        if (!License::isActive()) {
+            return response()->json(['success' => false, 'message' => License::REQUIRED_MESSAGE], 403);
+        }
+
         $validated = $request->validate([
             'name' => 'required|string|max:100',
             'expiration_date' => 'nullable|date|after:today',

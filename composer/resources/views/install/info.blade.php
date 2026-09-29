@@ -75,7 +75,23 @@
                     <p class="font-semibold text-slate-800">Super Admin Password</p>
                     <p class="mt-1 text-slate-700">{{ $installation['superadmin_password'] ?? 'Atglance@123' }}</p>
                 </div>
+                <div class="rounded-xl border border-cccccc bg-white p-4">
+                    <p class="font-semibold text-slate-800">Licence</p>
+                    @if($installation['license_active'] ?? false)
+                        <p class="mt-1 text-slate-700">{{ $installation['license_name'] ?: 'Verified' }}@if(!empty($installation['license_plan'])) &middot; {{ $installation['license_plan'] }}@endif</p>
+                    @else
+                        <p class="mt-1 text-slate-700">Not added</p>
+                    @endif
+                </div>
             </div>
+
+            @unless($installation['license_active'] ?? false)
+                <div class="mt-6 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 sm:p-5">
+                    <p class="font-semibold">Licence required</p>
+                    <p class="mt-1">No licence was added. Until you add one, nobody can create or register users and no API keys can be created.</p>
+                    <p class="mt-1">Log in with the super admin account, open <span class="font-medium">Admin Settings &rsaquo; Licence</span>, paste the licence key from atglance.live and click <span class="font-medium">Verify &amp; Save</span>.</p>
+                </div>
+            @endunless
 
             <div class="mt-6 rounded-xl border border-cccccc bg-f5f5f5 p-4 text-sm text-slate-700 sm:p-5">
                 <p class="font-semibold text-black">Next steps for SSO integration</p>

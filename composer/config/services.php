@@ -35,4 +35,10 @@ return [
         ],
     ],
 
+    'atglance_license' => [
+        // Licence verification endpoint on atglance.live, used by the installer and Admin Settings > Licence.
+        'verify_url' => env('ATGLANCE_LICENSE_VERIFY_URL', 'https://atglance.live/api/licenses/verify'),
+        'portal_url' => env('ATGLANCE_LICENSE_PORTAL_URL', 'https://atglance.live'),
+    ],
+
 ];

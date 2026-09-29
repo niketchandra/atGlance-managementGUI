@@ -41,6 +41,7 @@
         <button type="button" class="settings-tab-btn" data-tab="crons" style="padding:10px 14px; border-radius:8px; border:1px solid #b3b3b3; background:{{ $activeTab === 'crons' ? '#7a7a7a' : '#ffffff' }}; color:{{ $activeTab === 'crons' ? '#ffffff' : '#111827' }}; cursor:pointer; font-weight:600;">Crons</button>
         <button type="button" class="settings-tab-btn" data-tab="ai-connect" style="padding:10px 14px; border-radius:8px; border:1px solid #b3b3b3; background:{{ $activeTab === 'ai-connect' ? '#7a7a7a' : '#ffffff' }}; color:{{ $activeTab === 'ai-connect' ? '#ffffff' : '#111827' }}; cursor:pointer; font-weight:600;">AI Connect</button>
         <button type="button" class="settings-tab-btn" data-tab="notification" style="padding:10px 14px; border-radius:8px; border:1px solid #b3b3b3; background:{{ $activeTab === 'notification' ? '#7a7a7a' : '#ffffff' }}; color:{{ $activeTab === 'notification' ? '#ffffff' : '#111827' }}; cursor:pointer; font-weight:600;">Notification</button>
+        <button type="button" class="settings-tab-btn" data-tab="licence" style="padding:10px 14px; border-radius:8px; border:1px solid #b3b3b3; background:{{ $activeTab === 'licence' ? '#7a7a7a' : '#ffffff' }}; color:{{ $activeTab === 'licence' ? '#ffffff' : '#111827' }}; cursor:pointer; font-weight:600;">Licence</button>
     </div>
 
     <div id="tab-info" class="settings-tab-content" style="display:{{ $activeTab === 'info' ? 'block' : 'none' }}; background:white; border:1px solid #b3b3b3; border-radius:10px; padding:22px; box-shadow:0 2px 10px rgba(0,0,0,0.06);">
@@ -600,6 +601,67 @@
         @else
             <p style="color:#6b7280;">No cron schedules configured yet.</p>
         @endif
+    </div>
+
+    <div id="tab-licence" class="settings-tab-content" style="display:{{ $activeTab === 'licence' ? 'block' : 'none' }}; background:white; border:1px solid #b3b3b3; border-radius:10px; padding:22px; box-shadow:0 2px 10px rgba(0,0,0,0.06);">
+        <h2 style="font-size:18px; margin-bottom:8px;">Licence</h2>
+        @php
+            $licence = \App\Support\License::summary();
+        @endphp
+
+        @if($licence['active'])
+            <div style="margin-bottom:14px; padding:10px; border-radius:8px; background:#dcfce7; color:#166534; font-size:13px; font-weight:600;">Licence active</div>
+            <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:12px; margin-bottom:16px; font-size:14px;">
+                <div><div style="font-size:12px; color:#6b7280;">Licence name</div><div>{{ $licence['name'] !== '' ? $licence['name'] : '-' }}</div></div>
+                <div><div style="font-size:12px; color:#6b7280;">Plan</div><div>{{ $licence['plan'] !== '' ? $licence['plan'] : '-' }}</div></div>
+                <div><div style="font-size:12px; color:#6b7280;">Expires</div><div>{{ $licence['expires_at'] !== '' ? $licence['expires_at'] : '-' }}</div></div>
+                <div><div style="font-size:12px; color:#6b7280;">Licence key</div><div style="font-family:monospace;">{{ $licence['masked_key'] }}</div></div>
+                <div><div style="font-size:12px; color:#6b7280;">Last verified</div><div>{{ $licence['verified_at'] !== '' ? $licence['verified_at'] : '-' }}</div></div>
+                <div><div style="font-size:12px; color:#6b7280;">Licence owner</div><div>{{ $licence['details']['user.email'] ?? '-' }}</div></div>
+            </div>
+            @php
+                $licenceExtra = collect($licence['details'])->except(['license.name', 'plan', 'license.expires_at']);
+            @endphp
+            @if($licenceExtra->isNotEmpty())
+                <details style="margin-bottom:16px; font-size:13px;">
+                    <summary style="cursor:pointer; color:#374151;">All licence details</summary>
+                    <table style="margin-top:8px; border-collapse:collapse;">
+                        @foreach($licenceExtra as $field => $value)
+                            <tr>
+                                <td style="padding:4px 12px 4px 0; color:#6b7280;">{{ $field }}</td>
+                                <td style="padding:4px 0;">{{ is_bool($value) ? ($value ? 'true' : 'false') : $value }}</td>
+                            </tr>
+                        @endforeach
+                    </table>
+                </details>
+            @endif
+        @else
+            <div style="margin-bottom:14px; padding:12px; border-radius:8px; background:#fef3c7; border:1px solid #fcd34d; color:#92400e; font-size:13px;">
+                <strong>No active licence.</strong> Until a licence is added, nobody can create or register users and no API keys can be created.
+            </div>
+        @endif
+
+        <div style="border:1px solid #e5e7eb; border-radius:8px; padding:12px; background:#f9fafb; margin-bottom:14px;">
+            <strong style="font-size:13px;">Get a licence</strong>
+            <ol style="margin:6px 0 0 18px; padding:0; font-size:13px; color:#374151; line-height:1.6;">
+                <li>Log in to <a href="{{ \App\Support\License::portalUrl() }}" target="_blank" rel="noopener" style="color:#1d4ed8; text-decoration:underline;">atglance.live</a>.</li>
+                <li>Generate a licence.</li>
+                <li>Copy the licence key and paste it below.</li>
+            </ol>
+        </div>
+
+        <p style="font-size:12px; color:#6b7280; margin-bottom:10px;">
+            A licence works on one console only. This console's ID is <span style="font-family:monospace;">{{ \App\Support\License::instanceId() }}</span>.
+        </p>
+
+        <form method="POST" action="{{ route('admin.settings.licence') }}">
+            @csrf
+            <label for="license-key" style="display:block; font-size:12px; color:#4b5563; margin-bottom:4px;">{{ $licence['active'] ? 'Replace licence key' : 'Licence key' }}</label>
+            <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                <input id="license-key" type="text" name="license_key" required autocomplete="off" spellcheck="false" placeholder="Paste your licence key" style="flex:1; min-width:240px; border:1px solid #d1d5db; border-radius:8px; padding:8px; font-family:monospace;">
+                <button type="submit" style="background:#000000; color:white; border:none; border-radius:8px; padding:10px 14px; font-weight:600; cursor:pointer;">Verify &amp; Save</button>
+            </div>
+        </form>
     </div>
 
     <div id="tab-ai-connect" class="settings-tab-content" style="display:{{ $activeTab === 'ai-connect' ? 'block' : 'none' }}; background:white; border:1px solid #b3b3b3; border-radius:10px; padding:22px; box-shadow:0 2px 10px rgba(0,0,0,0.06);">

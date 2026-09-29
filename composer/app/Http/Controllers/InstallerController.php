@@ -5,7 +5,10 @@ namespace App\Http\Controllers;
 use App\Models\AdminSetting;
 use App\Models\Organization;
 use App\Models\User;
+use App\Services\LicenseClient;
 use App\Support\InstallationState;
+use App\Support\License;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
@@ -33,10 +36,31 @@ class InstallerController extends Controller
         return view('install.index', [
             'defaultIpAddress' => $defaultIp,
             'defaultDomain' => $requestHost,
+            'licensePortalUrl' => License::portalUrl(),
         ]);
     }
 
-    public function install(Request $request): RedirectResponse
+    /**
+     * "Verify" button on the installer: checks the key before the form is submitted.
+     */
+    public function verifyLicense(Request $request, LicenseClient $client): JsonResponse
+    {
+        if (InstallationState::isInstalled()) {
+            return response()->json(['ok' => false, 'message' => 'Application is already installed.'], 403);
+        }
+
+        $result = $client->verify((string) $request->input('license_key', ''));
+
+        return response()->json([
+            'ok' => $result['ok'],
+            'message' => $result['message'],
+            'name' => $result['details']['name'] ?? null,
+            'plan' => $result['details']['plan'] ?? null,
+            'expires_at' => $result['details']['expires_at'] ?? null,
+        ]);
+    }
+
+    public function install(Request $request, LicenseClient $licenseClient): RedirectResponse
     {
         if (InstallationState::isInstalled()) {
             return redirect()->route('home');
@@ -113,7 +137,23 @@ class InstallerController extends Controller
             'use_https' => ['required', 'in:0,1'],
             'superadmin_email' => ['required', 'email', 'max:255'],
             'superadmin_password' => ['required', 'string', 'min:8', 'confirmed'],
+            'license_later' => ['nullable', 'in:0,1'],
+            'license_key' => ['required_unless:license_later,1', 'nullable', 'string', 'max:512'],
+        ], [
+            'license_key.required_unless' => 'Enter your licence key, or tick "I\'ll add later".',
         ]);
+
+        // The key is verified again here; the browser-side check is only a convenience.
+        $licenseKey = $request->input('license_later') === '1' ? '' : trim((string) ($validated['license_key'] ?? ''));
+        $licenseResult = null;
+        if ($licenseKey !== '') {
+            $licenseResult = $licenseClient->verify($licenseKey);
+            if (!$licenseResult['ok']) {
+                return back()
+                    ->withInput($request->except(['superadmin_password', 'superadmin_password_confirmation']))
+                    ->withErrors(['license_key' => 'Licence verification failed: ' . $licenseResult['message']]);
+            }
+        }
 
         $organizationName = trim((string) $validated['organization_name']);
         $appIpAddress = strtolower(trim((string) $validated['app_ip']));
@@ -170,6 +210,10 @@ class InstallerController extends Controller
                 AdminSetting::putValue('site', 'site_domain_alias', $appDomainAlias);
                 AdminSetting::putValue('site', 'site_domain_alias_ip', $appIpAddress);
                 AdminSetting::putValue('site', 'site_https_enabled', $httpsEnabled);
+
+                if ($licenseResult !== null) {
+                    License::store($licenseKey, $licenseResult);
+                }
             }
 
             Artisan::call('optimize:clear');
@@ -190,6 +234,9 @@ class InstallerController extends Controller
             'superadmin_email' => $superAdminEmail,
             'default_superadmin_email' => 'superadmin@admin.com',
             'superadmin_password' => $superAdminPassword,
+            'license_active' => $licenseResult !== null,
+            'license_name' => $licenseResult['details']['name'] ?? null,
+            'license_plan' => $licenseResult['details']['plan'] ?? null,
         ]);
 
         return redirect()->route('install.info');
