@@ -7,12 +7,12 @@ The queue persists write operations when the database is unavailable and retries
 - Redis (queue backend)
 - Queue worker service (runs `php artisan queue:work`)
 - Job classes:
-  - [composer/app/Jobs/CreateUserJob.php](composer/app/Jobs/CreateUserJob.php)
-  - [composer/app/Jobs/UpdateUserJob.php](composer/app/Jobs/UpdateUserJob.php)
-  - [composer/app/Jobs/DeleteUserJob.php](composer/app/Jobs/DeleteUserJob.php)
-  - [composer/app/Jobs/CreateProductJob.php](composer/app/Jobs/CreateProductJob.php)
-  - [composer/app/Jobs/UpdateProductJob.php](composer/app/Jobs/UpdateProductJob.php)
-  - [composer/app/Jobs/DeleteProductJob.php](composer/app/Jobs/DeleteProductJob.php)
+  - [composer/app/Jobs/CreateUserJob.php](../composer/app/Jobs/CreateUserJob.php)
+  - [composer/app/Jobs/UpdateUserJob.php](../composer/app/Jobs/UpdateUserJob.php)
+  - [composer/app/Jobs/DeleteUserJob.php](../composer/app/Jobs/DeleteUserJob.php)
+  - [composer/app/Jobs/CreateProductJob.php](../composer/app/Jobs/CreateProductJob.php)
+  - [composer/app/Jobs/UpdateProductJob.php](../composer/app/Jobs/UpdateProductJob.php)
+  - [composer/app/Jobs/DeleteProductJob.php](../composer/app/Jobs/DeleteProductJob.php)
 
 ## Worker command (from docker-compose)
 The worker runs with retries and backoff:
@@ -49,7 +49,7 @@ In outages, jobs are usually delayed, so `queue:monitor` might show 0 pending wh
 - Check queue health:
   - `php artisan queue:monitor redis`
 - Watch worker logs:
-  - `docker compose logs -f queue-worker`
+  - `docker compose logs -f worker`
 - Failed jobs:
   - `php artisan queue:failed`
 - Retry failed job:

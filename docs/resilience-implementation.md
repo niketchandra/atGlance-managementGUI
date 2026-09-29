@@ -46,7 +46,7 @@ flowchart TD
 
 ### 1. CircuitBreaker Service
 
-Located at [`composer/app/Services/CircuitBreaker.php`](composer/app/Services/CircuitBreaker.php)
+Located at [`composer/app/Services/CircuitBreaker.php`](../composer/app/Services/CircuitBreaker.php)
 
 **Configuration:**
 - `failureThreshold`: 5 failures before opening circuit
@@ -61,7 +61,7 @@ Located at [`composer/app/Services/CircuitBreaker.php`](composer/app/Services/Ci
 
 ### 2. DatabaseCircuitBreaker Service
 
-Located at [`composer/app/Services/DatabaseCircuitBreaker.php`](composer/app/Services/DatabaseCircuitBreaker.php)
+Located at [`composer/app/Services/DatabaseCircuitBreaker.php`](../composer/app/Services/DatabaseCircuitBreaker.php)
 
 Wraps the CircuitBreaker specifically for database operations with:
 - Connection testing before queries
@@ -71,7 +71,7 @@ Wraps the CircuitBreaker specifically for database operations with:
 
 ### 3. Queue Jobs
 
-Located in [`composer/app/Jobs/`](composer/app/Jobs/)
+Located in [`composer/app/Jobs/`](../composer/app/Jobs/)
 
 **User Operations:**
 - `CreateUserJob` - Create new user
@@ -90,8 +90,8 @@ Located in [`composer/app/Jobs/`](composer/app/Jobs/)
 
 ### 4. Updated Controllers
 
-**UserController** ([`composer/app/Http/Controllers/Api/UserController.php`](composer/app/Http/Controllers/Api/UserController.php))
-**ProductController** ([`composer/app/Http/Controllers/Api/ProductController.php`](composer/app/Http/Controllers/Api/ProductController.php))
+**UserController** ([`composer/app/Http/Controllers/Api/UserController.php`](../composer/app/Http/Controllers/Api/UserController.php))
+**ProductController** ([`composer/app/Http/Controllers/Api/ProductController.php`](../composer/app/Http/Controllers/Api/ProductController.php))
 
 Both controllers now:
 1. Inject `DatabaseCircuitBreaker` service
@@ -497,7 +497,6 @@ docker compose logs api | grep -E "(Circuit breaker|Job|Queue)"
 
 ## Related Documentation
 
-- [resilience.md](../resilience.md) - General resilience patterns and theory
-- [redis.md](../redis.md) - Redis caching integration
+- [resilience-patterns.md](resilience-patterns.md) - General resilience patterns and theory
 - [README.md](../README.md) - Project overview
-- [KONG.md](../KONG.md) - API Gateway configuration
+- [api-gateway.md](api-gateway.md) - API Gateway configuration
