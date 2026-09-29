@@ -86,7 +86,6 @@ Run the images as separate services next to managed MySQL 8.0 and Redis 7:
 | `ce-atglance-db` | `mysql:8.0` | Database (VM install) |
 | `ce-atglance-redis` | `redis:7-alpine` | Cache, queue and circuit-breaker state (VM install) |
 | `ce-atglance-gateway` | `atglance/ce-atglance-gateway` | Kong with the AtGlance routes built in. Optional. |
-| `ce-atglance-dbadmin` | `phpmyadmin:5.2` | Optional (compose profile `tools`), bound to 127.0.0.1:8080 |
 
 Only the two `atglance/ce-atglance-*` images are built by this project. The others are public images.
 
@@ -106,7 +105,13 @@ cp composer/.env.example composer/.env  # then set APP_KEY
 docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
 ```
 
-Add `--profile gateway` or `--profile tools` to start Kong or phpMyAdmin.
+This starts the app, worker, scheduler, MySQL and Redis. The Kong API gateway (`ce-atglance-gateway`, port 8002) is optional and does not start by default. To start it as well, add `--profile gateway` to the command:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml --profile gateway up -d --build
+```
+
+Use the same flag with other commands for the gateway, for example `docker compose --profile gateway down`.
 
 Run the tests in a container (no local PHP needed):
 

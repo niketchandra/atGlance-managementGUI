@@ -2,7 +2,6 @@
 #
 # Production / install:   docker compose up -d
 # With the Kong gateway:   docker compose --profile gateway up -d
-# With phpMyAdmin:         docker compose --profile tools up -d
 # Local development:       see docker-compose.dev.yml (builds from source)
 #
 # Settings come from .env next to this file (see .env.example). install.sh
@@ -117,19 +116,20 @@ services:
       app:
         condition: service_healthy
 
-  dbadmin:
-    image: phpmyadmin:5.2
-    container_name: ce-atglance-dbadmin
-    profiles: ["tools"]
-    restart: unless-stopped
-    environment:
-      PMA_HOST: db
-      PMA_PORT: 3306
-    ports:
-      - "127.0.0.1:${DBADMIN_PORT:-8080}:80"
-    depends_on:
-      db:
-        condition: service_healthy
+  # Optional database admin UI. Uncomment to use: docker compose --profile tools up -d
+  # dbadmin:
+  #   image: phpmyadmin:5.2
+  #   container_name: ce-atglance-dbadmin
+  #   profiles: ["tools"]
+  #   restart: unless-stopped
+  #   environment:
+  #     PMA_HOST: db
+  #     PMA_PORT: 3306
+  #   ports:
+  #     - "127.0.0.1:${DBADMIN_PORT:-8080}:80"
+  #   depends_on:
+  #     db:
+  #       condition: service_healthy
 
 volumes:
   app-storage:

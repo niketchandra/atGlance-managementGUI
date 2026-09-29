@@ -127,21 +127,18 @@ docker compose -f docker-compose.yml -f docker-compose-kong.yml restart kong
 ```
 
 2. Services:
-- **api**: Laravel application
-- **mysql**: MySQL 8.0 database
-- **redis**: Redis 7 for caching and queue
-- **queue-worker**: Laravel queue worker for background jobs
-- **kong**: Kong API Gateway 3.6
-- **phpmyadmin**: Database admin interface
+- **ce-atglance-app**: Laravel application (web console and API)
+- **ce-atglance-worker**: Laravel queue worker for background jobs
+- **ce-atglance-scheduler**: Laravel scheduler
+- **ce-atglance-db**: MySQL 8.0 database
+- **ce-atglance-redis**: Redis 7 for caching and queue
+- **ce-atglance-gateway**: Kong API Gateway 3.6 (optional)
 
 3. Endpoints:
 - API (direct): http://localhost:8000
-- Kong proxy: http://localhost:8002
-- Kong admin: http://localhost:8001
-- phpMyAdmin: http://localhost:8080 (user root, password empty)
-- Redis: localhost:6379
+- Kong proxy: http://localhost:8002 (with the gateway)
 
-The Laravel application lives in composer/ and is served by the api container.
+The Laravel application lives in composer/ and is served by the ce-atglance-app container.
 
 ## Kong API description
 Kong runs in DB-less mode and loads kong/kong.yml at startup. The config defines:
