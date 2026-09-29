@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\AdminSetting;
 use App\Models\Organization;
 use App\Models\User;
+use App\Rules\IpAddressWithOptionalPort;
 use App\Services\LicenseClient;
 use App\Support\InstallationState;
 use App\Support\License;
@@ -68,47 +69,7 @@ class InstallerController extends Controller
 
         $validated = $request->validate([
             'organization_name' => ['required', 'string', 'max:255'],
-            'app_ip' => [
-                'required',
-                'string',
-                'max:255',
-                function (string $attribute, mixed $value, \Closure $fail): void {
-                    $input = trim((string) $value);
-                    if (preg_match('/^https?:\/\//i', $input)) {
-                        $fail('Enter domain or IP only, without http:// or https://.');
-                        return;
-                    }
-
-                    if (str_contains($input, '/')) {
-                        $fail('IP address cannot include path segments.');
-                        return;
-                    }
-
-                    $ipPart = $input;
-                    $portPart = null;
-
-                    // Bare IP (incl. IPv6) takes precedence; otherwise split the trailing :port.
-                    if (!filter_var($input, FILTER_VALIDATE_IP)
-                        && preg_match('/^(.+):(\d{1,5})$/', $input, $matches)) {
-                        $ipPart = $matches[1];
-                        $portPart = $matches[2];
-                    }
-
-                    $ipPart = trim($ipPart, '[]');
-
-                    if (!filter_var($ipPart, FILTER_VALIDATE_IP)) {
-                        $fail('Enter a valid IP address.');
-                        return;
-                    }
-
-                    if ($portPart !== null) {
-                        $port = (int) $portPart;
-                        if ($port < 1 || $port > 65535) {
-                            $fail('Port must be between 1 and 65535.');
-                        }
-                    }
-                },
-            ],
+            'app_ip' => ['required', 'string', 'max:255', new IpAddressWithOptionalPort()],
             'app_domain' => [
                 'nullable',
                 'string',

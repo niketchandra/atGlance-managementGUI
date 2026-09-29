@@ -227,4 +227,40 @@ class LicenseTest extends TestCase
 
         $this->assertSame(0, User::query()->where('email', 'someone@example.test')->count());
     }
+
+    public function test_sidebar_licence_card_shows_upgrade_to_admins_when_active(): void
+    {
+        License::store(self::KEY, ['status' => LicenseClient::VERIFIED_STATUS, 'details' => ['name' => 'Ops licence', 'plan' => 'free']]);
+
+        $this->actingAsRole(100);
+        $this->get(route('profile'))
+            ->assertOk()
+            ->assertSee('ag-licence-card', false)
+            ->assertSee('Ops licence')
+            ->assertSee('Free')
+            ->assertSee('Upgrade')
+            ->assertSee(License::portalUrl(), false);
+    }
+
+    public function test_sidebar_licence_card_asks_admins_to_add_a_missing_licence(): void
+    {
+        $this->actingAsRole(101);
+        $this->get(route('profile'))
+            ->assertOk()
+            ->assertSee('Not licensed')
+            ->assertSee('Add licence')
+            ->assertSee(route('admin.settings', ['tab' => 'licence']), false);
+    }
+
+    public function test_regular_users_see_licence_status_without_admin_buttons(): void
+    {
+        License::store(self::KEY, ['status' => LicenseClient::VERIFIED_STATUS, 'details' => ['plan' => 'free']]);
+
+        $this->actingAsRole(102);
+        $this->get(route('profile'))
+            ->assertOk()
+            ->assertSee('ag-licence-card', false)
+            ->assertDontSee('Upgrade')
+            ->assertDontSee('Add licence');
+    }
 }

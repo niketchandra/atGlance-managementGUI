@@ -6,6 +6,7 @@
 # Options (pass after "bash -s --", or as environment variables):
 #   --dir DIR          install directory              (ATGLANCE_DIR, default /opt/atglance)
 #   --version TAG      image tag                      (ATGLANCE_VERSION, default latest)
+#   --registry PREFIX  image registry/namespace       (ATGLANCE_REGISTRY, default atglance = Docker Hub)
 #   --port PORT        web console port               (APP_PORT, default 8000)
 #
 # The Kong API gateway always runs on port 8002 (GATEWAY_PORT). The atglance
@@ -18,6 +19,7 @@ set -euo pipefail
 
 ATGLANCE_DIR="${ATGLANCE_DIR:-/opt/atglance}"
 ATGLANCE_VERSION="${ATGLANCE_VERSION:-latest}"
+ATGLANCE_REGISTRY="${ATGLANCE_REGISTRY:-atglance}"
 ATGLANCE_REF="${ATGLANCE_REF:-main}"
 APP_PORT="${APP_PORT:-8000}"
 GATEWAY_PORT="${GATEWAY_PORT:-8002}"
@@ -32,6 +34,7 @@ while [ $# -gt 0 ]; do
     case "$1" in
         --dir) ATGLANCE_DIR="$2"; shift 2 ;;
         --version) ATGLANCE_VERSION="$2"; shift 2 ;;
+        --registry) ATGLANCE_REGISTRY="$2"; shift 2 ;;
         --port) APP_PORT="$2"; shift 2 ;;
         --with-gateway) shift ;;  # accepted for older docs; the gateway always runs
         -h|--help) sed -n '2,14p' "$0" 2>/dev/null || true; exit 0 ;;
@@ -160,6 +163,7 @@ if [ -f .env ]; then
         if grep -q "^$1=" .env; then sed -i "s|^$1=.*|$1=$2|" .env; else echo "$1=$2" >> .env; fi
     }
     set_env ATGLANCE_VERSION "$ATGLANCE_VERSION"
+    set_env ATGLANCE_REGISTRY "$ATGLANCE_REGISTRY"
     set_env APP_PORT "$APP_PORT"
     set_env GATEWAY_PORT "$GATEWAY_PORT"
 else
@@ -167,6 +171,7 @@ else
     cat > .env <<EOF
 # AtGlance CE settings, created by install.sh on $(date -u +%Y-%m-%dT%H:%M:%SZ).
 ATGLANCE_VERSION=$ATGLANCE_VERSION
+ATGLANCE_REGISTRY=$ATGLANCE_REGISTRY
 APP_PORT=$APP_PORT
 GATEWAY_PORT=$GATEWAY_PORT
 DB_PASSWORD=$(random_secret)

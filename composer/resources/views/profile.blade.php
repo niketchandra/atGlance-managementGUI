@@ -20,35 +20,35 @@
             text-align: center;
             font-size: 24px;
             font-weight: 700;
-            color: #1f2937;
-            border: 2px solid #d1d5db;
-            border-radius: 10px;
-            background: #ffffff;
+            color: var(--ag-text);
+            border: 2px solid var(--ag-line);
+            border-radius: 16px;
+            background: var(--ag-card);
             transition: all 0.2s ease;
         }
 
         .pin-box:focus {
             outline: none;
-            border-color: #000000;
-            box-shadow: 0 0 0 4px rgba(0, 0, 0, 0.08);
+            border-color: var(--ag-mint);
+            box-shadow: 0 0 0 4px rgba(113, 247, 212, 0.3);
             transform: translateY(-1px);
         }
 
         .pin-help-text {
             margin-top: 6px;
-            color: #6b7280;
+            color: var(--ag-muted);
             font-size: 12px;
         }
     </style>
 
     @if(session('complete_profile_required'))
-        <div style="margin-bottom: 20px; padding: 14px 16px; border-radius: 8px; background: #fff3cd; border: 1px solid #ffe69c; color: #664d03; font-weight: 600;">
+        <div class="ag-card" style="margin-bottom: 20px; padding: 14px 16px; color: #664d03; font-weight: 600;">
             <i class="fas fa-exclamation-triangle"></i> {{ session('complete_profile_required') }}
         </div>
     @endif
 
     @if ($errors->any())
-        <div style="margin-bottom: 20px; padding: 14px 16px; border-radius: 8px; background: #f8d7da; border: 1px solid #f1aeb5; color: #842029;">
+        <div style="margin-bottom: 20px; padding: 14px 16px; border-radius: 12px; background: #fdecec; border: 1px solid #f1aeb5; color: #842029;">
             <i class="fas fa-times-circle"></i>
             {{ $errors->first() }}
         </div>
@@ -57,39 +57,39 @@
     @if($requiresProfileSetup)
         <div class="profile-section" style="margin-bottom: 24px; border: none;">
             <h2><i class="fas fa-user-shield"></i> Complete Profile Setup</h2>
-            <p style="margin-bottom: 20px; color: #666;">Set your Date of Birth and a 5-digit PIN to continue to dashboard and all other pages.</p>
+            <p style="margin-bottom: 20px; color: var(--ag-muted);">Set your Date of Birth and a 5-digit PIN to continue to dashboard and all other pages.</p>
 
             <form method="POST" action="{{ route('profile.update') }}" id="profileSetupForm">
                 @csrf
                 <div style="display: grid; grid-template-columns: 1fr; gap: 20px; max-width: 520px;">
                     <div>
-                        <label for="setup_dob" style="display: block; margin-bottom: 8px; font-weight: 600; color: #333;">Date of Birth</label>
-                        <input
+                        <label for="setup_dob" style="display: block; margin-bottom: 8px; font-weight: 600; color: var(--ag-text);">Date of Birth</label>
+                        <input class="ag-input"
                             type="date"
                             id="setup_dob"
                             name="dob"
                             value="{{ old('dob', auth()->user()->dob ? auth()->user()->dob->format('Y-m-d') : '') }}"
                             required
-                            style="width: 100%; padding: 12px; border: 1px solid #b3b3b3; border-radius: 6px;"
+                            style="width: 100%;"
                         >
                     </div>
 
                     <div>
-                        <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #333;">Set 5-digit PIN</label>
+                        <label style="display: block; margin-bottom: 8px; font-weight: 600; color: var(--ag-text);">Set 5-digit PIN</label>
                         <div class="pin-row" data-target="pin"></div>
                         <input type="hidden" name="pin" id="pin" value="{{ old('pin') }}">
                         <div class="pin-help-text">Enter exactly 5 digits</div>
                     </div>
 
                     <div>
-                        <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #333;">Confirm 5-digit PIN</label>
+                        <label style="display: block; margin-bottom: 8px; font-weight: 600; color: var(--ag-text);">Confirm 5-digit PIN</label>
                         <div class="pin-row" data-target="pin_confirmation"></div>
                         <input type="hidden" name="pin_confirmation" id="pin_confirmation" value="{{ old('pin_confirmation') }}">
                         <div class="pin-help-text">Re-enter the same 5 digits</div>
                     </div>
                 </div>
 
-                <button type="submit" style="margin-top: 20px; padding: 12px 24px; background: #000000; color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer;">
+                <button class="ag-btn" type="submit" style="margin-top: 20px;">
                     <i class="fas fa-save"></i> Save PIN & DOB
                 </button>
             </form>
@@ -97,7 +97,7 @@
     @else
 
     <!-- Banner Background -->
-    <div style="background: #111111; height: 200px; margin-bottom: 50px; border-radius: 10px; position: relative;"></div>
+    <div class="ag-banner" style="height: 200px; margin-bottom: 50px;"></div>
 
     <!-- Profile Header -->
     <div style="display: grid; grid-template-columns: auto 1fr auto; gap: 30px; align-items: start; margin-bottom: 40px;">
@@ -113,19 +113,19 @@
         @endphp
         <!-- Info -->
         <div>
-            <h1 style="font-size: 32px; font-weight: bold; color: #333; margin-bottom: 5px;">{{ $fullName !== '' ? $fullName : $profileUser->name }}</h1>
-            <p style="color: #666; font-size: 16px; margin-bottom: 20px;">{{ $profileUser->email }}</p>
+            <h1 style="font-size: 30px; font-weight: 500; color: var(--ag-text); margin-bottom: 5px;">{{ $fullName !== '' ? $fullName : $profileUser->name }}</h1>
+            <p style="color: var(--ag-muted); font-size: 16px; margin-bottom: 20px;">{{ $profileUser->email }}</p>
             <div style="display: flex; gap: 20px; flex-wrap: wrap;">
                 <div>
-                    <p style="color: #999; font-size: 12px; margin-bottom: 5px;">Member Since</p>
-                    <p style="font-weight: 600; color: #333;">{{ $profileUser->created_at ? \App\Support\UserPreferences::date($profileUser->created_at) : 'Unknown' }}</p>
+                    <p style="color: var(--ag-muted); font-size: 12px; margin-bottom: 5px;">Member Since</p>
+                    <p style="font-weight: 600; color: var(--ag-text);">{{ $profileUser->created_at ? \App\Support\UserPreferences::date($profileUser->created_at) : 'Unknown' }}</p>
                 </div>
                 <div>
-                    <p style="color: #999; font-size: 12px; margin-bottom: 5px;">Role</p>
-                    <p style="font-weight: 600; color: #333;">{{ $roleLabel }}</p>
+                    <p style="color: var(--ag-muted); font-size: 12px; margin-bottom: 5px;">Role</p>
+                    <p style="font-weight: 600; color: var(--ag-text);">{{ $roleLabel }}</p>
                 </div>
                 <div>
-                    <p style="color: #999; font-size: 12px; margin-bottom: 5px;">Status</p>
+                    <p style="color: var(--ag-muted); font-size: 12px; margin-bottom: 5px;">Status</p>
                     <p style="font-weight: 600; color: #2f2f2f;"><i class="fas {{ $isActiveUser ? 'fa-check-circle' : 'fa-ban' }}"></i> {{ ucfirst($profileUser->status ?? 'unknown') }}</p>
                 </div>
             </div>
@@ -133,10 +133,10 @@
 
         <!-- Action Buttons -->
         <div style="display: flex; flex-direction: column; gap: 10px;">
-            <a href="{{ route('settings') }}" class="profile-btn" style="padding: 12px 24px; background: #000000; color: white; text-decoration: none; border-radius: 6px; font-weight: 600; text-align: center; transition: transform 0.3s ease;" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='translateY(0)'">
+            <a href="{{ route('settings') }}" class="ag-btn profile-btn" style="text-decoration: none; text-align: center;">
                 <i class="fas fa-edit"></i> Edit Profile
             </a>
-            <button type="button" onclick="submitLogoutForm()" class="profile-btn" style="padding: 12px 24px; background: #d1d1d1; color: #333; border: 1px solid #a8a8a8; border-radius: 6px; font-weight: 600; cursor: pointer; transition: background 0.3s ease;" onmouseover="this.style.background='#b6b6b6'" onmouseout="this.style.background='#d1d1d1'">
+            <button type="button" onclick="submitLogoutForm()" class="ag-btn ag-btn--ghost profile-btn">
                 <i class="fas fa-sign-out-alt"></i> Logout
             </button>
         </div>
@@ -144,18 +144,17 @@
 
     <style>
         .profile-section {
-            background: white;
+            background: var(--ag-card);
             padding: 30px;
-            border-radius: 10px;
-            border: 1px solid #b3b3b3;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.06);
+            border-radius: 16px;
+            box-shadow: var(--ag-shadow);
             margin-bottom: 20px;
         }
 
         .profile-section h2 {
             font-size: 20px;
             font-weight: bold;
-            color: #333;
+            color: var(--ag-text);
             margin-bottom: 20px;
             display: flex;
             align-items: center;
@@ -171,9 +170,8 @@
         .stat-card {
             display: block;
             padding: 20px;
-            background: #f3f3f3;
-            border-radius: 8px;
-            border: 1px solid #b3b3b3;
+            background: var(--ag-surface);
+            border-radius: 12px;
             text-align: center;
             color: inherit;
             text-decoration: none;
@@ -182,7 +180,6 @@
 
         a.stat-card:hover {
             border-color: #111111;
-            transform: translateY(-2px);
         }
 
         .stat-card .number-text {
@@ -191,7 +188,7 @@
         }
 
         .stat-card .hint {
-            color: #888;
+            color: var(--ag-muted);
             font-size: 12px;
             margin-top: 4px;
         }
@@ -199,7 +196,7 @@
         .overview-scope {
             font-size: 12px;
             font-weight: 700;
-            color: #666;
+            color: var(--ag-muted);
             text-transform: uppercase;
             letter-spacing: 0.04em;
             margin-bottom: 12px;
@@ -208,9 +205,9 @@
         .overview-empty {
             margin-bottom: 14px;
             padding: 12px 14px;
-            border: 1px dashed #b3b3b3;
-            border-radius: 8px;
-            color: #444;
+            border: 1px dashed var(--ag-line);
+            border-radius: 12px;
+            color: var(--ag-subtle);
             font-size: 14px;
         }
 
@@ -222,32 +219,31 @@
 
         .security-card {
             padding: 20px;
-            background: #f3f3f3;
-            border: 1px solid #b3b3b3;
-            border-radius: 8px;
+            background: var(--ag-surface);
+            border-radius: 12px;
         }
 
         .security-card h3 {
             font-weight: 600;
-            color: #333;
+            color: var(--ag-text);
             margin-bottom: 10px;
         }
 
         .security-card p {
-            color: #555;
+            color: var(--ag-subtle);
             font-size: 13px;
             margin-bottom: 4px;
         }
 
         .security-card .security-detail {
-            color: #888;
+            color: var(--ag-muted);
             font-size: 12px;
         }
 
         .security-card a {
             display: inline-block;
             margin-top: 10px;
-            color: #111111;
+            color: var(--ag-text);
             text-decoration: none;
             font-weight: 600;
         }
@@ -257,7 +253,7 @@
         }
 
         .overview-empty a {
-            color: #111111;
+            color: var(--ag-text);
             font-weight: 600;
         }
 
@@ -270,12 +266,12 @@
         .stat-card .number {
             font-size: 32px;
             font-weight: bold;
-            color: #111111;
+            color: var(--ag-text);
             margin-bottom: 5px;
         }
 
         .stat-card .label {
-            color: #666;
+            color: var(--ag-muted);
             font-size: 13px;
             text-transform: uppercase;
         }
@@ -326,7 +322,7 @@
 
         @if($scope)
             <p class="overview-scope" style="margin-top: 24px;">{{ $scope['label'] }}</p>
-            <p style="color: #666; font-size: 13px; margin: -6px 0 12px;">{{ $scope['description'] }}</p>
+            <p style="color: var(--ag-muted); font-size: 13px; margin: -6px 0 12px;">{{ $scope['description'] }}</p>
             <div class="stat-grid">
                 <a class="stat-card" href="{{ $workspacesRoute }}">
                     <div class="number">{{ number_format($scope['workspaces']) }}</div>
@@ -357,45 +353,45 @@
         
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px; margin-bottom: 20px;">
             <div>
-                <p style="color: #999; font-size: 12px; text-transform: uppercase; margin-bottom: 8px;">Name</p>
-                <p style="font-size: 16px; color: #333; font-weight: 500;">{{ $fullName !== '' ? $fullName : 'Not specified' }}</p>
+                <p style="color: var(--ag-muted); font-size: 12px; text-transform: uppercase; margin-bottom: 8px;">Name</p>
+                <p style="font-size: 16px; color: var(--ag-text); font-weight: 500;">{{ $fullName !== '' ? $fullName : 'Not specified' }}</p>
             </div>
             <div>
-                <p style="color: #999; font-size: 12px; text-transform: uppercase; margin-bottom: 8px;">Username</p>
-                <p style="font-size: 16px; color: #333; font-weight: 500;">{{ $profileUser->name }}</p>
+                <p style="color: var(--ag-muted); font-size: 12px; text-transform: uppercase; margin-bottom: 8px;">Username</p>
+                <p style="font-size: 16px; color: var(--ag-text); font-weight: 500;">{{ $profileUser->name }}</p>
             </div>
             <div>
-                <p style="color: #999; font-size: 12px; text-transform: uppercase; margin-bottom: 8px;">Email Address</p>
-                <p style="font-size: 16px; color: #333; font-weight: 500;">{{ $profileUser->email }}</p>
+                <p style="color: var(--ag-muted); font-size: 12px; text-transform: uppercase; margin-bottom: 8px;">Email Address</p>
+                <p style="font-size: 16px; color: var(--ag-text); font-weight: 500;">{{ $profileUser->email }}</p>
             </div>
             <div>
-                <p style="color: #999; font-size: 12px; text-transform: uppercase; margin-bottom: 8px;">Account Status</p>
+                <p style="color: var(--ag-muted); font-size: 12px; text-transform: uppercase; margin-bottom: 8px;">Account Status</p>
                 <p style="font-size: 16px; color: #2f2f2f; font-weight: 500;"><i class="fas {{ $isActiveUser ? 'fa-check-circle' : 'fa-ban' }}"></i> {{ ucfirst($profileUser->status ?? 'unknown') }}</p>
             </div>
             <div>
-                <p style="color: #999; font-size: 12px; text-transform: uppercase; margin-bottom: 8px;">Role</p>
-                <p style="font-size: 16px; color: #333; font-weight: 500;">{{ $roleLabel }}</p>
+                <p style="color: var(--ag-muted); font-size: 12px; text-transform: uppercase; margin-bottom: 8px;">Role</p>
+                <p style="font-size: 16px; color: var(--ag-text); font-weight: 500;">{{ $roleLabel }}</p>
             </div>
             <div>
-                <p style="color: #999; font-size: 12px; text-transform: uppercase; margin-bottom: 8px;">Joined</p>
-                <p style="font-size: 16px; color: #333; font-weight: 500;">{{ $profileUser->created_at ? \App\Support\UserPreferences::date($profileUser->created_at) : 'Unknown' }}</p>
+                <p style="color: var(--ag-muted); font-size: 12px; text-transform: uppercase; margin-bottom: 8px;">Joined</p>
+                <p style="font-size: 16px; color: var(--ag-text); font-weight: 500;">{{ $profileUser->created_at ? \App\Support\UserPreferences::date($profileUser->created_at) : 'Unknown' }}</p>
             </div>
             <div>
-                <p style="color: #999; font-size: 12px; text-transform: uppercase; margin-bottom: 8px;">Phone</p>
-                <p style="font-size: 16px; color: #333; font-weight: 500;">{{ $profileUser->phone ?: 'Not specified' }}</p>
+                <p style="color: var(--ag-muted); font-size: 12px; text-transform: uppercase; margin-bottom: 8px;">Phone</p>
+                <p style="font-size: 16px; color: var(--ag-text); font-weight: 500;">{{ $profileUser->phone ?: 'Not specified' }}</p>
             </div>
             <div>
-                <p style="color: #999; font-size: 12px; text-transform: uppercase; margin-bottom: 8px;">Last Sign-in</p>
-                <p style="font-size: 16px; color: #333; font-weight: 500;">{{ $security['last_login_at'] ? \App\Support\UserPreferences::datetime($security['last_login_at']) : 'Recorded from your next sign-in' }}</p>
+                <p style="color: var(--ag-muted); font-size: 12px; text-transform: uppercase; margin-bottom: 8px;">Last Sign-in</p>
+                <p style="font-size: 16px; color: var(--ag-text); font-weight: 500;">{{ $security['last_login_at'] ? \App\Support\UserPreferences::datetime($security['last_login_at']) : 'Recorded from your next sign-in' }}</p>
             </div>
             <div>
-                <p style="color: #999; font-size: 12px; text-transform: uppercase; margin-bottom: 8px;">Date of Birth</p>
-                <p style="font-size: 16px; color: #333; font-weight: 500;">{{ auth()->user()->dob ? auth()->user()->dob->format('F j, Y') : 'Not specified' }}</p>
+                <p style="color: var(--ag-muted); font-size: 12px; text-transform: uppercase; margin-bottom: 8px;">Date of Birth</p>
+                <p style="font-size: 16px; color: var(--ag-text); font-weight: 500;">{{ auth()->user()->dob ? auth()->user()->dob->format('F j, Y') : 'Not specified' }}</p>
             </div>
         </div>
 
         <div style="margin-top: 20px; text-align: right;">
-            <a href="{{ route('settings') }}" class="profile-btn" style="padding: 10px 20px; background: #000000; color: white; text-decoration: none; border-radius: 6px; font-weight: 600; display: inline-block;">
+            <a href="{{ route('settings') }}" class="ag-btn profile-btn" style="text-decoration: none; display: inline-block;">
                 <i class="fas fa-edit"></i> Update Information
             </a>
         </div>
@@ -405,7 +401,7 @@
     <div class="profile-section">
         <h2 style="justify-content: space-between;">
             <span style="display: flex; align-items: center; gap: 10px;"><i class="fas fa-history"></i> Recent Activity</span>
-            <a href="{{ route('profile.activity') }}" style="font-size: 14px; font-weight: 600; color: #111111;">View all</a>
+            <a href="{{ route('profile.activity') }}" style="font-size: 14px; font-weight: 600; color: var(--ag-text);">View all</a>
         </h2>
         @include('partials.activity-list', ['activityItems' => $recentActivity])
     </div>
@@ -479,28 +475,28 @@
 
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px;">
             <div>
-                <p style="color: #999; font-size: 12px; text-transform: uppercase; margin-bottom: 8px;">Time zone</p>
-                <p style="font-size: 16px; color: #333; font-weight: 500;">{{ $prefs['timezone'] ? str_replace('_', ' ', $prefs['timezone']) : 'Server default (' . config('app.timezone') . ')' }}</p>
+                <p style="color: var(--ag-muted); font-size: 12px; text-transform: uppercase; margin-bottom: 8px;">Time zone</p>
+                <p style="font-size: 16px; color: var(--ag-text); font-weight: 500;">{{ $prefs['timezone'] ? str_replace('_', ' ', $prefs['timezone']) : 'Server default (' . config('app.timezone') . ')' }}</p>
             </div>
             <div>
-                <p style="color: #999; font-size: 12px; text-transform: uppercase; margin-bottom: 8px;">Date format</p>
-                <p style="font-size: 16px; color: #333; font-weight: 500;">{{ \App\Support\UserPreferences::DATE_FORMATS[$prefs['date_format']][2] }}</p>
+                <p style="color: var(--ag-muted); font-size: 12px; text-transform: uppercase; margin-bottom: 8px;">Date format</p>
+                <p style="font-size: 16px; color: var(--ag-text); font-weight: 500;">{{ \App\Support\UserPreferences::DATE_FORMATS[$prefs['date_format']][2] }}</p>
             </div>
             <div>
-                <p style="color: #999; font-size: 12px; text-transform: uppercase; margin-bottom: 8px;">Rows per page</p>
-                <p style="font-size: 16px; color: #333; font-weight: 500;">{{ $prefs['per_page'] }}</p>
+                <p style="color: var(--ag-muted); font-size: 12px; text-transform: uppercase; margin-bottom: 8px;">Rows per page</p>
+                <p style="font-size: 16px; color: var(--ag-text); font-weight: 500;">{{ $prefs['per_page'] }}</p>
             </div>
             <div>
-                <p style="color: #999; font-size: 12px; text-transform: uppercase; margin-bottom: 8px;">Email alerts</p>
-                <p style="font-size: 16px; color: #333; font-weight: 500;">{{ $enabledAlerts->implode(', ') }}</p>
+                <p style="color: var(--ag-muted); font-size: 12px; text-transform: uppercase; margin-bottom: 8px;">Email alerts</p>
+                <p style="font-size: 16px; color: var(--ag-text); font-weight: 500;">{{ $enabledAlerts->implode(', ') }}</p>
                 @unless(\App\Support\NotificationSettings::mailConfigured())
-                    <p style="color: #92400e; font-size: 12px; margin-top: 4px;">Email is not set up on this server, so alerts are not sent yet.</p>
+                    <p style="color: var(--ag-warning); font-size: 12px; margin-top: 4px;">Email is not set up on this server, so alerts are not sent yet.</p>
                 @endunless
             </div>
         </div>
 
         <div style="margin-top: 20px; text-align: right;">
-            <a href="{{ route('settings') }}#preferences" class="profile-btn" style="padding: 10px 20px; background: #000000; color: white; text-decoration: none; border-radius: 6px; font-weight: 600; display: inline-block;">
+            <a href="{{ route('settings') }}#preferences" class="ag-btn profile-btn" style="text-decoration: none; display: inline-block;">
                 <i class="fas fa-sliders-h"></i> Change Preferences
             </a>
         </div>

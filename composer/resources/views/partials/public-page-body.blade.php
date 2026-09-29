@@ -1,20 +1,20 @@
 <style>
-    .public-page { max-width: 900px; margin: 0 auto; padding: 24px 16px 40px; color: #1f2937; }
-    .public-page h1.page-title { font-size: 28px; font-weight: 700; margin-bottom: 20px; color: #111827; }
+    .public-page { max-width: 900px; margin: 0 auto; padding: 24px 16px 40px; color: var(--ag-text); }
+    .public-page h1.page-title { font-size: 28px; font-weight: 500; margin-bottom: 20px; color: var(--ag-text); }
     .markdown-body { font-size: 15px; line-height: 1.7; }
-    .markdown-body h1, .markdown-body h2, .markdown-body h3 { font-weight: 700; margin: 18px 0 8px; color: #111827; }
+    .markdown-body h1, .markdown-body h2, .markdown-body h3 { font-weight: 700; margin: 18px 0 8px; color: var(--ag-text); }
     .markdown-body h1 { font-size: 22px; }
     .markdown-body h2 { font-size: 19px; }
     .markdown-body h3 { font-size: 17px; }
     .markdown-body p { margin-bottom: 12px; }
     .markdown-body ul { list-style: disc; padding-left: 22px; margin-bottom: 12px; }
     .markdown-body ol { list-style: decimal; padding-left: 22px; margin-bottom: 12px; }
-    .markdown-body a { color: #1d4ed8; text-decoration: underline; }
-    .markdown-body code { background: #f3f4f6; padding: 1px 4px; border-radius: 4px; font-size: 13px; }
-    .public-card { background: #ffffff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 18px; margin-bottom: 16px; }
-    .public-card dt { font-size: 12px; text-transform: uppercase; color: #6b7280; font-weight: 600; }
+    .markdown-body a { color: var(--ag-teal); text-decoration: underline; }
+    .markdown-body code { background: var(--ag-surface); padding: 1px 4px; border-radius: 4px; font-size: 13px; }
+    .public-card { background: var(--ag-card); border: 1px solid var(--ag-line); border-radius: 16px; padding: 18px; margin-bottom: 16px; }
+    .public-card dt { font-size: 12px; text-transform: uppercase; color: var(--ag-muted); font-weight: 600; }
     .public-card dd { margin: 2px 0 12px; font-size: 15px; word-break: break-word; }
-    .faq-item { border: 1px solid #e5e7eb; border-radius: 10px; background: #ffffff; margin-bottom: 10px; }
+    .faq-item { border: 1px solid var(--ag-line); border-radius: 16px; background: var(--ag-card); margin-bottom: 10px; }
     .faq-item summary { cursor: pointer; padding: 14px 16px; font-weight: 600; }
     .faq-item .markdown-body { padding: 0 16px 12px; }
 </style>
@@ -23,7 +23,7 @@
     <h1 class="page-title">{{ $pageTitle }}</h1>
 
     @if(session('success'))
-        <div style="margin-bottom: 16px; padding: 12px; border-radius: 8px; background: #ecfdf5; border: 1px solid #a7f3d0; color: #065f46;">{{ session('success') }}</div>
+        <div style="margin-bottom: 16px; padding: 12px; border-radius: 12px; background: var(--ag-success-soft); border: 1px solid #a7f3d0; color: #065f46;">{{ session('success') }}</div>
     @endif
 
     @if($page === 'about')
@@ -55,11 +55,11 @@
                     @endif
                     @if($support['contact_email'] !== '')
                         <dt>Email</dt>
-                        <dd><a href="mailto:{{ $support['contact_email'] }}" style="color:#1d4ed8;">{{ $support['contact_email'] }}</a></dd>
+                        <dd><a href="mailto:{{ $support['contact_email'] }}" style="color: var(--ag-teal);">{{ $support['contact_email'] }}</a></dd>
                     @endif
                     @if($support['contact_phone'] !== '')
                         <dt>Phone</dt>
-                        <dd><a href="tel:{{ preg_replace('/[^0-9+]/', '', $support['contact_phone']) }}" style="color:#1d4ed8;">{{ $support['contact_phone'] }}</a></dd>
+                        <dd><a href="tel:{{ preg_replace('/[^0-9+]/', '', $support['contact_phone']) }}" style="color: var(--ag-teal);">{{ $support['contact_phone'] }}</a></dd>
                     @endif
                     @if($support['hours'] !== '')
                         <dt>Support hours</dt>
@@ -87,7 +87,7 @@
         @endif
 
         @if($errors->any())
-            <div style="margin-bottom: 16px; padding: 12px; border-radius: 8px; background: #fef2f2; border: 1px solid #fecaca; color: #991b1b;">
+            <div style="margin-bottom: 16px; padding: 12px; border-radius: 12px; background: var(--ag-danger-soft); border: 1px solid #f9d6d6; color: var(--ag-danger);">
                 @foreach($errors->all() as $error)
                     <div>{{ $error }}</div>
                 @endforeach

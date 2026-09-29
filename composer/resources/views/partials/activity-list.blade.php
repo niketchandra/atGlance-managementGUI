@@ -1,17 +1,17 @@
 {{-- A list of ActivityFeed items. Expects $activityItems; optional $activityEmpty text. --}}
 <style>
     .activity-list { list-style: none; margin: 0; padding: 0; }
-    .activity-entry { display: flex; gap: 12px; align-items: flex-start; padding: 12px 14px; border: 1px solid #d6d6d6; border-left: 3px solid #666666; border-radius: 6px; background: #f7f7f7; margin-bottom: 8px; }
+    .activity-entry { display: flex; gap: 12px; align-items: flex-start; padding: 12px 14px; border: 0; background: var(--ag-surface); border-radius: 12px; background: var(--ag-surface); margin-bottom: 8px; }
     .activity-entry.is-failure { border-left-color: #b91c1c; background: #fdf4f4; }
-    .activity-entry .activity-icon { width: 20px; text-align: center; color: #444; padding-top: 2px; }
-    .activity-entry.is-failure .activity-icon { color: #b91c1c; }
-    .activity-entry .activity-text { font-weight: 600; color: #222; }
-    .activity-entry .activity-meta { color: #777; font-size: 12px; margin-top: 3px; }
-    .activity-badge { display: inline-block; margin-left: 6px; padding: 1px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; background: #fee2e2; color: #991b1b; vertical-align: 1px; }
+    .activity-entry .activity-icon { width: 20px; text-align: center; color: var(--ag-subtle); padding-top: 2px; }
+    .activity-entry.is-failure .activity-icon { color: var(--ag-danger); }
+    .activity-entry .activity-text { font-weight: 600; color: var(--ag-text); }
+    .activity-entry .activity-meta { color: var(--ag-muted); font-size: 12px; margin-top: 3px; }
+    .activity-badge { display: inline-block; margin-left: 6px; padding: 1px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; background: var(--ag-danger-soft); color: var(--ag-danger); vertical-align: 1px; }
 </style>
 
 @if($activityItems->isEmpty())
-    <p style="color: #666;">{{ $activityEmpty ?? 'No activity yet.' }}</p>
+    <p style="color: var(--ag-muted);">{{ $activityEmpty ?? 'No activity yet.' }}</p>
 @else
     <ul class="activity-list">
         @foreach($activityItems as $activity)
