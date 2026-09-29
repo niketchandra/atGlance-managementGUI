@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Rules\IpAddressWithOptionalPort;
 use App\Support\ActivityRecorder;
 use App\Support\License;
 use App\Models\AdminSetting;
@@ -1023,7 +1024,7 @@ class AdminDashboardController extends Controller
             'site_contact_enabled' => ['nullable', 'boolean'],
             'site_contact_intro' => ['nullable', 'string', 'max:5000'],
             'site_domain_alias' => ['nullable', 'string', 'max:255', 'regex:/^[A-Za-z0-9.-]+$/'],
-            'site_domain_alias_ip' => ['nullable', 'ip'],
+            'site_domain_alias_ip' => ['nullable', 'string', 'max:255', new IpAddressWithOptionalPort()],
             'site_https_enabled' => ['nullable', 'boolean'],
             'site_metadata' => ['nullable', 'string', 'max:20000'],
             'site_tags' => ['nullable', 'string', 'max:2000'],

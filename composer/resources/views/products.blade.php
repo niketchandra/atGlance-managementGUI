@@ -7,10 +7,10 @@
     <!-- Page Header -->
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px;">
         <div>
-            <h1 style="font-size: 32px; font-weight: bold; color: #333; margin-bottom: 10px;">Products & APIs</h1>
-            <p style="color: #666;">Manage your APIs and integrations</p>
+            <h1 style="font-size: 30px; font-weight: 500; color: var(--ag-text); margin-bottom: 10px;">Products & APIs</h1>
+            <p style="color: var(--ag-muted);">Manage your APIs and integrations</p>
         </div>
-        <button style="background: #000000; color: white; padding: 12px 24px; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; transition: transform 0.3s ease;" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='translateY(0)'">
+        <button class="ag-btn">
             <i class="fas fa-plus"></i> Add New API
         </button>
     </div>
@@ -24,12 +24,12 @@
 
         .filter-btn {
             padding: 8px 16px;
-            background: white;
-            border: 1px solid #b3b3b3;
-            border-radius: 6px;
+            background: var(--ag-card);
+            border: 1px solid var(--ag-line);
+            border-radius: 999px;
             cursor: pointer;
             font-weight: 500;
-            color: #333;
+            color: var(--ag-text);
             transition: all 0.3s ease;
         }
 
@@ -46,16 +46,16 @@
         .search-box {
             flex: 1;
             padding: 12px 16px;
-            border: 1px solid #b3b3b3;
-            border-radius: 6px;
+            border: 1px solid var(--ag-line);
+            border-radius: 12px;
             font-size: 14px;
             transition: border-color 0.3s ease;
         }
 
         .search-box:focus {
             outline: none;
-            border-color: #000000;
-            box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.08);
+            border-color: var(--ag-mint);
+            box-shadow: 0 0 0 4px rgba(113, 247, 212, 0.3);
         }
 
         .products-grid {
@@ -66,16 +66,16 @@
         }
 
         .product-card {
-            background: white;
-            border-radius: 10px;
+            background: var(--ag-card);
+            border-radius: 16px;
             overflow: hidden;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            box-shadow: var(--ag-shadow);
             transition: transform 0.3s ease, box-shadow 0.3s ease;
         }
 
         .product-card:hover {
             transform: translateY(-5px);
-            box-shadow: 0 10px 25px rgba(0,0,0,0.15);
+            box-shadow: var(--ag-shadow);
         }
 
         .product-header {
@@ -106,7 +106,7 @@
         }
 
         .product-desc {
-            color: #666;
+            color: var(--ag-muted);
             font-size: 14px;
             margin-bottom: 15px;
             line-height: 1.5;
@@ -118,7 +118,7 @@
             gap: 15px;
             margin-bottom: 20px;
             padding-bottom: 20px;
-            border-bottom: 1px solid #e0e0e0;
+            border-bottom: 1px solid var(--ag-line);
         }
 
         .stat {
@@ -133,7 +133,7 @@
 
         .stat-label {
             font-size: 11px;
-            color: #999;
+            color: var(--ag-muted);
             text-transform: uppercase;
             margin-top: 5px;
         }
@@ -147,29 +147,28 @@
             flex: 1;
             padding: 10px;
             border: none;
-            border-radius: 6px;
+            border-radius: 999px;
             cursor: pointer;
-            font-weight: 600;
+            font-weight: 500;
             font-size: 13px;
             transition: all 0.3s ease;
         }
 
         .action-btn-primary {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
+            color: var(--ag-ink);
         }
 
         .action-btn-primary:hover {
-            transform: translateY(-2px);
         }
 
         .action-btn-secondary {
-            background: #f0f0f0;
-            color: #333;
+            background: var(--ag-surface);
+            color: var(--ag-text);
         }
 
         .action-btn-secondary:hover {
-            background: #e0e0e0;
+            background: var(--ag-line);
         }
 
         .empty-state {
@@ -392,11 +391,11 @@
 
     <!-- Pagination -->
     <div style="display: flex; justify-content: center; gap: 10px; margin-top: 30px;">
-        <button style="padding: 8px 12px; border: 1px solid #ddd; background: white; border-radius: 4px; cursor: pointer;">← Previous</button>
-        <button style="padding: 8px 12px; border: 1px solid #667eea; background: #667eea; color: white; border-radius: 4px; cursor: pointer;">1</button>
-        <button style="padding: 8px 12px; border: 1px solid #ddd; background: white; border-radius: 4px; cursor: pointer;">2</button>
-        <button style="padding: 8px 12px; border: 1px solid #ddd; background: white; border-radius: 4px; cursor: pointer;">3</button>
-        <button style="padding: 8px 12px; border: 1px solid #ddd; background: white; border-radius: 4px; cursor: pointer;">Next →</button>
+        <button class="ag-btn ag-btn--ghost">← Previous</button>
+        <button style="padding: 8px 12px; border: 1px solid #2cb7d9; background: #2cb7d9; color: white; border-radius: 4px; cursor: pointer;">1</button>
+        <button class="ag-btn ag-btn--ghost">2</button>
+        <button class="ag-btn ag-btn--ghost">3</button>
+        <button class="ag-btn ag-btn--ghost">Next →</button>
     </div>
 </div>
 @endsection

@@ -4,6 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AtGlance Installer</title>
+    <link rel="icon" href="{{ asset('branding/favicon.ico') }}" sizes="any">
+    <link rel="icon" type="image/png" href="{{ asset('branding/favicon-32.png') }}">
+    <link rel="apple-touch-icon" href="{{ asset('branding/apple-touch-icon.png') }}">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -54,9 +57,7 @@
         <div class="grid w-full gap-6 rounded-3xl border border-white/20 bg-white/90 p-4 shadow-glow backdrop-blur-xl sm:p-6 lg:grid-cols-2">
             <div class="order-2 rounded-2xl border border-slate-200 bg-white p-5 sm:p-7 lg:order-2">
                 <div class="mb-6 flex items-center gap-4">
-                    <div class="flex h-14 w-14 items-center justify-center rounded-2xl bg-black text-lg font-extrabold text-white shadow-lg">
-                        AT
-                    </div>
+                    <img src="{{ asset('branding/atglance-icon.png') }}" alt="" class="h-14 w-14 shrink-0 rounded-2xl shadow-lg">
                     <div>
                         <h1 class="text-2xl font-extrabold text-slate-900 sm:text-3xl">AtGlance Project Installer</h1>
                     </div>
@@ -231,7 +232,7 @@
 
             <aside class="order-1 flex h-full flex-col rounded-2xl border border-slate-200 bg-slate-50 p-5 sm:p-7 lg:order-1">
                 <img
-                    src="{{ asset('branding/atglance-logo.svg') }}"
+                    src="{{ asset('branding/atglance-logo.png') }}"
                     alt="AtGlance logo"
                     class="h-14 w-auto object-contain sm:h-16"
                 >
