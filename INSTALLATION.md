@@ -16,9 +16,12 @@ Both ways use the same images from Docker Hub. After either part, finish with [A
 | Scheduler | `atglance/ce-atglance-app` | `php artisan schedule:work` | No port. Run exactly one. |
 | Database | `mysql:8.0` | | Or a managed MySQL 8.0 |
 | Cache and queue | `redis:7-alpine` | | Or a managed Redis 7 |
-| API gateway (optional) | `atglance/ce-atglance-gateway` | default command | Kong, port 8002. Forwards to `http://app:8000`. |
+| API gateway | `atglance/ce-atglance-gateway` | default command | Kong, port 8002. Forwards to `http://app:8000`. The `atglance` CLI talks to it. |
 
 Images are published for `linux/amd64` and `linux/arm64`. Tags: `latest` and release versions such as `1.2.1`. Pin a version in production.
+
+> [!IMPORTANT]
+> The `atglance` CLI sends its API calls to the Kong gateway on port **8002** of the management host, and logs out through the app on port **8000** of the same host. Both ports must be reachable from your servers on the same host name. Set the CLI's management URL to `http://<host>:8002` (or `https://<host>:8002` behind TLS).
 
 ---
 
@@ -33,7 +36,7 @@ Images are published for `linux/amd64` and `linux/arm64`. Tags: `latest` and rel
 | Memory | 2 GB (1 GB works for small installs) |
 | Disk | 5 GB free, more for stored configuration files |
 | Access | root or sudo, outbound internet to Docker Hub and GitHub |
-| Ports | 8000 open to users and to your servers. 8002 if you use the gateway. |
+| Ports | 8000 (web console) open to users and servers; 8002 (gateway) open to servers |
 
 You do not need Docker installed. The installer installs it.
 
@@ -55,13 +58,12 @@ To change the defaults, pass options after `bash -s --`:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/niketchandra/atGlance-managementGUI/main/install.sh \
-  | sudo bash -s -- --with-gateway --port 8000 --version 1.2.1 --dir /opt/atglance
+  | sudo bash -s -- --version 1.2.1 --dir /opt/atglance
 ```
 
 | Option | Default | What it does |
 |---|---|---|
-| `--with-gateway` | off | Also runs the Kong API gateway on port 8002 |
-| `--port` | `8000` | Port for the web console and API |
+| `--port` | `8000` | Port for the web console. Keep 8000: the CLI expects it. |
 | `--version` | `latest` | Image tag to run |
 | `--dir` | `/opt/atglance` | Install directory |
 
@@ -76,12 +78,12 @@ You see these containers, all `Up` and the app `healthy`:
 
 ```
 ce-atglance-app        ce-atglance-worker     ce-atglance-scheduler
-ce-atglance-db         ce-atglance-redis      ce-atglance-gateway (only with --with-gateway)
+ce-atglance-db         ce-atglance-redis      ce-atglance-gateway
 ```
 
 ### Step 3: Open the firewall and add HTTPS
 
-- Allow inbound TCP 8000 (and 8002 with the gateway) in the security group or firewall.
+- Allow inbound TCP 8000 and 8002 in the security group or firewall. The `atglance` CLI on your servers needs both.
 - Do not open 3306 or 6379. MySQL and Redis are reachable only inside the Docker network.
 - For production, put a reverse proxy with HTTPS in front of port 8000, for example Caddy, nginx, Traefik or a cloud load balancer.
 
@@ -97,7 +99,7 @@ sudo curl -fsSL https://raw.githubusercontent.com/niketchandra/atGlance-manageme
 sudo curl -fsSL https://raw.githubusercontent.com/niketchandra/atGlance-managementGUI/main/.env.example -o .env
 sudo nano .env        # set DB_PASSWORD and DB_ROOT_PASSWORD to long random values
 sudo docker compose pull
-sudo docker compose up -d                       # add --profile gateway for Kong
+sudo docker compose up -d
 ```
 
 ### Upgrade, manage, uninstall
@@ -156,7 +158,8 @@ Users / atglance CLI ──HTTPS──▶ Load balancer ──▶ app service (p
    Do not set `APP_KEY` or `APP_URL` as environment variables. The app keeps them in `/app/storage/.env`, and the setup wizard writes `APP_URL`. An environment variable would override the wizard.
 
 5. **Health check.** HTTP `GET /up` on port 8000 of the app. Allow a start period of at least 60 seconds for the first migration.
-6. **Gateway (optional).** The gateway image forwards to `http://app:8000`. The app must be reachable by the host name `app` from the gateway, for example through ECS Service Connect or a Kubernetes Service named `app`.
+6. **Gateway.** Run the gateway. The `atglance` CLI talks to it. The gateway image forwards to `http://app:8000`, so the app must be reachable by the host name `app` from the gateway, for example through ECS Service Connect or a Kubernetes Service named `app`.
+7. **Ports on one host name.** Expose the app on port 8000 and the gateway on port 8002 of the same public host name, for example `atglance.example.com:8000` and `atglance.example.com:8002`. The CLI builds both addresses from one management URL.
 
 ### ECS on Fargate, step by step
 
@@ -164,8 +167,8 @@ Users / atglance CLI ──HTTPS──▶ Load balancer ──▶ app service (p
 
 1. Use a VPC with private subnets for the tasks and the databases, and public subnets for the load balancer.
 2. Create security groups:
-   - `atglance-alb`: inbound 443 (and 80) from the internet.
-   - `atglance-tasks`: inbound 8000 from `atglance-alb`; inbound 8000 from itself (for the gateway).
+   - `atglance-alb`: inbound 443 and 80 from the internet; inbound 8000 and 8002 from your servers (or the internet).
+   - `atglance-tasks`: inbound 8000 and 8002 from `atglance-alb`; inbound 8000 from itself (gateway to app).
    - `atglance-data`: inbound 3306, 6379 and 2049 (NFS) from `atglance-tasks`.
 3. Create an **RDS for MySQL 8.0** instance in the private subnets with security group `atglance-data`. Create the database and user:
 
@@ -271,8 +274,18 @@ Keep the same EFS volume and mount point. All three must share `/app/storage`.
 #### Step 5: Create the load balancer
 
 1. Create an Application Load Balancer in the public subnets with security group `atglance-alb`.
-2. Create a target group: type `IP`, protocol HTTP, port 8000, health check path `/up`, success code `200`.
-3. Add an HTTPS listener on 443 with an ACM certificate for your domain, forwarding to the target group. Redirect 80 to 443.
+2. Create two target groups, both type `IP` and protocol HTTP:
+   - `atglance-app`: port 8000, health check path `/up`, success code `200`.
+   - `atglance-gateway`: port 8002, health check path `/`, success codes `200-404`.
+3. Add HTTPS listeners with an ACM certificate for your domain:
+
+   | Listener | Forwards to | Used by |
+   |---|---|---|
+   | HTTPS 443 | `atglance-app` | Browsers (web console) |
+   | HTTPS 8000 | `atglance-app` | `atglance` CLI logout |
+   | HTTPS 8002 | `atglance-gateway` | `atglance` CLI API calls |
+
+   Redirect HTTP 80 to 443.
 4. Point your domain (Route 53 or other DNS) at the load balancer.
 
 #### Step 6: Create the services in this order
@@ -281,12 +294,14 @@ Keep the same EFS volume and mount point. All three must share `/app/storage`.
 2. Wait until the app task is healthy. It has now created `/app/storage/.env` with the `APP_KEY` and run the migrations.
 3. **worker**: task definition `ce-atglance-worker`, desired count 1 or more.
 4. **scheduler**: task definition `ce-atglance-scheduler`, desired count **exactly 1**. Set maximum percent to 100 and minimum healthy percent to 0 so a deploy never runs two schedulers.
+5. **gateway**: see Step 7.
 
-#### Step 7 (optional): API gateway
+#### Step 7: API gateway
 
-1. Create a task definition `ce-atglance-gateway` with image `atglance/ce-atglance-gateway:1.2.1`, port 8002, 256 CPU / 512 MB. It needs no volume and no environment variables.
-2. Create a service with Service Connect as a client, so `app` resolves to the app service.
-3. Add a second target group (port 8002, health check path `/`, success codes `200-404`) and a listener or host rule for it, for example `api.<your-domain>`.
+1. Create a task definition `ce-atglance-gateway` with image `atglance/ce-atglance-gateway:1.2.1`, port 8002, 256 CPU / 512 MB. It needs no volume and no environment variables. Health check: `["CMD", "kong", "health"]`.
+2. Create a service, desired count 1 or more, with Service Connect as a client, so `app` resolves to the app service. Attach it to the `atglance-gateway` target group on container port 8002.
+
+Your servers set the CLI management URL to `https://<your-domain>:8002`.
 
 Continue with [After the install](#after-the-install). In the setup wizard, enter your public domain and choose HTTPS.
 
@@ -295,7 +310,7 @@ Continue with [After the install](#after-the-install). In the setup wizard, ente
 1. Scale the app service to 1 task.
 2. Register new revisions of all task definitions with the new image tag.
 3. Update the app service. Wait until it is healthy. It runs the new migrations.
-4. Update the worker and scheduler services.
+4. Update the worker, scheduler and gateway services.
 5. Scale the app service back out if needed.
 
 #### Back up on ECS
@@ -315,6 +330,7 @@ The [rules above](#rules-every-platform-must-follow) apply everywhere. This tabl
 | App | Deployment, 1 replica during install, Service named `app` on 8000, Ingress with TLS | Container app, external ingress on 8000, min replicas 1 | Service on port 8000, min instances 1, CPU always allocated |
 | Worker | Deployment with the worker `command` | Container app, no ingress, min replicas 1 | Worker pool or service with CPU always allocated and min instances 1 |
 | Scheduler | Deployment, `replicas: 1`, strategy `Recreate` | Container app, no ingress, min and max replicas 1 | Service with CPU always allocated, min and max instances 1 |
+| Gateway | Deployment with the gateway image, Service on 8002, exposed on the same host name as the app | Container app, internal ingress on 8002. Put Azure Application Gateway in front so `<host>:8000` reaches the app and `<host>:8002` the gateway | Service on 8002. Put an external HTTPS load balancer in front so `<host>:8000` reaches the app and `<host>:8002` the gateway |
 | Secrets | Kubernetes Secret for `DB_PASSWORD` | Container Apps secret | Secret Manager |
 | Health check | `readinessProbe` and `livenessProbe` on `GET /up`, port 8000 | Health probe on `/up` | Startup probe on `/up` |
 
@@ -365,7 +381,7 @@ spec:
   ports: [{ port: 8000, targetPort: 8000 }]
 ```
 
-For the worker and scheduler, copy the Deployment, set `ATGLANCE_ROLE`, add the `command`, remove the ports and probe, and use `strategy: { type: Recreate }` for the scheduler.
+For the worker and scheduler, copy the Deployment, set `ATGLANCE_ROLE`, add the `command`, remove the ports and probe, and use `strategy: { type: Recreate }` for the scheduler. For the gateway, run `atglance/ce-atglance-gateway` with port 8002 and no volume, and expose it with a LoadBalancer Service or Ingress so `<host>:8000` reaches the app and `<host>:8002` reaches the gateway.
 
 ---
 
@@ -396,13 +412,18 @@ On a container service, read it from the shared file system or with `aws ecs exe
 
 1. In the console, open **Settings** and create an API key. It starts with `atgla-`.
 2. On the Linux server, install the `atglance` CLI.
-3. Point the CLI at `https://<your-domain>/api` (or `http://<server-ip>:8000/api`) and give it the key. With the gateway, use the gateway URL instead. Kong forwards `/<path>` to the app's `/api/<path>`, see [api-gateway.md](docs/api-gateway.md).
+3. Run `sudo atglance --configure`. Enter the gateway address as the management URL, `http://<server-ip>:8002` on a VM or `https://<your-domain>:8002` behind a load balancer, and paste the key.
+4. Run `atglance --validate`, then `sudo atglance --system-register`.
+
+The gateway forwards `/<path>` to the app's `/api/<path>`, see [api-gateway.md](docs/api-gateway.md).
 
 ## Troubleshooting
 
 | Symptom | Check |
 |---|---|
-| Installer says a port is in use | Another program uses 8000 or 8002. Stop it, or run with `--port 8080`. |
+| Installer says a port is in use | Another program uses 8000 or 8002. Stop it. The CLI expects these two ports. |
+| CLI says `Connection refused` or times out | Port 8002 (or 8000 for logout) is closed between the server and the management host. Open it in the firewall or security group. |
+| CLI gets 404 | The management URL points at the app (8000) or ends in `/api`. Use `http://<host>:8002`. |
 | App never becomes healthy | `docker compose logs app`. `migrations failed` means the app cannot reach MySQL: check `DB_HOST`, `DB_PASSWORD` and the security group. |
 | Worker or scheduler exits with `/app/storage/.env not found` | The app has not started yet, or the three do not share the same `/app/storage` volume. |
 | HTTP 500 on every page after a restore or key change | `APP_KEY` changed. Restore the saved `/app/storage/.env`. |

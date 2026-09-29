@@ -50,7 +50,7 @@ curl -fsSL https://raw.githubusercontent.com/niketchandra/atGlance-managementGUI
 2. It creates `/opt/atglance` with random database passwords, pulls the images and starts the containers.
 3. Open the printed URL, `http://<server-ip>:8000`, and complete the setup wizard.
 
-Add the Kong API gateway or pin a version with `| sudo bash -s -- --with-gateway --version 1.2.1`. To upgrade, run the installer again. It keeps your data and passwords.
+Open ports 8000 (web console) and 8002 (API gateway for the `atglance` CLI) in the firewall. Pin a version with `| sudo bash -s -- --version 1.2.1`. To upgrade, run the installer again. It keeps your data and passwords.
 
 ### Part B: Deploy on ECS or another container service
 
@@ -61,20 +61,21 @@ Run the images as separate services next to managed MySQL 8.0 and Redis 7:
 | app | `atglance/ce-atglance-app` | default (port 8000, health `GET /up`) | 1 during install, then scale |
 | worker | `atglance/ce-atglance-app` | `php artisan queue:work redis --tries=5 --backoff=30,60,120,300,600 --timeout=60` | 1 or more |
 | scheduler | `atglance/ce-atglance-app` | `php artisan schedule:work` | exactly 1 |
-| gateway (optional) | `atglance/ce-atglance-gateway` | default (port 8002) | 1 or more |
+| gateway | `atglance/ce-atglance-gateway` | default (port 8002) | 1 or more |
 
 1. Create MySQL (database and user `atglance`), Redis and a shared file system (EFS, Azure Files, a `ReadWriteMany` volume).
 2. Mount the shared file system at `/app/storage` in the app, worker and scheduler. It holds the app key and stored files.
 3. Set `ATGLANCE_ROLE`, `DB_HOST`, `DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD`, `REDIS_HOST`, `CACHE_STORE=redis` and `QUEUE_CONNECTION=redis` on all three.
-4. Start the app first, behind a load balancer with HTTPS. When it is healthy, start the worker and the scheduler.
-5. Open `https://<your-domain>` and complete the setup wizard.
+4. Start the app first. When it is healthy, start the worker, the scheduler and the gateway.
+5. Put a load balancer with HTTPS in front: ports 443 and 8000 to the app, port 8002 to the gateway, all on one host name. The CLI needs 8000 and 8002.
+6. Open `https://<your-domain>` and complete the setup wizard.
 
 [INSTALLATION.md](INSTALLATION.md#ecs-on-fargate-step-by-step) has a full ECS Fargate walkthrough with task definitions, plus Kubernetes, Azure Container Apps and Cloud Run notes.
 
 ### After installing
 
 - **Back up the app key.** It encrypts stored secrets (S3, SMTP and SSO passwords, API keys). On a VM: `docker exec ce-atglance-app grep APP_KEY /app/storage/.env`.
-- **Connect a server.** In the console, open **Settings** and create an API key (it starts with `atgla-`). Point the `atglance` CLI at `https://<your-domain>/api` with that key. The API is described in [api-reference.md](docs/api-reference.md).
+- **Connect a server.** In the console, open **Settings** and create an API key (it starts with `atgla-`). On the server, run `sudo atglance --configure` and enter the gateway as the management URL: `http://<server-ip>:8002` (VM) or `https://<your-domain>:8002` (load balancer). The API is described in [api-reference.md](docs/api-reference.md).
 
 ### Containers
 
@@ -85,7 +86,7 @@ Run the images as separate services next to managed MySQL 8.0 and Redis 7:
 | `ce-atglance-scheduler` | `atglance/ce-atglance-app` | Laravel scheduler. Runs scheduled S3 backups, see [scheduled-backups.md](docs/scheduled-backups.md). |
 | `ce-atglance-db` | `mysql:8.0` | Database (VM install) |
 | `ce-atglance-redis` | `redis:7-alpine` | Cache, queue and circuit-breaker state (VM install) |
-| `ce-atglance-gateway` | `atglance/ce-atglance-gateway` | Kong with the AtGlance routes built in. Optional. |
+| `ce-atglance-gateway` | `atglance/ce-atglance-gateway` | Kong API gateway, port 8002, with the AtGlance routes built in. The `atglance` CLI talks to it. |
 
 Only the two `atglance/ce-atglance-*` images are built by this project. The others are public images.
 
@@ -105,13 +106,7 @@ cp composer/.env.example composer/.env  # then set APP_KEY
 docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
 ```
 
-This starts the app, worker, scheduler, MySQL and Redis. The Kong API gateway (`ce-atglance-gateway`, port 8002) is optional and does not start by default. To start it as well, add `--profile gateway` to the command:
-
-```bash
-docker compose -f docker-compose.yml -f docker-compose.dev.yml --profile gateway up -d --build
-```
-
-Use the same flag with other commands for the gateway, for example `docker compose --profile gateway down`.
+This starts the app (port 8000), worker, scheduler, MySQL, Redis and the Kong API gateway (port 8002).
 
 Run the tests in a container (no local PHP needed):
 
@@ -154,7 +149,7 @@ All documents are in the [docs](docs/) folder:
 | Use | [licence.md](docs/licence.md) | Licence key, verification, and what an unlicensed instance blocks |
 | Operate | [scheduled-backups.md](docs/scheduled-backups.md) | Scheduled S3 backups, restore, the scheduler container |
 | Operate | [queue.md](docs/queue.md) | Queue worker, retries and monitoring |
-| Operate | [api-gateway.md](docs/api-gateway.md) | Optional Kong gateway: routes, rate limits, adding routes |
+| Operate | [api-gateway.md](docs/api-gateway.md) | Kong API gateway used by the CLI: routes, rate limits, adding routes |
 | Integrate | [api-reference.md](docs/api-reference.md) | Every API endpoint, with requests and responses |
 | Integrate | [api-keys.md](docs/api-keys.md) | API key (PAT) flow for the `atglance` CLI |
 | Develop | [project-overview.md](docs/project-overview.md) | Features, branches, curl examples, table layouts |

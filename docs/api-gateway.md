@@ -87,7 +87,7 @@ docker compose exec app php artisan migrate --force
 Kong config is baked into the `atglance/ce-atglance-gateway` image. Rebuild the gateway after edits:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.dev.yml --profile gateway up -d --build gateway
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build gateway
 ```
 
 ## Common issues

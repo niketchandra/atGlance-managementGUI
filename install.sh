@@ -6,8 +6,11 @@
 # Options (pass after "bash -s --", or as environment variables):
 #   --dir DIR          install directory              (ATGLANCE_DIR, default /opt/atglance)
 #   --version TAG      image tag                      (ATGLANCE_VERSION, default latest)
-#   --port PORT        console / API port             (APP_PORT, default 8000)
-#   --with-gateway     also run the Kong API gateway  (ATGLANCE_GATEWAY=1, port 8002)
+#   --port PORT        web console port               (APP_PORT, default 8000)
+#
+# The Kong API gateway always runs on port 8002 (GATEWAY_PORT). The atglance
+# CLI talks to the gateway, so keep 8000 and 8002 unless you know you need
+# other ports.
 #
 # Re-running the installer upgrades an existing install and keeps its data
 # and passwords.
@@ -16,7 +19,6 @@ set -euo pipefail
 ATGLANCE_DIR="${ATGLANCE_DIR:-/opt/atglance}"
 ATGLANCE_VERSION="${ATGLANCE_VERSION:-latest}"
 ATGLANCE_REF="${ATGLANCE_REF:-main}"
-ATGLANCE_GATEWAY="${ATGLANCE_GATEWAY:-0}"
 APP_PORT="${APP_PORT:-8000}"
 GATEWAY_PORT="${GATEWAY_PORT:-8002}"
 REPO_RAW="https://raw.githubusercontent.com/niketchandra/atGlance-managementGUI/${ATGLANCE_REF}"
@@ -31,7 +33,7 @@ while [ $# -gt 0 ]; do
         --dir) ATGLANCE_DIR="$2"; shift 2 ;;
         --version) ATGLANCE_VERSION="$2"; shift 2 ;;
         --port) APP_PORT="$2"; shift 2 ;;
-        --with-gateway) ATGLANCE_GATEWAY=1; shift ;;
+        --with-gateway) shift ;;  # accepted for older docs; the gateway always runs
         -h|--help) sed -n '2,14p' "$0" 2>/dev/null || true; exit 0 ;;
         *) echo "Unknown option: $1" >&2; exit 1 ;;
     esac
@@ -100,14 +102,16 @@ else
     ok "Memory: ${mem_mb} MB"
 fi
 
-ports="$APP_PORT"
-[ "$ATGLANCE_GATEWAY" = "1" ] && ports="$ports $GATEWAY_PORT"
+ports="$APP_PORT $GATEWAY_PORT"
 for p in $ports; do
     if port_in_use "$p" && ! port_owned_by_atglance "$p"; then
         die "Port $p is in use. Free it or pick another with --port."
     fi
 done
 ok "Ports free: $ports"
+if [ "$APP_PORT" != "8000" ] || [ "$GATEWAY_PORT" != "8002" ]; then
+    warn "The atglance CLI expects ports 8000 and 8002. Other ports need a proxy in front."
+fi
 
 # ---------------------------------------------------------------------------
 step "Checking Docker"
@@ -172,24 +176,26 @@ EOF
     ok "Created .env with random database passwords"
 fi
 
-profiles=()
-[ "$ATGLANCE_GATEWAY" = "1" ] && profiles=(--profile gateway)
-
 # ---------------------------------------------------------------------------
 step "Deploying AtGlance CE ($ATGLANCE_VERSION)"
 
-docker compose "${profiles[@]}" pull
-docker compose "${profiles[@]}" up -d --remove-orphans
+docker compose pull
+docker compose up -d --remove-orphans
 
-printf "  Waiting for the console to start"
-for _ in $(seq 1 90); do
-    status=$(docker inspect -f '{{.State.Health.Status}}' ce-atglance-app 2>/dev/null || echo starting)
-    [ "$status" = "healthy" ] && break
-    printf "."
-    sleep 2
-done
-echo
-[ "$status" = "healthy" ] || die "The console did not become healthy. Check: docker compose -f $ATGLANCE_DIR/docker-compose.yml logs app"
+wait_healthy() {
+    local name="$1" status=starting
+    printf "  Waiting for %s" "$name"
+    for _ in $(seq 1 90); do
+        status=$(docker inspect -f '{{.State.Health.Status}}' "$name" 2>/dev/null || echo starting)
+        [ "$status" = "healthy" ] && break
+        printf "."
+        sleep 2
+    done
+    echo
+    [ "$status" = "healthy" ] || die "$name did not become healthy. Check: docker compose -f $ATGLANCE_DIR/docker-compose.yml logs"
+}
+wait_healthy ce-atglance-app
+wait_healthy ce-atglance-gateway
 ok "All containers running"
 
 # ---------------------------------------------------------------------------
@@ -200,8 +206,11 @@ echo
 echo "${C_B}AtGlance CE is running.${C_0}"
 echo
 echo "  Setup wizard:  http://$host_ip:$APP_PORT"
-[ "$ATGLANCE_GATEWAY" = "1" ] && echo "  API gateway:   http://$host_ip:$GATEWAY_PORT"
+echo "  API gateway:   http://$host_ip:$GATEWAY_PORT"
+echo "  CLI setup:     atglance --configure   (management URL: http://$host_ip:$GATEWAY_PORT)"
 echo "  Install dir:   $ATGLANCE_DIR"
+echo
+echo "  Open ports $APP_PORT and $GATEWAY_PORT in the firewall for users and servers."
 echo
 echo "  Manage:  cd $ATGLANCE_DIR && docker compose ps | logs -f | restart | down"
 echo "  Upgrade: re-run this installer"

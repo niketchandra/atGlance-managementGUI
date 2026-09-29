@@ -42,8 +42,8 @@ Browser (admin/user)  ──▶  Laravel web (routes/web.php)
                               worker (php artisan queue:work redis)
 ```
 
-- **Kong** (`kong/kong.yml`, baked into `kong/Dockerfile`; compose profile
-  `gateway`, container `ce-atglance-gateway`) is the only public
+- **Kong** (`kong/kong.yml`, baked into `kong/Dockerfile`; always-on compose
+  service `gateway`, container `ce-atglance-gateway`) is the only public
   entrypoint for API traffic (port 8002 → proxies to Laravel :8000). Add new
   API routes here too when adding a Kong route — see `docs/api-gateway.md`.
 - **Containers / deploy**: `docker-compose.yml` is pull-only (images
