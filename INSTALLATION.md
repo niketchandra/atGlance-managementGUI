@@ -85,7 +85,7 @@ ce-atglance-db         ce-atglance-redis      ce-atglance-gateway
 
 - Allow inbound TCP 8000 and 8002 in the security group or firewall. The `atglance` CLI on your servers needs both.
 - Do not open 3306 or 6379. MySQL and Redis are reachable only inside the Docker network.
-- For production, put a reverse proxy with HTTPS in front of port 8000, for example Caddy, nginx, Traefik or a cloud load balancer.
+- For a custom domain and HTTPS, use the built-in proxy after install: see [Custom domain and HTTPS](docs/custom-domain.md). The install folder also gets `docker-compose.domain.yml`, an opt-in override that the install itself does not use. Any other reverse proxy (nginx, Traefik, a cloud load balancer) in front of port 8000 works too.
 
 Continue with [After the install](#after-the-install).
 
@@ -287,6 +287,7 @@ Keep the same EFS volume and mount point. All three must share `/app/storage`.
 
    Redirect HTTP 80 to 443.
 4. Point your domain (Route 53 or other DNS) at the load balancer.
+5. After the install, set the domain in Admin Settings > Plugins > Custom Domain & HTTPS, then on the Site tab with HTTPS "Handled by my platform". See [Custom domain and HTTPS](docs/custom-domain.md).
 
 #### Step 6: Create the services in this order
 
