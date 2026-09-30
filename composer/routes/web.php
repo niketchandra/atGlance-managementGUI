@@ -9,6 +9,7 @@ use App\Http\Controllers\BackupRestoreController;
 use App\Http\Controllers\DomainSettingsController;
 use App\Http\Controllers\InstallerController;
 use App\Http\Controllers\LicenseController;
+use App\Http\Controllers\MailTestController;
 use App\Http\Controllers\NotificationSettingsController;
 use App\Http\Controllers\NotificationsController;
 use App\Http\Controllers\PublicPageController;
@@ -126,6 +127,7 @@ Route::middleware('app.installed')->group(function () {
             Route::post('/settings/migration/analyze', [AdminDashboardController::class, 'analyzeMigration'])->name('admin.settings.migration.analyze');
             Route::post('/settings/migration/start', [AdminDashboardController::class, 'startMigration'])->name('admin.settings.migration.start');
             Route::post('/settings/mail', [AdminDashboardController::class, 'updateMailSettings'])->name('admin.settings.mail');
+            Route::post('/settings/mail/test', [MailTestController::class, 'send'])->middleware('throttle:5,1')->name('admin.settings.mail.test');
             Route::post('/settings/sso', [AdminDashboardController::class, 'updateSsoSettings'])->name('admin.settings.sso');
         });
 

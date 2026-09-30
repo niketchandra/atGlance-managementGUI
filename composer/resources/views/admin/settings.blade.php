@@ -438,6 +438,17 @@
             </div>
             <button class="ag-btn" type="submit">Save Email Settings</button>
         </form>
+
+        <div class="ag-card ag-card--flat" style="margin-top: 18px;">
+            <h3 style="font-size: 15px; font-weight: 500; margin-bottom: 6px;">Send test email</h3>
+            <p style="font-size: 13px; color: var(--ag-muted); margin-bottom: 10px;">Sends a test message with the saved settings above, the same way alerts are sent. Save your changes first.</p>
+            <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+                <label class="ag-label" for="mail-test-recipient" style="margin: 0;">Send to</label>
+                <input class="ag-input" id="mail-test-recipient" type="email" value="{{ auth()->user()->email }}" style="flex: 1; min-width: 220px;">
+                <button class="ag-btn ag-btn--ghost" type="button" id="mail-test-send"><i class="fas fa-paper-plane"></i> Send test email</button>
+            </div>
+            <p id="mail-test-result" class="hidden" style="font-size: 13px; margin-top: 8px; word-break: break-word;" role="status"></p>
+        </div>
     </div>
 
     <div id="tab-migration" class="settings-tab-content ag-card" style="display:{{ $activeTab === 'migration' ? 'block' : 'none' }}; padding:24px;">
@@ -1417,6 +1428,54 @@
 
     providerSelect.addEventListener('change', updateProviderHints);
     updateProviderHints();
+})();
+
+// Email Configuration: send a test email with the saved settings.
+(function () {
+    var button = document.getElementById('mail-test-send');
+    var result = document.getElementById('mail-test-result');
+    var form = document.querySelector('form[action="{{ route('admin.settings.mail', ['tab' => 'email']) }}"]');
+    if (!button || !result) { return; }
+    var dirty = false;
+    if (form) {
+        form.addEventListener('input', function () { dirty = true; });
+    }
+
+    function show(ok, message) {
+        result.classList.remove('hidden');
+        result.textContent = message;
+        result.style.color = ok ? 'var(--ag-success)' : 'var(--ag-danger)';
+    }
+
+    button.addEventListener('click', function () {
+        if (dirty) {
+            show(false, 'You have unsaved changes. Save the email settings first, then send the test.');
+            return;
+        }
+        button.disabled = true;
+        show(true, 'Sending...');
+        result.style.color = 'var(--ag-subtle)';
+        fetch(@json(route('admin.settings.mail.test')), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': @json(csrf_token()) },
+            body: JSON.stringify({ recipient: document.getElementById('mail-test-recipient').value.trim() })
+        }).then(function (r) {
+            return r.json().then(function (data) { return { status: r.status, data: data }; });
+        }).then(function (res) {
+            var data = res.data || {};
+            if (res.status === 429) {
+                show(false, 'Too many test emails. Wait a minute and try again.');
+            } else if (data.errors && data.errors.recipient) {
+                show(false, data.errors.recipient[0]);
+            } else {
+                show(!!data.ok, data.message || 'The test email could not be sent.');
+            }
+        }).catch(function () {
+            show(false, 'Could not reach the server. Try again.');
+        }).finally(function () {
+            button.disabled = false;
+        });
+    });
 })();
 
 // Access URL: show the certificate fields for "own certificate", and run the DNS check.
