@@ -3,6 +3,7 @@
 namespace App\Support;
 
 use App\Models\AdminSetting;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
 
 /**
@@ -156,6 +157,29 @@ final class DomainSettings
         $url = self::appUrl();
         EnvFile::set(['APP_URL' => $url]);
         config(['app.url' => $url]);
+
+        // The queue worker keeps its booted config; restart it so queued mail uses the new URL.
+        try {
+            Artisan::call('queue:restart');
+        } catch (\Throwable) {
+            // No cache store yet (fresh install): the worker starts with the new URL anyway.
+        }
+    }
+
+    /**
+     * Sets config('app.url') from the database at boot. artisan serve
+     * (--no-reload) and the queue worker keep the APP_URL environment they
+     * started with, so .env alone does not reach running processes.
+     */
+    public static function applyRuntimeAppUrl(): void
+    {
+        try {
+            if (InstallationState::isInstalled()) {
+                config(['app.url' => self::appUrl()]);
+            }
+        } catch (\Throwable) {
+            // Database not reachable yet: keep APP_URL from the environment.
+        }
     }
 
     public static function save(string $domain, string $mode, string $serverAddress): void

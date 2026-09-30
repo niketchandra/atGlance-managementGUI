@@ -118,6 +118,19 @@ class DomainSettingsTest extends TestCase
         unlink($marker);
     }
 
+    public function test_app_url_follows_database_at_boot_not_stale_environment(): void
+    {
+        DomainSettings::setPluginEnabled(true);
+        DomainSettings::save('ops.acme.com', 'platform', '10.0.0.5');
+
+        // artisan serve --no-reload and the queue worker keep the APP_URL they
+        // started with; the app must take it from the database when it boots.
+        config(['app.url' => 'http://stale.example']);
+        $this->app->getProvider(\App\Providers\AppServiceProvider::class)->boot();
+
+        $this->assertSame('https://ops.acme.com', config('app.url'));
+    }
+
     public function test_record_proxy_keeps_each_type(): void
     {
         DomainSettings::recordProxy('platform', 'https');

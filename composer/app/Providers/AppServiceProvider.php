@@ -26,6 +26,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        \App\Support\DomainSettings::applyRuntimeAppUrl();
+
         $defaultLogoUrl = asset('branding/atglance-logo.png');
         $defaultFaviconUrl = asset('branding/favicon.ico');
 
