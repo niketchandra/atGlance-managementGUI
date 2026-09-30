@@ -7,6 +7,7 @@ use App\Models\Organization;
 use App\Models\User;
 use App\Rules\IpAddressWithOptionalPort;
 use App\Services\LicenseClient;
+use App\Support\EnvFile;
 use App\Support\InstallationState;
 use App\Support\License;
 use Illuminate\Http\JsonResponse;
@@ -127,7 +128,7 @@ class InstallerController extends Controller
         $superAdminPassword = (string) $validated['superadmin_password'];
         $normalizedUrl = ($httpsEnabled ? 'https://' : 'http://') . $appIpAddress;
 
-        $this->updateEnv([
+        EnvFile::set([
             'APP_URL' => $normalizedUrl,
             'APP_FORCE_HTTPS' => $httpsEnabled ? 'true' : 'false',
         ]);
@@ -215,24 +216,5 @@ class InstallerController extends Controller
         return view('install.info', [
             'installation' => InstallationState::getData(),
         ]);
-    }
-
-    private function updateEnv(array $pairs): void
-    {
-        $envPath = base_path('.env');
-        $envContent = is_file($envPath) ? (string) file_get_contents($envPath) : '';
-
-        foreach ($pairs as $key => $value) {
-            $pattern = "/^{$key}=.*/m";
-            $line = $key . '=' . $value;
-
-            if (preg_match($pattern, $envContent)) {
-                $envContent = (string) preg_replace($pattern, $line, $envContent);
-            } else {
-                $envContent .= (str_ends_with($envContent, PHP_EOL) ? '' : PHP_EOL) . $line . PHP_EOL;
-            }
-        }
-
-        file_put_contents($envPath, $envContent);
     }
 }
