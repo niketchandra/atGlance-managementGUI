@@ -12,8 +12,8 @@ use Illuminate\Support\Facades\Http;
  * verify() only checks the key and changes nothing on atglance.live.
  *
  * checkAvailable() uses verify() to decide whether this console may use the
- * key: "available" keys and keys already activated for this console pass; a
- * key "in_use" by any other console or organisation is refused. It backs the
+ * key: only "available" keys pass; a key already "in_use" (by any console,
+ * this one included) is refused. It backs the
  * installer's "Verify" button, and activateIfAvailable() runs it before every
  * activation, so an in-use key never reaches the activate API.
  *
@@ -29,7 +29,7 @@ class LicenseClient
     /** Statuses the verify call returns for a key that can be used. */
     private const USABLE_STATUSES = ['available', 'in_use'];
 
-    public const IN_USE_MESSAGE = 'This licence key is already in use by another AtGlance console. Deactivate it on atglance.live, or create a new licence key and use that one.';
+    public const IN_USE_MESSAGE = 'This licence key is already in use. Deactivate it on atglance.live, or create a new licence key and use that one.';
 
     private const STATUS_MESSAGES = [
         'in_use_elsewhere' => self::IN_USE_MESSAGE,
@@ -78,10 +78,8 @@ class LicenseClient
     }
 
     /**
-     * Whether this console may use the key. ok is true when the key is
-     * "available", or "in_use" by this same console (for example after a
-     * reinstall that kept storage/app/installer/instance_id). A key in use by
-     * any other console or organisation is refused with IN_USE_MESSAGE.
+     * Whether this console may use the key. ok is true only when the key is
+     * "available"; a key already "in_use" is refused with IN_USE_MESSAGE.
      *
      * @return array{ok: bool, message: string, status: string, http_status: int, details: array<string, mixed>}
      */
@@ -92,15 +90,11 @@ class LicenseClient
             return $result;
         }
 
+        // Any key already "In Use" is refused, even one activated by this same
+        // console (a reinstall keeps storage/app/installer/instance_id). The
+        // owner deactivates it on atglance.live first, or uses a new key.
         if ($result['status'] === self::VERIFIED_STATUS) {
-            $owner = trim((string) ($result['details']['extra']['console.instance_id'] ?? ''));
-            if ($owner === '' || $owner !== License::instanceId()) {
-                return $this->failure(self::IN_USE_MESSAGE, 'in_use_elsewhere', $result['http_status']);
-            }
-
-            $result['message'] = 'Licence is valid. It is already activated for this console.';
-
-            return $result;
+            return $this->failure(self::IN_USE_MESSAGE, 'in_use', $result['http_status']);
         }
 
         $result['message'] = 'Licence is valid and ready to activate.';
