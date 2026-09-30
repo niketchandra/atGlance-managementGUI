@@ -618,8 +618,8 @@
                 <div><div style="font-size: 12px; color: var(--ag-muted);">Plan</div><div>{{ $licence['plan'] !== '' ? $licence['plan'] : '-' }}</div></div>
                 <div><div style="font-size: 12px; color: var(--ag-muted);">Expires</div><div>{{ $licence['expires_at'] !== '' ? $licence['expires_at'] : '-' }}</div></div>
                 <div><div style="font-size: 12px; color: var(--ag-muted);">Licence key</div><div>{{ $licence['masked_key'] }}</div></div>
-                <div><div style="font-size: 12px; color: var(--ag-muted);">Last verified</div><div>{{ $licence['verified_at'] !== '' ? $licence['verified_at'] : '-' }}</div></div>
-                <div><div style="font-size: 12px; color: var(--ag-muted);">Licence owner</div><div>{{ $licence['details']['user.email'] ?? '-' }}</div></div>
+                <div><div style="font-size: 12px; color: var(--ag-muted);">Activated on</div><div>{{ \App\Support\License::date($licence['activated_at']) ?: '-' }}</div></div>
+                <div><div style="font-size: 12px; color: var(--ag-muted);">Validated on</div><div>{{ \App\Support\License::date($licence['verified_at']) ?: '-' }}</div></div>
             </div>
             @php
                 $licenceExtra = collect($licence['details'])->except(['license.name', 'plan', 'license.expires_at']);
@@ -640,6 +640,9 @@
         @else
             <div style="margin-bottom: 14px; padding: 12px; border-radius: 12px; background: var(--ag-warning-soft); border: 1px solid #fcd34d; color: var(--ag-warning); font-size: 13px;">
                 <strong>No active licence.</strong> Until a licence is added, nobody can create or register users and no API keys can be created.
+                @if($licence['check_message'] !== '')
+                    <div style="margin-top: 6px;">Last check ({{ \App\Support\License::date($licence['verified_at']) }}): {{ $licence['check_message'] }}</div>
+                @endif
             </div>
         @endif
 

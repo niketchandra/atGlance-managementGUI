@@ -18,43 +18,97 @@ Existing users can still sign in, and existing API keys keep working.
 ## Where the key is entered
 
 **Installer (`/install`, Step 1).** Paste the key and click **Verify**, or tick
-**I'll add later**. The key is verified again on submit; a failed check stops
-the installation.
+**I'll add later**. **Verify** only checks the key. Clicking **Install
+Application** activates the licence for this console and the organisation name
+from the form. A failed activation stops the installation.
 
 **Admin Settings > Licence** (`POST /admin/settings/licence`, admins `100`/`101`).
-Used when the installer step was skipped or to replace the key.
+Used when the installer step was skipped or to replace the key. The console and
+organisation already exist here, so **Verify & Save** activates the licence
+directly, with the name of organisation `200`.
 
-Both places make the same call:
+### Verify (check only, installer "Verify" button)
 
 ```
 POST https://atglance.live/api/licenses/verify
 Accept: application/json
+Authorization: Bearer <licence key>
+```
+
+No body. Nothing changes on atglance.live.
+
+| HTTP | `status` | Result in the console |
+|---|---|---|
+| 200 | `available` | Valid; not used by any org yet |
+| 200 | `in_use`, `console.instance_id` = this console | Valid; already activated for this console (reinstall) |
+| 200 | `in_use`, any other console | Refused: "This licence key is already in use by another AtGlance console. Deactivate it on atglance.live, or create a new licence key and use that one." The org name is not shown |
+| 403 | `unverified` / `under_review` | Rejected: not usable yet |
+| 401 | - | Rejected: wrong or revoked key |
+
+### One licence, one console
+
+The installer submit and Admin Settings > Licence both call **verify** first
+(`LicenseClient::activateIfAvailable()`). **Activate** is called only when the
+key is `available` or already `in_use` by this console. A key in use by any
+other console or organisation is refused and never sent to activate, so it
+cannot be moved to a new org name from here.
+
+### Activate (installer submit, Admin Settings > Licence)
+
+```
+POST https://atglance.live/api/licenses/activate
+Accept: application/json
 Content-Type: application/json
 Authorization: Bearer <licence key>
 
-{"instance_id":"<console UUID>","hostname":"<gethostname()>","version":"<config app.version>"}
+{"org_name":"<organisation name>","instance_id":"<console UUID>","hostname":"<gethostname()>","version":"<config app.version>"}
 ```
 
-The call checks the key and, if it is valid, marks the licence In Use for this
-console. The first console to verify a licence owns it. atglance.live identifies
+The call links the licence to this console and organisation and marks it In
+Use. The first console to activate a licence owns it. atglance.live identifies
 the console by `instance_id`. The console generates that UUID once and keeps it
 in `storage/app/installer/instance_id` (`License::instanceId()`). The ID is kept
-in storage, not in the DB, because the installer verifies before migrations run.
+in storage, not in the DB, because the installer activates before migrations run.
 The container hostname also changes when the container is recreated. Do not
 delete this file: a new ID makes atglance.live see a different console and
 return `409 in_use_elsewhere`. Portal backup/restore does not include it.
 
 | HTTP | `status` | Result in the console |
 |---|---|---|
-| 201 | `in_use` | Verified; licence saved |
-| 200 | `in_use` | Same console verified again (restart, reinstall); licence saved |
-| 409 | `in_use_elsewhere` | Rejected: licence used by another console |
-| 403 | `unverified` | Rejected: user must enter the emailed code on atglance.live |
-| 403 | `under_review` | Rejected: waiting for admin approval on atglance.live |
+| 201 | `in_use` | Activated; licence saved |
+| 200 | `in_use` | Same console activated again (restart, reinstall); licence saved |
+| 409 | `in_use_elsewhere` | Rejected: licence used by another console or org |
+| 422 | - | Rejected: `org_name` missing |
 | 401 | - | Rejected: wrong or revoked key |
 
 On success the console saves `license.name`, `plan` and the other response
-fields (`user.*`, `console.*`) flattened to dot keys.
+fields (`console.*`, ...) flattened to dot keys. The licence owner fields
+(`user.*`) are not stored or shown.
+
+## Daily check
+
+`php artisan license:check` runs every day at 02:15 (scheduler container). It
+calls **verify** (check only) with the stored key and sets **Validated On** to
+the check date.
+
+| Verify result | Effect |
+|---|---|
+| `in_use` by this console (`console.instance_id` matches) | Licence stays active; details refreshed |
+| `available` (released on atglance.live) | Licence turned off |
+| `in_use` by another console | Licence turned off |
+| 401 / 403 | Licence turned off |
+| Server unreachable, 5xx, 429 | Nothing changes (checked again next day) |
+
+When the licence is turned off, Admin Settings > Licence shows the reason.
+An admin activates it again with **Verify & Save**.
+
+## Sidebar licence card
+
+Shows plan, licence name, **Activated On** (`console.activated_at` from
+atglance.live, date only) and **Validated On** (last successful activation or
+daily check, date only).
+
+Rate limits per key on atglance.live: verify 30/min, activate 30/min.
 
 ## Storage
 
@@ -63,12 +117,14 @@ fields (`user.*`, `console.*`) flattened to dot keys.
 | Key | Content |
 |---|---|
 | `license_key` | licence key, encrypted |
-| `license_status` | `in_use` when verified |
-| `license_name`, `license_plan`, `license_expires_at` | from the verify response |
-| `license_details` | JSON of the other scalar response fields |
-| `license_verified_at` | time of the last successful verification |
+| `license_status` | `in_use` when active; otherwise the status that turned it off |
+| `license_name`, `license_plan`, `license_expires_at` | from the activate response |
+| `license_details` | JSON of the other scalar response fields (no `user.*`) |
+| `license_activated_at` | `console.activated_at` from atglance.live (Activated On) |
+| `license_verified_at` | last activation or daily check (Validated On) |
+| `license_check_message` | reason from the last daily check that turned the licence off |
 
-Code: `App\Services\LicenseClient` (API call), `App\Support\License`
+Code: `App\Services\LicenseClient` (`verify()` and `activate()`), `App\Support\License`
 (storage and `License::isActive()`), `App\Http\Controllers\LicenseController`.
 
 ## Configuration
@@ -76,4 +132,5 @@ Code: `App\Services\LicenseClient` (API call), `App\Support\License`
 | Env | Default |
 |---|---|
 | `ATGLANCE_LICENSE_VERIFY_URL` | `https://atglance.live/api/licenses/verify` |
+| `ATGLANCE_LICENSE_ACTIVATE_URL` | `https://atglance.live/api/licenses/activate` |
 | `ATGLANCE_LICENSE_PORTAL_URL` | `https://atglance.live` |

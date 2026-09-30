@@ -1,7 +1,9 @@
 <?php
 
 use App\Services\BackupService;
+use App\Services\LicenseClient;
 use App\Support\InstallationState;
+use App\Support\License;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
@@ -46,8 +48,25 @@ Artisan::command('activity:prune {--days= : Keep this many days (default ACTIVIT
     return 0;
 })->purpose('Delete activity log entries older than the retention period');
 
+Artisan::command('license:check', function (LicenseClient $client) {
+    $check = License::check($client);
+
+    match ($check['result']) {
+        'active' => $this->info($check['message']),
+        'inactive' => $this->error('Licence deactivated: ' . $check['message']),
+        default => $this->warn($check['message']),
+    };
+
+    if ($check['result'] === 'skipped') {
+        Log::warning('Licence check skipped', ['message' => $check['message']]);
+    }
+
+    return 0;
+})->purpose('Check the stored licence with atglance.live (check only) and update its status');
+
 if (InstallationState::isInstalled()) {
     Schedule::command('activity:prune')->dailyAt('03:30')->withoutOverlapping();
+    Schedule::command('license:check')->dailyAt('02:15')->withoutOverlapping();
 }
 
 // Frequencies come from the Backup & Restore tab. The scheduler re-reads them on

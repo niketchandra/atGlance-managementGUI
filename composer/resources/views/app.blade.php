@@ -117,14 +117,8 @@
 
                 @php
                     $agLicence = \App\Support\License::summary();
-                    $agLicenceExpires = '';
-                    if ($agLicence['expires_at'] !== '') {
-                        try {
-                            $agLicenceExpires = \Illuminate\Support\Carbon::parse($agLicence['expires_at'])->format('M j, Y');
-                        } catch (\Throwable) {
-                            $agLicenceExpires = $agLicence['expires_at'];
-                        }
-                    }
+                    $agLicenceActivated = \App\Support\License::date($agLicence['activated_at']);
+                    $agLicenceValidated = \App\Support\License::date($agLicence['verified_at']);
                 @endphp
                 <div class="ag-licence-card {{ $agLicence['active'] ? '' : 'is-missing' }}">
                     <div class="ag-licence-head">
@@ -136,10 +130,8 @@
                     </div>
                     @if($agLicence['active'])
                         <div class="ag-licence-plan">{{ $agLicence['plan'] !== '' ? ucfirst($agLicence['plan']) : 'Community Edition' }}</div>
-                        @if($agLicence['name'] !== '')
-                            <div class="ag-licence-line">{{ $agLicence['name'] }}</div>
-                        @endif
-                        <div class="ag-licence-line">{{ $agLicenceExpires !== '' ? 'Expires ' . $agLicenceExpires : 'No expiry date' }}</div>
+                        <div class="ag-licence-line">Activated On {{ $agLicenceActivated !== '' ? $agLicenceActivated : '-' }}</div>
+                        <div class="ag-licence-line">Validated On {{ $agLicenceValidated !== '' ? $agLicenceValidated : '-' }}</div>
                     @else
                         <div class="ag-licence-line">New users and API keys stay locked until a licence is added.</div>
                     @endif
