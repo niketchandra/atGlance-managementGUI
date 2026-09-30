@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Session;
 use App\Models\User;
+use App\Support\License;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -16,6 +17,10 @@ class AuthController extends Controller
 {
     public function register(Request $request)
     {
+        if (!License::isActive()) {
+            return response()->json(['message' => License::REQUIRED_MESSAGE], 403);
+        }
+
         $validator = Validator::make($request->all(), [
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'email', 'max:255', 'unique:users'],

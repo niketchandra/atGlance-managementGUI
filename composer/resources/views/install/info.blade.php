@@ -4,6 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Installation Complete</title>
+    <link rel="icon" href="{{ asset('branding/favicon.ico') }}" sizes="any">
+    <link rel="icon" type="image/png" href="{{ asset('branding/favicon-32.png') }}">
+    <link rel="apple-touch-icon" href="{{ asset('branding/apple-touch-icon.png') }}">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -46,6 +49,11 @@
 
             <p class="text-sm text-slate-600 sm:text-base">Your AtGlance application is ready. Please use the details below to sign in and continue setup.</p>
 
+            <div class="mt-4 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900" role="note">
+                <p class="font-bold">Note: This page is only available until the first login.</p>
+                <p class="mt-1">Save these details now, somewhere safe. After anyone signs in for the first time, this page closes and redirects to the login page, and the password shown here is removed from the server.</p>
+            </div>
+
             <div class="mt-6 grid grid-cols-1 gap-4 text-sm md:grid-cols-2">
                 <div class="rounded-xl border border-cccccc bg-white p-4">
                     <p class="font-semibold text-slate-800">Organization Name</p>
@@ -55,13 +63,9 @@
                     <p class="font-semibold text-slate-800">IP Address</p>
                     <p class="mt-1 text-slate-700">{{ $installation['app_ip'] ?? parse_url(($installation['app_url'] ?? url('/')), PHP_URL_HOST) }}</p>
                 </div>
-                <div class="rounded-xl border border-cccccc bg-white p-4">
-                    <p class="font-semibold text-slate-800">Domain Alias</p>
-                    <p class="mt-1 text-slate-700">{{ !empty($installation['app_alias_domain'] ?? '') ? $installation['app_alias_domain'] : 'Not configured' }}</p>
-                </div>
-                <div class="rounded-xl border border-cccccc bg-white p-4">
-                    <p class="font-semibold text-slate-800">HTTPS Enabled</p>
-                    <p class="mt-1 text-slate-700">{{ ($installation['https_enabled'] ?? false) ? 'Yes' : 'No' }}</p>
+                <div class="rounded-xl border border-cccccc bg-white p-4 md:col-span-2">
+                    <p class="font-semibold text-slate-800">Your own domain or HTTPS</p>
+                    <p class="mt-1 text-slate-700">After you log in, open <span class="font-medium">Admin Settings &rsaquo; Plugins &rsaquo; Custom Domain &amp; HTTPS</span>. Until then, use the Project URL below.</p>
                 </div>
                 <div class="rounded-xl border border-cccccc bg-white p-4">
                     <p class="font-semibold text-slate-800">Project URL</p>
@@ -75,7 +79,23 @@
                     <p class="font-semibold text-slate-800">Super Admin Password</p>
                     <p class="mt-1 text-slate-700">{{ $installation['superadmin_password'] ?? 'Atglance@123' }}</p>
                 </div>
+                <div class="rounded-xl border border-cccccc bg-white p-4">
+                    <p class="font-semibold text-slate-800">Licence</p>
+                    @if($installation['license_active'] ?? false)
+                        <p class="mt-1 text-slate-700">{{ $installation['license_name'] ?: 'Verified' }}@if(!empty($installation['license_plan'])) &middot; {{ $installation['license_plan'] }}@endif</p>
+                    @else
+                        <p class="mt-1 text-slate-700">Not added</p>
+                    @endif
+                </div>
             </div>
+
+            @unless($installation['license_active'] ?? false)
+                <div class="mt-6 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 sm:p-5">
+                    <p class="font-semibold">Licence required</p>
+                    <p class="mt-1">No licence was added. Until you add one, nobody can create or register users and no API keys can be created.</p>
+                    <p class="mt-1">Log in with the super admin account, open <span class="font-medium">Admin Settings &rsaquo; Licence</span>, paste the licence key from atglance.live and click <span class="font-medium">Verify &amp; Save</span>.</p>
+                </div>
+            @endunless
 
             <div class="mt-6 rounded-xl border border-cccccc bg-f5f5f5 p-4 text-sm text-slate-700 sm:p-5">
                 <p class="font-semibold text-black">Next steps for SSO integration</p>

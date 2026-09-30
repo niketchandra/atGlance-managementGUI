@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\ServiceController;
 use App\Http\Controllers\Api\SystemRegisterController;
 use App\Http\Controllers\Api\TokenValidationController;
 use App\Http\Controllers\Api\UserController;
+use App\Http\Controllers\DomainTlsController;
 use Illuminate\Support\Facades\Route;
 
 Route::post('/auth/register', [AuthController::class, 'register']);
@@ -62,3 +63,7 @@ Route::get('/system-deregister-force', [SystemRegisterController::class, 'deregi
 // Force system reactivation - no bearer token required; uses email + password/pin
 Route::post('/system-reactivate-force', [SystemRegisterController::class, 'reactiveForce']);
 Route::get('/system-reactivate-force', [SystemRegisterController::class, 'reactiveForce']);
+
+// Built-in proxy (Caddy) only; see DomainTlsController::isLocal().
+Route::get('/internal/domain/tls-allowed', [DomainTlsController::class, 'allowed']);
+Route::get('/internal/domain/certificate', [DomainTlsController::class, 'certificate']);

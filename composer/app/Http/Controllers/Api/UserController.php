@@ -8,6 +8,7 @@ use App\Jobs\UpdateUserJob;
 use App\Jobs\DeleteUserJob;
 use App\Models\User;
 use App\Services\DatabaseCircuitBreaker;
+use App\Support\License;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
@@ -40,6 +41,10 @@ class UserController extends Controller
 
     public function store(Request $request)
     {
+        if (!License::isActive()) {
+            return response()->json(['message' => License::REQUIRED_MESSAGE], 403);
+        }
+
         $baseRules = [
             'name' => ['required', 'string', 'max:100'],
             'email' => ['required', 'email', 'max:255'],

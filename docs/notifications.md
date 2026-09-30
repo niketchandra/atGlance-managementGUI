@@ -12,7 +12,7 @@ Example: the super admin sets SMTP on the Email Configuration tab and allows Ema
 
 | Channel | Super admin sets | Group target |
 |---|---|---|
-| Email | SMTP on the Email Configuration tab | Email addresses, comma separated |
+| Email | SMTP on the Email Configuration tab (check it there with **Send test email**, which uses the saved settings) | Email addresses, comma separated |
 | Microsoft Teams | Allow | Teams channel webhook URL (Workflows template "Post to a channel when a webhook request is received"), https |
 | Slack | Allow | Slack incoming webhook URL, `https://hooks.slack.com/...` |
 | WhatsApp (SimpleFloww) | Not available yet: waiting for the provider's API details | — |

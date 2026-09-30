@@ -2,7 +2,7 @@ _format_version: "3.0"
 
 services:
   - name: users-service
-    url: http://api:8000/api
+    url: http://app:8000/api
     routes:
       - name: users-route
         paths:
@@ -28,7 +28,7 @@ services:
           minute: 4
           policy: local
   - name: auth-service
-    url: http://api:8000/api
+    url: http://app:8000/api
     routes:
       - name: auth-register-route
         paths:
@@ -68,7 +68,7 @@ services:
         methods:
           - GET
   - name: files-service
-    url: http://api:8000/api
+    url: http://app:8000/api
     routes:
       - name: system-register-route
         paths:
@@ -160,7 +160,7 @@ services:
           - GET
 
   - name: force-deregister-api-prefix-service
-    url: http://api:8000
+    url: http://app:8000
     routes:
       - name: force-deregister-api-prefix-route
         paths:
@@ -171,7 +171,7 @@ services:
           - GET
 
   - name: force-reactivate-api-prefix-service
-    url: http://api:8000
+    url: http://app:8000
     routes:
       - name: force-reactivate-api-prefix-route
         paths:
@@ -182,7 +182,7 @@ services:
           - GET
 
   - name: reactive-api-prefix-service
-    url: http://api:8000
+    url: http://app:8000
     routes:
       - name: reactive-api-prefix-route
         paths:

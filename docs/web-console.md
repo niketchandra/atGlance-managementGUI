@@ -134,6 +134,19 @@ The footer is not white-labelled. It always shows "© AtGlance" and links to the
 
 The values are read per request by `App\Support\SiteProfile` and shared with every view as `$brandName`, `$siteLogoUrl`, `$siteDescription` and `$publicPages`.
 
+## Custom Domain & HTTPS
+
+- **Plugins tab** (`/admin/settings?tab=plugins`): the **Custom Domain & HTTPS** card.
+  - An Enable switch (super admin only).
+  - Setup steps for VM (the built-in proxy), ECS, Azure Container Apps and Kubernetes.
+  - The detected proxy status.
+- **Site Configuration tab**: the **Access URL** section, with domain, server IP, the HTTPS option, certificate upload, Check DNS, and the DNS and hosts-file lines to copy.
+  - It is greyed out until the plugin is enabled.
+  - Admins (101) see it read-only.
+- **Info tab**: shows the access URL, server IP and HTTPS option.
+
+See [custom-domain.md](custom-domain.md).
+
 ## Controllers
 
 ### `AuthController` (Web)

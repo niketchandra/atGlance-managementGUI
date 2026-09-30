@@ -26,7 +26,15 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        $defaultLogoUrl = asset('branding/atglance-logo.svg');
+        \App\Support\DomainSettings::applyRuntimeAppUrl();
+
+        // The first successful login (password or SSO) closes /install/info.
+        \Illuminate\Support\Facades\Event::listen(
+            \Illuminate\Auth\Events\Login::class,
+            fn () => \App\Support\InstallationState::markFirstLogin()
+        );
+
+        $defaultLogoUrl = asset('branding/atglance-logo.png');
         $defaultFaviconUrl = asset('branding/favicon.ico');
 
         $sharedSettings = [
@@ -80,7 +88,9 @@ class AppServiceProvider extends ServiceProvider
                 $faviconOverrideUrl = trim((string) AdminSetting::getValue('site_favicon_url', ''));
                 if ($faviconOverrideUrl !== '') {
                     $sharedSettings['siteFaviconUrl'] = $faviconOverrideUrl;
-                } elseif (!empty($sharedSettings['siteLogoUrl'])) {
+                } elseif ($sharedSettings['siteLogoUrl'] !== $defaultLogoUrl) {
+                    // An uploaded organisation logo doubles as the favicon; the
+                    // default wordmark is too wide, so keep the AtGlance icon.
                     $sharedSettings['siteFaviconUrl'] = (string) $sharedSettings['siteLogoUrl'];
                 }
 

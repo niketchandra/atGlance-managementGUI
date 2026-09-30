@@ -4,6 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AtGlance Installer</title>
+    <link rel="icon" href="{{ asset('branding/favicon.ico') }}" sizes="any">
+    <link rel="icon" type="image/png" href="{{ asset('branding/favicon-32.png') }}">
+    <link rel="apple-touch-icon" href="{{ asset('branding/apple-touch-icon.png') }}">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -54,9 +57,7 @@
         <div class="grid w-full gap-6 rounded-3xl border border-white/20 bg-white/90 p-4 shadow-glow backdrop-blur-xl sm:p-6 lg:grid-cols-2">
             <div class="order-2 rounded-2xl border border-slate-200 bg-white p-5 sm:p-7 lg:order-2">
                 <div class="mb-6 flex items-center gap-4">
-                    <div class="flex h-14 w-14 items-center justify-center rounded-2xl bg-black text-lg font-extrabold text-white shadow-lg">
-                        AT
-                    </div>
+                    <img src="{{ asset('branding/atglance-icon.png') }}" alt="" class="h-14 w-14 shrink-0 rounded-2xl shadow-lg">
                     <div>
                         <h1 class="text-2xl font-extrabold text-slate-900 sm:text-3xl">AtGlance Project Installer</h1>
                     </div>
@@ -77,6 +78,54 @@
                 <form id="installerForm" action="{{ route('install.run') }}" method="POST" class="mt-6 space-y-5">
                     @csrf
 
+                    @php($licenseLater = old('license_later') === '1')
+                    <section class="rounded-2xl border border-slate-300 bg-slate-50 p-4 sm:p-5">
+                        <h2 class="text-base font-extrabold text-slate-900">Step 1 &mdash; Licence Key</h2>
+                        <p class="mt-1 text-xs text-slate-600">Add your AtGlance licence key before you start the installation.</p>
+
+                        <ol class="mt-3 list-decimal space-y-1 pl-5 text-xs text-slate-700">
+                            <li>Log in to <a href="{{ $licensePortalUrl }}" target="_blank" rel="noopener" class="font-semibold text-black underline">atglance.live</a>.</li>
+                            <li>Generate a licence for this installation.</li>
+                            <li>Copy the licence key and paste it below.</li>
+                        </ol>
+
+                        <label for="license_key" class="mt-4 block text-sm font-semibold text-slate-800">Licence Key</label>
+                        <div class="mt-2 flex flex-col gap-2 sm:flex-row">
+                            <input
+                                id="license_key"
+                                name="license_key"
+                                type="text"
+                                autocomplete="off"
+                                spellcheck="false"
+                                value="{{ old('license_key', '') }}"
+                                placeholder="Paste your licence key"
+                                {{ $licenseLater ? 'disabled' : '' }}
+                                class="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 font-mono text-sm outline-none transition focus:border-black focus:ring-4 focus:ring-slate-200 disabled:bg-slate-100 disabled:text-slate-400"
+                            >
+                            <button
+                                id="licenseVerifyBtn"
+                                type="button"
+                                {{ $licenseLater ? 'disabled' : '' }}
+                                class="shrink-0 rounded-xl border border-black bg-white px-4 py-3 text-sm font-bold text-black transition hover:bg-slate-100 disabled:border-slate-300 disabled:text-slate-400"
+                            >Verify</button>
+                        </div>
+                        <p id="licenseVerifyResult" class="mt-2 hidden text-xs font-semibold" role="status"></p>
+
+                        <label class="mt-3 flex items-center gap-2 text-sm text-slate-800">
+                            <input type="hidden" name="license_later" value="0">
+                            <input id="license_later" type="checkbox" name="license_later" value="1" {{ $licenseLater ? 'checked' : '' }} class="h-4 w-4 rounded border-slate-400">
+                            I'll add later
+                        </label>
+
+                        <div id="licenseLaterWarning" class="mt-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900 {{ $licenseLater ? '' : 'hidden' }}">
+                            <p class="font-bold">Warning: AtGlance will be installed without a licence.</p>
+                            <p class="mt-1">Until a licence is added, nobody can create or register users and no API keys can be created, so no server can connect with the atglance CLI.</p>
+                            <p class="mt-1">To add it later: log in as the super admin, open <span class="font-semibold">Admin Settings &rsaquo; Licence</span>, paste the licence key and click <span class="font-semibold">Verify &amp; Save</span>.</p>
+                        </div>
+                    </section>
+
+                    <h2 class="text-base font-extrabold text-slate-900">Step 2 &mdash; Application Setup</h2>
+
                     <div>
                         <label for="organization_name" class="block text-sm font-semibold text-slate-800">Organization Name</label>
                         <input
@@ -90,7 +139,7 @@
                         >
                     </div>
 
-                    <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <div class="grid grid-cols-1 gap-4">
                         <div>
                             <label for="app_ip" class="block text-sm font-semibold text-slate-800">IP Address</label>
                             <input
@@ -103,32 +152,8 @@
                                 class="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm outline-none transition focus:border-black focus:ring-4 focus:ring-slate-200"
                             >
                         </div>
-                        <div>
-                            <label for="app_domain" class="block text-sm font-semibold text-slate-800">Domain Alias (optional)</label>
-                            <input
-                                id="app_domain"
-                                name="app_domain"
-                                type="text"
-                                value="{{ old('app_domain', '') }}"
-                                placeholder="atglance.org_name.com"
-                                class="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm outline-none transition focus:border-black focus:ring-4 focus:ring-slate-200"
-                            >
-                        </div>
                     </div>
-                    <p class="text-xs text-slate-500">Do not include http:// or https://</p>
-                    <p class="text-xs text-slate-600">Note: The domain can also be configured via the Enterprise Console. Please ensure that a valid and appropriate IP address is provided during the application installation process.</p>
-
-                    <div>
-                        <label for="use_https" class="block text-sm font-semibold text-slate-800">Use HTTPS</label>
-                        <select
-                            id="use_https"
-                            name="use_https"
-                            class="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm outline-none transition focus:border-black focus:ring-4 focus:ring-slate-200"
-                        >
-                            <option value="1" {{ old('use_https', '0') === '1' ? 'selected' : '' }}>Yes</option>
-                            <option value="0" {{ old('use_https', '0') === '0' ? 'selected' : '' }}>No</option>
-                        </select>
-                    </div>
+                    <p class="text-xs text-slate-600">The address people use to reach this server, without http://. You can add your own domain and HTTPS after installation, in Admin Settings &rsaquo; Plugins.</p>
 
                     <div>
                         <label for="superadmin_email" class="block text-sm font-semibold text-slate-800">Super Admin Email</label>
@@ -183,7 +208,7 @@
 
             <aside class="order-1 flex h-full flex-col rounded-2xl border border-slate-200 bg-slate-50 p-5 sm:p-7 lg:order-1">
                 <img
-                    src="{{ asset('branding/atglance-logo.svg') }}"
+                    src="{{ asset('branding/atglance-logo.png') }}"
                     alt="AtGlance logo"
                     class="h-14 w-auto object-contain sm:h-16"
                 >
@@ -194,44 +219,28 @@
                 </p>
 
                 <div class="mt-6 rounded-xl border border-slate-200 bg-white p-4">
+                    <h3 class="text-sm font-bold uppercase tracking-wide text-slate-800">Get a Licence</h3>
+                    <ol class="mt-3 list-decimal space-y-1 pl-5 text-sm text-slate-700">
+                        <li>Log in to <a href="{{ $licensePortalUrl }}" target="_blank" rel="noopener" class="font-medium text-black hover:underline">atglance.live</a>.</li>
+                        <li>Generate a licence.</li>
+                        <li>Copy the licence key and paste it in the Licence Key field.</li>
+                    </ol>
+                    <p class="mt-3 text-xs text-slate-500">No licence yet? Tick "I'll add later". You can add it afterwards from Admin Settings &rsaquo; Licence. User creation, registration and API keys stay locked until you do.</p>
+                </div>
+
+                <div class="mt-4 rounded-xl border border-slate-200 bg-white p-4">
                     <h3 class="text-sm font-bold uppercase tracking-wide text-slate-800">Public Links</h3>
                     <ul class="mt-3 space-y-2 text-sm text-slate-700">
-                        <li><a href="https://theatglance.com" target="_blank" class="font-medium text-black hover:underline">Website</a></li>
-                        <li><a href="https://theatglance.com/docs" target="_blank" class="font-medium text-black hover:underline">Documentation</a></li>
-                        <li><a href="https://theatglance.com/contact" target="_blank" class="font-medium text-black hover:underline">Contact Page</a></li>
+                        <li><a href="https://atglance.live" target="_blank" rel="noopener" class="font-medium text-black hover:underline">Website</a></li>
+                        <li><a href="https://atglance.live/docs" target="_blank" rel="noopener" class="font-medium text-black hover:underline">Documentation</a></li>
                     </ul>
                 </div>
 
                 <div class="mt-4 rounded-xl border border-slate-200 bg-white p-4">
                     <h3 class="text-sm font-bold uppercase tracking-wide text-slate-800">Contact</h3>
                     <p class="mt-2 text-sm text-slate-700">
-                        <a href="mailto:info@theatglance.com" class="font-medium text-black hover:underline">info@theatglance.com</a>
+                        <a href="mailto:support@atglance.live" class="font-medium text-black hover:underline">support@atglance.live</a>
                     </p>
-                </div>
-
-                <div class="mt-4 rounded-xl border border-slate-200 bg-white p-4">
-                    <h3 class="text-sm font-bold uppercase tracking-wide text-slate-800">Support Form</h3>
-                    <form class="mt-3 space-y-3">
-                        <div>
-                            <label for="support_email" class="block text-xs font-semibold text-slate-700">Email</label>
-                            <input
-                                id="support_email"
-                                type="email"
-                                placeholder="you@company.com"
-                                class="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-black focus:ring-2 focus:ring-slate-200"
-                            >
-                        </div>
-                        <div>
-                            <label for="support_issue" class="block text-xs font-semibold text-slate-700">Issue</label>
-                            <textarea
-                                id="support_issue"
-                                rows="4"
-                                placeholder="Describe your issue"
-                                class="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-black focus:ring-2 focus:ring-slate-200"
-                            ></textarea>
-                        </div>
-                        <button type="button" class="w-full rounded-lg bg-black px-3 py-2 text-sm font-semibold text-white">Submit Support Request</button>
-                    </form>
                 </div>
 
                 <footer class="mt-auto pt-6 text-xs text-slate-500">
@@ -256,6 +265,69 @@
     </div>
 
     <script>
+        (function () {
+            var keyInput = document.getElementById('license_key');
+            var laterBox = document.getElementById('license_later');
+            var verifyBtn = document.getElementById('licenseVerifyBtn');
+            var result = document.getElementById('licenseVerifyResult');
+            var warning = document.getElementById('licenseLaterWarning');
+
+            function showResult(ok, message) {
+                result.textContent = message;
+                result.classList.remove('hidden', 'text-green-700', 'text-red-700');
+                result.classList.add(ok ? 'text-green-700' : 'text-red-700');
+            }
+
+            laterBox.addEventListener('change', function () {
+                var later = laterBox.checked;
+                keyInput.disabled = later;
+                verifyBtn.disabled = later;
+                keyInput.required = !later;
+                warning.classList.toggle('hidden', !later);
+                if (later) {
+                    result.classList.add('hidden');
+                }
+            });
+            keyInput.required = !laterBox.checked;
+
+            verifyBtn.addEventListener('click', function () {
+                if (keyInput.value.trim() === '') {
+                    showResult(false, 'Enter a licence key first.');
+                    return;
+                }
+
+                verifyBtn.disabled = true;
+                verifyBtn.textContent = 'Verifying...';
+
+                fetch(@json(route('install.license.verify')), {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': document.querySelector('#installerForm [name="_token"]').value
+                    },
+                    body: JSON.stringify({ license_key: keyInput.value.trim() })
+                })
+                    .then(function (response) { return response.json(); })
+                    .then(function (data) {
+                        if (data.ok) {
+                            var parts = [];
+                            if (data.name) { parts.push('Licence: ' + data.name); }
+                            if (data.plan) { parts.push('Plan: ' + data.plan); }
+                            if (data.expires_at) { parts.push('Expires: ' + data.expires_at); }
+                            showResult(true, (data.message || 'Licence is valid.') + (parts.length ? ' ' + parts.join(' · ') : ''));
+                        } else {
+                            showResult(false, data.message || 'Licence verification failed.');
+                        }
+                    })
+                    .catch(function () { showResult(false, 'Could not verify the licence. Try again.'); })
+                    .finally(function () {
+                        verifyBtn.disabled = laterBox.checked;
+                        verifyBtn.textContent = 'Verify';
+                    });
+            });
+        })();
+
         (function () {
             var form = document.getElementById('installerForm');
             var overlay = document.getElementById('installOverlay');

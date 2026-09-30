@@ -16,6 +16,25 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->append(\App\Http\Middleware\ActivityLogger::class);
 
+        // Only the built-in proxy (127.0.0.1) by default, so clients cannot forge
+        // their IP with X-Forwarded-For. A platform load balancer is added with
+        // ATGLANCE_TRUSTED_PROXIES (comma-separated IPs/CIDRs, replaces the default).
+        $middleware->trustProxies(
+            at: array_values(array_filter(array_map('trim', explode(',', (string) env(
+                'ATGLANCE_TRUSTED_PROXIES',
+                '127.0.0.1,::1'
+            ))))),
+            headers: \Illuminate\Http\Request::HEADER_X_FORWARDED_FOR
+                | \Illuminate\Http\Request::HEADER_X_FORWARDED_HOST
+                | \Illuminate\Http\Request::HEADER_X_FORWARDED_PORT
+                | \Illuminate\Http\Request::HEADER_X_FORWARDED_PROTO,
+        );
+
+        $middleware->web(append: [
+            \App\Http\Middleware\DetectFrontProxy::class,
+            \App\Http\Middleware\EnforceDomainHttps::class,
+        ]);
+
         $middleware->alias([
             'auth.session' => \App\Http\Middleware\AuthenticateSession::class,
             'auth.pat' => \App\Http\Middleware\AuthenticatePatToken::class,

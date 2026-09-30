@@ -3,6 +3,7 @@
 namespace Tests\Feature\Concerns;
 
 use App\Models\User;
+use App\Support\License;
 use Illuminate\Support\Facades\Hash;
 
 /**
@@ -44,6 +45,17 @@ trait InteractsWithAdminConsole
         } elseif (is_file($envPath)) {
             unlink($envPath);
         }
+    }
+
+    /**
+     * Stores a verified licence so user and API key creation are allowed.
+     */
+    protected function activateLicense(): void
+    {
+        License::store('atg_test_licence_key_123456', [
+            'status' => 'in_use',
+            'details' => ['name' => 'Test licence', 'plan' => 'Pro', 'expires_at' => null, 'extra' => []],
+        ]);
     }
 
     protected function actingAsRole(int $rbacId, string $password = 'secret-pass'): User

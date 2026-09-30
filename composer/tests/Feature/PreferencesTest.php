@@ -26,6 +26,7 @@ class PreferencesTest extends TestCase
     {
         parent::setUp();
         $this->setUpAdminConsole();
+        $this->activateLicense();
     }
 
     protected function tearDown(): void

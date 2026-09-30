@@ -7,19 +7,19 @@
     <div style="margin-bottom: 30px;">
         <div style="display: flex; align-items: center; justify-content: space-between;">
             <div>
-                <h1 style="font-size: 28px; font-weight: bold; color: #333; margin-bottom: 8px;">Configuration Details</h1>
-                <p style="color: #666; font-size: 14px;">Viewing: {{ $config->file_name }}</p>
+                <h1 style="font-size: 30px; font-weight: 500; color: var(--ag-text); margin-bottom: 8px;">Configuration Details</h1>
+                <p style="color: var(--ag-muted); font-size: 14px;">Viewing: {{ $config->file_name }}</p>
             </div>
-            <a href="{{ route('configuration-backups') }}" style="background: #111827; color: white; padding: 10px 20px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 14px; transition: background 0.2s ease;" onmouseover="this.style.background='#1f2937'" onmouseout="this.style.background='#111827'">
+            <a class="ag-btn" href="{{ route('configuration-backups') }}" style="text-decoration: none;">
                 <i class="fas fa-arrow-left"></i> Back to List
             </a>
         </div>
     </div>
 
-    <div style="background: white; border-radius: 14px; box-shadow: 0 2px 10px rgba(0,0,0,0.08); overflow: hidden;">
+    <div style="background: var(--ag-card); border-radius: 16px; box-shadow: var(--ag-shadow); overflow: hidden;">
         <!-- File Info Header -->
-        <div style="background: linear-gradient(135deg, #1f2937 0%, #374151 100%); padding: 24px; color: white;">
-            <h2 style="font-size: 20px; font-weight: bold; margin-bottom: 16px;">
+        <div class="ag-banner" style="border-radius: 0; padding: 24px; color: white;">
+            <h2 style="font-size: 20px; font-weight: 500; margin-bottom: 16px;">
                 <i class="fas fa-file-code"></i> {{ $config->file_name }}
             </h2>
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px;">
@@ -44,13 +44,13 @@
 
         <!-- Configuration Content -->
         <div style="padding: 24px;">
-            <h3 style="font-size: 16px; font-weight: bold; color: #333; margin-bottom: 16px;">
+            <h3 style="font-size: 16px; font-weight: 500; color: var(--ag-text); margin-bottom: 16px;">
                 <i class="fas fa-code"></i> Configuration Content
             </h3>
             @if($config->data)
-                <pre style="background: #f8f9fa; padding: 20px; border-radius: 8px; border: 1px solid #e0e0e0; overflow-x: auto; font-family: 'Courier New', monospace; font-size: 13px; line-height: 1.6; color: #333; max-height: 600px; overflow-y: auto;">{{ $config->data }}</pre>
+                <pre style="background: var(--ag-surface); padding: 20px; border-radius: 12px; overflow-x: auto; font-size: 13px; line-height: 1.6; color: var(--ag-text); max-height: 600px; overflow-y: auto;">{{ $config->data }}</pre>
             @else
-                <div style="background: #fff3e0; padding: 16px; border-radius: 8px; border-left: 4px solid #ff9800; color: #e65100;">
+                <div class="ag-card" style="padding: 16px; color: var(--ag-teal);">
                     <i class="fas fa-exclamation-triangle"></i> No configuration data available for this file.
                 </div>
             @endif
@@ -59,17 +59,13 @@
         <!-- Action Buttons -->
         <div style="padding: 0 24px 24px;">
             <div style="display: flex; gap: 12px;">
-                <a href="{{ route('configuration-backups.download', $config->id) }}" 
-                   style="background: #111827; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 14px; display: inline-flex; align-items: center; gap: 8px; transition: background 0.2s ease, box-shadow 0.2s ease;"
-                   onmouseover="this.style.background='#1f2937'; this.style.boxShadow='0 4px 12px rgba(17, 24, 39, 0.35)'"
-                   onmouseout="this.style.background='#111827'; this.style.boxShadow='none'">
+                <a class="ag-btn" href="{{ route('configuration-backups.download', $config->id) }}" 
+                   style="text-decoration: none; display: inline-flex; align-items: center; gap: 8px; transition: background 0.2s ease, box-shadow 0.2s ease;">
                     <i class="fas fa-download"></i> Download Configuration
                 </a>
                 @if($config->validation_hash)
-                    <button onclick="alert('Validation Hash:\n{{ $config->validation_hash }}')" 
-                            style="background: #f3f4f6; color: #111827; padding: 12px 24px; border-radius: 8px; border: 1px solid #d1d5db; font-weight: 600; font-size: 14px; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; transition: background 0.2s ease, box-shadow 0.2s ease;"
-                            onmouseover="this.style.background='#e5e7eb'; this.style.boxShadow='0 4px 12px rgba(17, 24, 39, 0.12)'"
-                            onmouseout="this.style.background='#f3f4f6'; this.style.boxShadow='none'">
+                    <button class="ag-btn ag-btn--ghost" onclick="alert('Validation Hash:\n{{ $config->validation_hash }}')" 
+                            style="display: inline-flex; align-items: center; gap: 8px; transition: background 0.2s ease, box-shadow 0.2s ease;">
                         <i class="fas fa-fingerprint"></i> View Hash
                     </button>
                 @endif

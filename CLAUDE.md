@@ -18,15 +18,18 @@ Two audiences hit this backend:
 - **Humans** (org admins / end users) → server-rendered Blade web app under
   `/` (`routes/web.php`).
 
-Laravel app lives in `composer/`. Root-level `*.md` files are living docs —
-read them, don't duplicate them here: `API.md` (full endpoint reference),
-`resilience.md` / `CircuitBreak.md` / `QUEUE.md` (resilience deep-dives),
-`KONG.md` (gateway config), `PersonalAccessToken.md` (PAT flow),
-`GUI_DOCUMENTATION.md` (web UI layout/pages), `BACKUP.md` (scheduled S3
-backups and the scheduler container), `NOTIFICATIONS.md` (notification
-channels, workspace groups and events), `AI_CONNECT.md` (AI provider
-connection and per-provider setup), `scenerio.md` (tested failure
-scenarios), `LARAVEL.md` / `IMPLEMENTATION.md` (original API layout notes).
+Laravel app lives in `composer/`. `README.md`, `INSTALLATION.md` and `docs/*.md` are living docs —
+read them, don't duplicate them here: `INSTALLATION.md` (VM and
+container-service deploy), `docs/api-reference.md` (full endpoint reference),
+`docs/resilience-patterns.md` / `docs/circuit-breaker.md` / `docs/queue.md` (resilience deep-dives),
+`docs/api-gateway.md` (gateway config), `docs/api-keys.md` (PAT flow),
+`docs/web-console.md` (web UI layout/pages), `docs/scheduled-backups.md` (scheduled S3
+backups and the scheduler container), `docs/notifications.md` (notification
+channels, workspace groups and events), `docs/ai-connect.md` (AI provider
+connection and per-provider setup), `docs/licence.md` (licence verification and
+what an unlicensed instance blocks), `docs/custom-domain.md` (custom domain,
+HTTPS and the opt-in built-in Caddy proxy), `docs/tested-scenarios.md` (tested failure
+scenarios), `docs/backend-guide.md` / `docs/resilience-implementation.md` (original API layout notes).
 
 ## Architecture
 
@@ -37,13 +40,20 @@ Browser (admin/user)  ──▶  Laravel web (routes/web.php)
                                             │
                                      MySQL 8.0 + Redis 7
                                             │
-                              queue-worker (php artisan queue:work redis)
+                              worker (php artisan queue:work redis)
 ```
 
-- **Kong** (`kong/kong.yml`, `docker-compose-kong.yml`) is the only public
+- **Kong** (`kong/kong.yml`, baked into `kong/Dockerfile`; always-on compose
+  service `gateway`, container `ce-atglance-gateway`) is the only public
   entrypoint for API traffic (port 8002 → proxies to Laravel :8000). Add new
-  API routes here too when adding a Kong route — see `KONG.md`.
-- **MySQL** (`atglance` db, root/no password in dev) via Eloquent.
+  API routes here too when adding a Kong route — see `docs/api-gateway.md`.
+- **Containers / deploy**: `docker-compose.yml` is pull-only (images
+  `atglance/ce-atglance-app` and `atglance/ce-atglance-gateway` on Docker
+  Hub, containers named `ce-atglance-*`); `docker-compose.dev.yml` overlays
+  source builds. `install.sh` is the one-line installer. `docker/entrypoint.sh`
+  keeps the app `.env` on the storage volume (`/app/.env` is a symlink),
+  generates `APP_KEY` and runs migrations on app start.
+- **MySQL** (`atglance` db, user `atglance`, password from compose `.env`) via Eloquent.
 - **Redis**: cache store, queue backend, and circuit-breaker state
   (`CACHE_STORE=redis`, `QUEUE_CONNECTION=redis`).
 - **Queue worker**: `php artisan queue:work redis --tries=5
@@ -63,7 +73,7 @@ Browser (admin/user)  ──▶  Laravel web (routes/web.php)
 `PatToken::generateCustomToken()` mints the `atgla-` token; only the SHA256
 hash is stored (`token`), plus an `Illuminate\Support\Facades\Crypt`-encrypted
 copy (`token_encrypted`) so the plaintext can be shown once more in the
-Settings UI (`DashboardController::viewApiKey`). See `PersonalAccessToken.md`.
+Settings UI (`DashboardController::viewApiKey`). See `docs/api-keys.md`.
 
 `AuthenticatePatToken` middleware validates the `atgla-` prefix, hashes,
 looks up, checks `status`/`expires_at`, updates `last_used_at`, and resolves
@@ -97,7 +107,10 @@ documented elsewhere:
   redirects to `install.show`. The root `/` route does the same check
   manually.
 - `InstallerController` (`GET/POST /install`, `GET /install/info`): renders
-  the setup form (org name, admin name/email/password, domain, HTTPS toggle)
+  the setup form (org name, admin email/password, IP, licence; the domain and
+  HTTPS are set after install, see `docs/custom-domain.md`). `/install/info`
+  is available only until the first login (`InstallationState::markFirstLogin()`
+  on the `Login` event also removes the stored password), then redirects home
   → on submit, runs `migrate --force`, checks for a duplicate admin email,
   stashes form values into runtime `config('installer.*')`
   (`config/installer.php`), runs `db:seed --class=InstallationSeeder --force`,
@@ -115,7 +128,7 @@ instance still bootstraps correctly — most web routes are unreachable until
 
 Server-rendered Blade, no SPA framework; Tailwind (`@tailwindcss/vite`) +
 Vite build (`composer/package.json`, `npm run dev` / `npm run build`).
-Layout is a 20/80 sidebar split — see `GUI_DOCUMENTATION.md` for the full
+Layout is a 20/80 sidebar split — see `docs/web-console.md` for the full
 page/route/controller map. Key controllers:
 
 - `AuthController` — web login/register/logout (separate from the API's
@@ -135,11 +148,11 @@ page/route/controller map. Key controllers:
 
 - **Circuit breaker** (`app/Services/CircuitBreaker.php`, state in Redis):
   opens after repeated DB failures (3-strike variant wraps DB calls per
-  `IMPLEMENTATION.md`; default service config is 5 failures/60s). While open,
+  `docs/resilience-implementation.md`; default service config is 5 failures/60s). While open,
   reads return `503`; writes are queued (`CreateUserJob` etc., Redis-backed)
   and the API returns `202`.
 - **Queue jobs** retry with exponential backoff `[30, 60, 120, 300, 600]`,
-  `tries=5`. See `QUEUE.md` for worker command and monitoring, `scenerio.md`
+  `tries=5`. See `docs/queue.md` for worker command and monitoring, `docs/tested-scenarios.md`
   for the exact failure scenarios this was built/tested against.
 
 ## System registration & config-file flow (why the CLI talks to this repo)
@@ -149,7 +162,7 @@ persistent `validation_hash` the CLI generates once and stores in
 `/etc/environment` on the host (survives reinstalls). `configuration_files` +
 `raw_data` store uploaded service-config backups, linked to
 `system_register_id` and `service_name`/`service_id`. Full endpoint list incl.
-request/response shapes: `API.md`.
+request/response shapes: `docs/api-reference.md`.
 
 ## Activity logging
 

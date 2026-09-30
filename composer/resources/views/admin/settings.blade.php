@@ -3,21 +3,21 @@
 @section('title', 'Site Setting - ' . $brandName)
 
 @section('dashboard-content')
-<div style="padding:40px;">
-    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
-        <h1 style="font-size:28px; color:#111827;">Site Setting</h1>
-        <a href="{{ route('admin.dashboard') }}" style="text-decoration:none; color:#111827;">← Back to Dashboard</a>
+<div style="padding: 40px;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+        <h1 style="font-size: 30px; color: var(--ag-text);">Site Setting</h1>
+        <a href="{{ route('admin.dashboard') }}" style="text-decoration: none; color: var(--ag-text);">← Back to Dashboard</a>
     </div>
 
     @if(session('success'))
-        <div style="padding:12px; border-radius:8px; background:#dcfce7; color:#166534; margin-bottom:16px;">
+        <div style="padding: 12px; border-radius: 12px; background: var(--ag-success-soft); color: var(--ag-success); margin-bottom: 16px;">
             {{ session('success') }}
         </div>
     @endif
 
     @if($errors->any())
-        <div style="padding:12px; border-radius:8px; background:#fee2e2; color:#991b1b; margin-bottom:16px;">
-            <ul style="margin-left:16px;">
+        <div style="padding: 12px; border-radius: 12px; background: var(--ag-danger-soft); color: var(--ag-danger); margin-bottom: 16px;">
+            <ul style="margin-left: 16px;">
                 @foreach($errors->all() as $error)
                     <li>{{ $error }}</li>
                 @endforeach
@@ -29,69 +29,195 @@
         $activeTab = request('tab', 'info');
     @endphp
 
-    <div style="display:flex; flex-wrap:wrap; gap:10px; margin-bottom:20px; border-bottom:2px solid #b3b3b3; padding-bottom:10px;">
-        <button type="button" class="settings-tab-btn" data-tab="info" style="padding:10px 14px; border-radius:8px; border:1px solid #b3b3b3; background:{{ $activeTab === 'info' ? '#7a7a7a' : '#ffffff' }}; color:{{ $activeTab === 'info' ? '#ffffff' : '#111827' }}; cursor:pointer; font-weight:600;">Info</button>
-        <button type="button" class="settings-tab-btn" data-tab="site" style="padding:10px 14px; border-radius:8px; border:1px solid #b3b3b3; background:{{ $activeTab === 'site' ? '#7a7a7a' : '#ffffff' }}; color:{{ $activeTab === 'site' ? '#ffffff' : '#111827' }}; cursor:pointer; font-weight:600;">Site Configuration</button>
-        <button type="button" class="settings-tab-btn" data-tab="email" style="padding:10px 14px; border-radius:8px; border:1px solid #b3b3b3; background:{{ $activeTab === 'email' ? '#7a7a7a' : '#ffffff' }}; color:{{ $activeTab === 'email' ? '#ffffff' : '#111827' }}; cursor:pointer; font-weight:600;">Email Configuration</button>
-        <button type="button" class="settings-tab-btn" data-tab="sso" style="padding:10px 14px; border-radius:8px; border:1px solid #b3b3b3; background:{{ $activeTab === 'sso' ? '#7a7a7a' : '#ffffff' }}; color:{{ $activeTab === 'sso' ? '#ffffff' : '#111827' }}; cursor:pointer; font-weight:600;">SSO Configuration</button>
-        <button type="button" class="settings-tab-btn" data-tab="s3" style="padding:10px 14px; border-radius:8px; border:1px solid #b3b3b3; background:{{ $activeTab === 's3' ? '#7a7a7a' : '#ffffff' }}; color:{{ $activeTab === 's3' ? '#ffffff' : '#111827' }}; cursor:pointer; font-weight:600;">S3 Configuration</button>
-        <button type="button" class="settings-tab-btn" data-tab="migration" style="padding:10px 14px; border-radius:8px; border:1px solid #b3b3b3; background:{{ $activeTab === 'migration' ? '#7a7a7a' : '#ffffff' }}; color:{{ $activeTab === 'migration' ? '#ffffff' : '#111827' }}; cursor:pointer; font-weight:600;">Migration</button>
-        <button type="button" class="settings-tab-btn" data-tab="backup-restore" style="padding:10px 14px; border-radius:8px; border:1px solid #b3b3b3; background:{{ $activeTab === 'backup-restore' ? '#7a7a7a' : '#ffffff' }}; color:{{ $activeTab === 'backup-restore' ? '#ffffff' : '#111827' }}; cursor:pointer; font-weight:600;">Backup &amp; Restore</button>
-        <button type="button" class="settings-tab-btn" data-tab="plugins" style="padding:10px 14px; border-radius:8px; border:1px solid #b3b3b3; background:{{ $activeTab === 'plugins' ? '#7a7a7a' : '#ffffff' }}; color:{{ $activeTab === 'plugins' ? '#ffffff' : '#111827' }}; cursor:pointer; font-weight:600;">Plugins</button>
-        <button type="button" class="settings-tab-btn" data-tab="crons" style="padding:10px 14px; border-radius:8px; border:1px solid #b3b3b3; background:{{ $activeTab === 'crons' ? '#7a7a7a' : '#ffffff' }}; color:{{ $activeTab === 'crons' ? '#ffffff' : '#111827' }}; cursor:pointer; font-weight:600;">Crons</button>
-        <button type="button" class="settings-tab-btn" data-tab="ai-connect" style="padding:10px 14px; border-radius:8px; border:1px solid #b3b3b3; background:{{ $activeTab === 'ai-connect' ? '#7a7a7a' : '#ffffff' }}; color:{{ $activeTab === 'ai-connect' ? '#ffffff' : '#111827' }}; cursor:pointer; font-weight:600;">AI Connect</button>
-        <button type="button" class="settings-tab-btn" data-tab="notification" style="padding:10px 14px; border-radius:8px; border:1px solid #b3b3b3; background:{{ $activeTab === 'notification' ? '#7a7a7a' : '#ffffff' }}; color:{{ $activeTab === 'notification' ? '#ffffff' : '#111827' }}; cursor:pointer; font-weight:600;">Notification</button>
-    </div>
+    <div class="ag-side-layout">
+    <nav class="ag-tabs ag-tabs--vertical" aria-label="Settings sections">
+        <button type="button" class="ag-tab settings-tab-btn {{ $activeTab === 'info' ? 'active' : '' }}" data-tab="info"><i class="fas fa-circle-info"></i> Info</button>
+        <button type="button" class="ag-tab settings-tab-btn {{ $activeTab === 'site' ? 'active' : '' }}" data-tab="site"><i class="fas fa-globe"></i> Site Configuration</button>
+        <button type="button" class="ag-tab settings-tab-btn {{ $activeTab === 'email' ? 'active' : '' }}" data-tab="email"><i class="fas fa-envelope"></i> Email Configuration</button>
+        <button type="button" class="ag-tab settings-tab-btn {{ $activeTab === 'sso' ? 'active' : '' }}" data-tab="sso"><i class="fas fa-right-to-bracket"></i> SSO Configuration</button>
+        <button type="button" class="ag-tab settings-tab-btn {{ $activeTab === 's3' ? 'active' : '' }}" data-tab="s3"><i class="fas fa-cloud"></i> S3 Configuration</button>
+        <button type="button" class="ag-tab settings-tab-btn {{ $activeTab === 'migration' ? 'active' : '' }}" data-tab="migration"><i class="fas fa-right-left"></i> Migration</button>
+        <button type="button" class="ag-tab settings-tab-btn {{ $activeTab === 'backup-restore' ? 'active' : '' }}" data-tab="backup-restore"><i class="fas fa-clock-rotate-left"></i> Backup &amp; Restore</button>
+        <button type="button" class="ag-tab settings-tab-btn {{ $activeTab === 'plugins' ? 'active' : '' }}" data-tab="plugins"><i class="fas fa-puzzle-piece"></i> Plugins</button>
+        <button type="button" class="ag-tab settings-tab-btn {{ $activeTab === 'crons' ? 'active' : '' }}" data-tab="crons"><i class="fas fa-stopwatch"></i> Crons</button>
+        <button type="button" class="ag-tab settings-tab-btn {{ $activeTab === 'ai-connect' ? 'active' : '' }}" data-tab="ai-connect"><i class="fas fa-robot"></i> AI Connect</button>
+        <button type="button" class="ag-tab settings-tab-btn {{ $activeTab === 'notification' ? 'active' : '' }}" data-tab="notification"><i class="fas fa-bell"></i> Notification</button>
+        <button type="button" class="ag-tab settings-tab-btn {{ $activeTab === 'licence' ? 'active' : '' }}" data-tab="licence"><i class="fas fa-key"></i> Licence</button>
+    </nav>
+    <div class="ag-side-content">
 
-    <div id="tab-info" class="settings-tab-content" style="display:{{ $activeTab === 'info' ? 'block' : 'none' }}; background:white; border:1px solid #b3b3b3; border-radius:10px; padding:22px; box-shadow:0 2px 10px rgba(0,0,0,0.06);">
-        <h2 style="font-size:18px; margin-bottom:12px;">Info</h2>
-        <div style="display:grid; grid-template-columns:1fr; gap:10px;">
+    <div id="tab-info" class="settings-tab-content ag-card" style="display:{{ $activeTab === 'info' ? 'block' : 'none' }}; padding:24px;">
+        <h2 style="font-size: 18px; margin-bottom: 12px;">Info</h2>
+        <div style="display: grid; grid-template-columns: 1fr; gap: 10px;">
             <div>
-                <div style="font-size:13px; color:#4b5563; margin-bottom:4px;">Domain</div>
-                <div style="font-size:14px; color:#111827; font-weight:600;">{{ $siteDomain }}</div>
+                <div style="font-size: 13px; color: var(--ag-subtle); margin-bottom: 4px;">Domain</div>
+                <div style="font-size: 14px; color: var(--ag-text); font-weight: 600;">{{ $siteDomain }}</div>
             </div>
             <div>
-                <div style="font-size:13px; color:#4b5563; margin-bottom:4px;">Organization Name</div>
-                <div style="font-size:14px; color:#111827; font-weight:600;">{{ $organizationName }}</div>
+                <div style="font-size: 13px; color: var(--ag-subtle); margin-bottom: 4px;">Organization Name</div>
+                <div style="font-size: 14px; color: var(--ag-text); font-weight: 600;">{{ $organizationName }}</div>
             </div>
             <div>
-                <div style="font-size:13px; color:#4b5563; margin-bottom:4px;">Local Storage Base URL</div>
-                <div style="font-size:14px; color:#111827; font-weight:600;">{{ $localStorageBaseUrl }}</div>
+                <div style="font-size: 13px; color: var(--ag-subtle); margin-bottom: 4px;">Local Storage Base URL</div>
+                <div style="font-size: 14px; color: var(--ag-text); font-weight: 600;">{{ $localStorageBaseUrl }}</div>
             </div>
             <div>
-                <div style="font-size:13px; color:#4b5563; margin-bottom:4px;">Domain Alias</div>
-                <div style="font-size:14px; color:#111827; font-weight:600;">{{ !empty($siteDomainAlias) ? $siteDomainAlias : 'Not configured' }}</div>
+                <div style="font-size: 13px; color: var(--ag-subtle); margin-bottom: 4px;">Access URL</div>
+                <div style="font-size: 14px; color: var(--ag-text); font-weight: 600;">{{ $domainView['plugin_enabled'] && $domainView['access_url'] !== '' ? $domainView['access_url'] : 'Not configured' }}</div>
             </div>
             <div>
-                <div style="font-size:13px; color:#4b5563; margin-bottom:4px;">Alias IP Address</div>
-                <div style="font-size:14px; color:#111827; font-weight:600;">{{ !empty($siteDomainAliasIp) ? $siteDomainAliasIp : 'Not configured' }}</div>
+                <div style="font-size: 13px; color: var(--ag-subtle); margin-bottom: 4px;">Server IP</div>
+                <div style="font-size: 14px; color: var(--ag-text); font-weight: 600;">{{ $domainView['server_address'] !== '' ? $domainView['server_address'] : 'Not configured' }}</div>
             </div>
             <div>
-                <div style="font-size:13px; color:#4b5563; margin-bottom:4px;">HTTPS</div>
-                <div style="font-size:14px; color:#111827; font-weight:600;">{{ ($siteHttpsEnabled ?? false) ? 'Enabled' : 'Disabled' }}</div>
+                <div style="font-size: 13px; color: var(--ag-subtle); margin-bottom: 4px;">HTTPS</div>
+                <div style="font-size: 14px; color: var(--ag-text); font-weight: 600;">{{ ['off' => 'Off', 'builtin' => 'Automatic certificate', 'custom' => 'Own certificate', 'platform' => 'Handled by platform'][$domainView['https_mode']] }}</div>
             </div>
         </div>
     </div>
 
-    <div id="tab-site" class="settings-tab-content" style="display:{{ $activeTab === 'site' ? 'block' : 'none' }}; background:white; border:1px solid #b3b3b3; border-radius:10px; padding:22px; box-shadow:0 2px 10px rgba(0,0,0,0.06);">
-        <h2 style="font-size:18px; margin-bottom:12px;">Site Configuration</h2>
+    <div id="tab-site" class="settings-tab-content ag-card" style="display:{{ $activeTab === 'site' ? 'block' : 'none' }}; padding:24px;">
+        <h2 style="font-size: 18px; margin-bottom: 12px;">Site Configuration</h2>
+        @php
+            $dv = $domainView;
+            $dvCanEdit = (int) auth()->user()->rbac_id === 100;
+            $dvLocked = !$dv['plugin_enabled'] || !$dvCanEdit;
+            $dvMode = old('https_mode', $dv['https_mode']);
+            // A selected option that is also disabled is not submitted; fall back to Off.
+            if (in_array($dvMode, ['builtin', 'custom'], true) && !$dv['builtin_seen']) {
+                $dvMode = 'off';
+            }
+        @endphp
+        <div class="ag-card ag-card--flat" style="margin-bottom: 18px;">
+            <h3 style="font-size: 15px; font-weight: 500; margin-bottom: 6px;">Access URL</h3>
+            <p style="font-size: 13px; color: var(--ag-muted); margin-bottom: 10px;">
+                Open the console on your own domain or subdomain, with or without HTTPS.
+                <strong>http://{{ $dv['server_ip'] !== '' ? $dv['server_ip'] : 'server-IP' }}:8000</strong> and
+                <strong>atglance.internal</strong> always keep working, so a wrong setting never locks you out.
+                Each address has its own login session.
+            </p>
+            @if(!$dv['plugin_enabled'])
+                <div class="ag-alert ag-alert--warning" style="margin-bottom: 10px;">
+                    <i class="fas fa-lock"></i>
+                    <span>Enable Custom Domain &amp; HTTPS in the Plugins tab to set a domain. <a href="{{ route('admin.settings', ['tab' => 'plugins']) }}" style="text-decoration: underline;">Open Plugins</a></span>
+                </div>
+            @elseif(!$dvCanEdit)
+                <p style="font-size: 12px; color: var(--ag-muted); margin-bottom: 10px;">Only the super admin can change this.</p>
+            @endif
+
+            <form method="POST" action="{{ route('admin.settings.domain') }}" enctype="multipart/form-data">
+                @csrf
+                <fieldset id="domain-fieldset" {{ $dvLocked ? 'disabled' : '' }} style="border: 0; padding: 0; margin: 0; {{ $dvLocked ? 'opacity: .55;' : '' }}">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 10px;">
+                        <div>
+                            <label class="ag-label" for="dv-domain">Domain</label>
+                            <input class="ag-input" id="dv-domain" type="text" name="domain" value="{{ old('domain', $dv['domain']) }}" placeholder="atglance.internal" autocomplete="off" spellcheck="false">
+                            <div style="font-size: 12px; color: var(--ag-muted); margin-top: 4px;">Any domain or subdomain, e.g. atglance.acme.com. No http:// and no port.</div>
+                            @if($dv['local_warning'])
+                                <div style="font-size: 12px; color: var(--ag-warning); margin-top: 4px;"><code>.local</code> is reserved for mDNS and can resolve slowly on macOS and Linux. Use <code>.internal</code> or <code>.lan</code> instead.</div>
+                            @endif
+                        </div>
+                        <div>
+                            <label class="ag-label" for="dv-ip">Server IP</label>
+                            <input class="ag-input" id="dv-ip" type="text" name="server_ip" value="{{ old('server_ip', $dv['server_address']) }}" placeholder="192.168.1.10">
+                            <div style="font-size: 12px; color: var(--ag-muted); margin-top: 4px;">The address users' machines reach this server on. Used for the DNS record.</div>
+                        </div>
+                    </div>
+
+                    <label class="ag-label" for="dv-mode">HTTPS</label>
+                    <select class="ag-select" id="dv-mode" name="https_mode" style="margin-bottom: 6px;">
+                        <option value="off" {{ $dvMode === 'off' ? 'selected' : '' }}>Off (plain http://)</option>
+                        <option value="builtin" {{ $dvMode === 'builtin' ? 'selected' : '' }} {{ $dv['builtin_seen'] ? '' : 'disabled' }}>Automatic certificate (built-in proxy)</option>
+                        <option value="custom" {{ $dvMode === 'custom' ? 'selected' : '' }} {{ $dv['builtin_seen'] ? '' : 'disabled' }}>Use my own certificate (built-in proxy)</option>
+                        <option value="platform" {{ $dvMode === 'platform' ? 'selected' : '' }}>Handled by my platform (load balancer / ingress)</option>
+                    </select>
+                    @unless($dv['builtin_seen'])
+                        <div style="font-size: 12px; color: var(--ag-muted); margin-bottom: 10px;">The built-in options unlock after the built-in proxy is detected (Plugins tab).</div>
+                    @endunless
+
+                    <div id="dv-custom" style="{{ $dvMode === 'custom' ? '' : 'display:none;' }} margin: 10px 0; padding: 12px; border-radius: 12px; background: var(--ag-card);">
+                        @if($dv['certificate'])
+                            @php $dvCert = $dv['certificate']; @endphp
+                            <div style="font-size: 13px; margin-bottom: 8px;">
+                                <strong>Current certificate:</strong> {{ implode(', ', $dvCert['names']) }} &middot; issuer {{ $dvCert['issuer'] }} &middot; expires {{ $dvCert['not_after'] }}
+                                <div style="font-size: 11px; color: var(--ag-muted); word-break: break-all;">SHA-256 {{ $dvCert['fingerprint'] }}</div>
+                            </div>
+                            @if($dvCert['days_left'] < 0)
+                                <div class="ag-alert ag-alert--error" style="margin-bottom: 8px;">The certificate has expired. Browsers show a warning until you upload a new one.</div>
+                            @elseif($dvCert['days_left'] <= 30)
+                                <div class="ag-alert ag-alert--warning" style="margin-bottom: 8px;">The certificate expires in {{ $dvCert['days_left'] }} days. Upload the renewed certificate.</div>
+                            @endif
+                        @endif
+                        <div style="font-size: 13px; margin-bottom: 6px;">Upload a PEM certificate (with its chain) and private key, <strong>or</strong> a .pfx/.p12 file.</div>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                            <div><label class="ag-label">Certificate (.crt/.pem)</label><input type="file" name="cert_file" accept=".crt,.pem,.cer"></div>
+                            <div><label class="ag-label">Private key (.key/.pem)</label><input type="file" name="key_file" accept=".key,.pem"></div>
+                            <div><label class="ag-label">Key passphrase (if any)</label><input class="ag-input" type="password" name="key_passphrase" autocomplete="off"></div>
+                            <div></div>
+                            <div><label class="ag-label">Or .pfx / .p12</label><input type="file" name="pfx_file" accept=".pfx,.p12"></div>
+                            <div><label class="ag-label">.pfx password</label><input class="ag-input" type="password" name="pfx_password" autocomplete="off"></div>
+                        </div>
+                    </div>
+
+                    <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px;">
+                        <button class="ag-btn" type="submit">Save Access URL</button>
+                        <button class="ag-btn ag-btn--ghost" type="button" id="dv-check">Check DNS</button>
+                    </div>
+                    <p id="dv-check-result" class="hidden" style="font-size: 13px; margin-top: 8px;" role="status"></p>
+                </fieldset>
+            </form>
+
+            @if($dv['certificate'] && $dvCanEdit)
+                <form method="POST" action="{{ route('admin.settings.domain.certificate.remove') }}" style="margin-top: 8px;" onsubmit="return confirm('Remove the uploaded certificate? HTTPS for the domain turns off.');">
+                    @csrf
+                    @method('DELETE')
+                    <button class="ag-btn ag-btn--danger ag-btn--sm" type="submit">Remove certificate</button>
+                </form>
+            @endif
+
+            @if($dv['server_ip'] !== '')
+                <div style="margin-top: 14px; padding: 12px; border-radius: 12px; background: var(--ag-card); font-size: 13px; line-height: 1.6;">
+                    @if($dv['access_url'] !== '')
+                        <div><strong>Access URL:</strong> {{ $dv['access_url'] }}</div>
+                        <div><strong>DNS record</strong> (ask your DNS admin): <code>{{ $dv['dns_record'] }}</code></div>
+                    @endif
+                    <div><strong>Test on one machine</strong>: add <code>{{ $dv['hosts_line'] }}</code> to the hosts file
+                        (Windows <code>C:\Windows\System32\drivers\etc\hosts</code>, macOS/Linux <code>/etc/hosts</code>).</div>
+                    @if($dv['https_mode'] === 'builtin')
+                        <div style="margin-top: 6px;">
+                            <strong>Private names</strong> (like <code>.internal</code>) get a certificate from the built-in CA. Trust it once on each machine:
+                            @if($dv['ca_available'])
+                                <a href="{{ route('admin.settings.domain.ca') }}" style="text-decoration: underline;">Download CA certificate</a>.
+                            @else
+                                it appears here after the first HTTPS visit.
+                            @endif
+                            Windows: double-click &rsaquo; Install &rsaquo; Local Machine &rsaquo; "Trusted Root Certification Authorities".
+                            macOS: open in Keychain Access &rsaquo; System &rsaquo; set to "Always Trust".
+                            Linux: copy to <code>/usr/local/share/ca-certificates/</code> and run <code>sudo update-ca-certificates</code>.
+                            Firefox: Settings &rsaquo; Certificates &rsaquo; Import.
+                        </div>
+                    @endif
+                </div>
+            @endif
+        </div>
+
         <form method="POST" action="{{ route('admin.settings.site', ['tab' => 'site']) }}" enctype="multipart/form-data">
             @csrf
-            <h3 style="font-size:15px; font-weight:700; margin-bottom:8px;">Organization</h3>
-            <p style="font-size:13px; color:#6b7280; margin-bottom:10px;">The organization name and logo replace the AtGlance name and logo across the application.</p>
-            <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:12px;">
+            <h3 style="font-size: 15px; font-weight: 500; margin-bottom: 8px;">Organization</h3>
+            <p style="font-size: 13px; color: var(--ag-muted); margin-bottom: 10px;">The organization name and logo replace the AtGlance name and logo across the application.</p>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 12px;">
                 <div>
-                    <label style="display:block; font-size:13px; color:#4b5563; margin-bottom:6px;">Organization Name</label>
-                    <input type="text" name="organization_name" value="{{ old('organization_name', $organizationName) }}" required maxlength="255" style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:10px;">
+                    <label class="ag-label">Organization Name</label>
+                    <input class="ag-input" type="text" name="organization_name" value="{{ old('organization_name', $organizationName) }}" required maxlength="255" style="width: 100%;">
                 </div>
                 <div>
-                    <label style="display:block; font-size:13px; color:#4b5563; margin-bottom:6px;">Organization Logo</label>
-                    <input type="file" name="site_logo" accept=".jpg,.jpeg,.png,.webp,.svg" style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:10px; background:white;">
-                    <div style="font-size:12px; color:#6b7280; margin-top:4px;">JPG, PNG, WebP or SVG, up to 2 MB.</div>
+                    <label class="ag-label">Organization Logo</label>
+                    <input type="file" name="site_logo" accept=".jpg,.jpeg,.png,.webp,.svg" style="width: 100%; border-radius: 12px; padding: 10px; background: var(--ag-card);">
+                    <div style="font-size: 12px; color: var(--ag-muted); margin-top: 4px;">JPG, PNG, WebP or SVG, up to 2 MB.</div>
                     @if(!empty($organizationLogoUrl))
-                        <div style="margin-top:8px; display:flex; align-items:center; gap:12px;">
-                            <img src="{{ $organizationLogoUrl }}" alt="{{ $organizationName }} logo" style="max-height:48px; border-radius:6px; border:1px solid #e5e7eb; padding:4px; background:white;">
-                            <label style="font-size:13px; color:#374151; display:flex; gap:6px; align-items:center;">
+                        <div style="margin-top: 8px; display: flex; align-items: center; gap: 12px;">
+                            <img src="{{ $organizationLogoUrl }}" alt="{{ $organizationName }} logo" style="max-height: 48px; border-radius: 12px; padding: 4px; background: var(--ag-card);">
+                            <label style="font-size: 13px; color: var(--ag-subtle); display: flex; gap: 6px; align-items: center;">
                                 <input type="checkbox" name="remove_site_logo" value="1"> Remove logo
                             </label>
                         </div>
@@ -99,73 +225,37 @@
                 </div>
             </div>
 
-            <div style="margin-bottom:12px;">
-                <label style="display:block; font-size:13px; color:#4b5563; margin-bottom:6px;">Site Description</label>
-                <textarea name="site_description" rows="3" style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:10px;">{{ old('site_description', $siteDescription) }}</textarea>
+            <div style="margin-bottom: 12px;">
+                <label class="ag-label">Site Description</label>
+                <textarea class="ag-textarea" name="site_description" rows="3" style="width: 100%;">{{ old('site_description', $siteDescription) }}</textarea>
             </div>
 
-            <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:12px;">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 12px;">
                 <div>
-                    <label style="display:block; font-size:13px; color:#4b5563; margin-bottom:6px;">Domain Alias</label>
-                    <input type="text" name="site_domain_alias" value="{{ old('site_domain_alias', $siteDomainAlias ?? '') }}" placeholder="api.example.com" style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:10px;">
+                    <label class="ag-label">Site Tags (comma separated)</label>
+                    <input class="ag-input" type="text" name="site_tags" value="{{ old('site_tags', $siteTagsText) }}" placeholder="security, api-gateway, monitoring" style="width: 100%;">
                 </div>
                 <div>
-                    <label style="display:block; font-size:13px; color:#4b5563; margin-bottom:6px;">Application IP (auto-fetched)</label>
-                    <input type="text" value="{{ old('site_domain_alias_ip', $siteDomainAliasIp ?? '') }}" readonly style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:10px; background:#f9fafb; color:#374151;">
-                    <input type="hidden" name="site_domain_alias_ip" value="{{ old('site_domain_alias_ip', $siteDomainAliasIp ?? '') }}">
-                </div>
-            </div>
-            <p style="font-size:12px; color:#6b7280; margin:-4px 0 12px 0;">Enter only the alias domain. The application IP is detected automatically and used for mapping.</p>
-
-            <div style="margin-bottom:12px;">
-                <input type="hidden" name="site_https_enabled" value="0">
-                <label style="display:flex; align-items:center; gap:8px;">
-                    <input type="checkbox" name="site_https_enabled" value="1" {{ old('site_https_enabled', ($siteHttpsEnabled ?? false) ? '1' : '0') === '1' ? 'checked' : '' }}>
-                    <span>Enable HTTPS</span>
-                </label>
-                <div style="font-size:12px; color:#6b7280; margin-top:6px;">Use this toggle to mark whether this alias should be served over HTTPS.</div>
-            </div>
-
-            <div style="margin-bottom:14px; padding:10px; border-radius:8px; background:#f9fafb; border:1px solid #e5e7eb; color:#374151; font-size:13px; line-height:1.5;">
-                <strong>DNS Instructions for Super Admin</strong>
-                <br>
-                1. Create an <strong>A record</strong> for the alias host (for example, <strong>api</strong>) and point it to the configured IP address.
-                <br>
-                2. If you need root domain mapping, set an <strong>A record</strong> for <strong>@</strong> to the same IP.
-                <br>
-                3. If needed, add a <strong>CNAME record</strong> for <strong>www</strong> that points to the alias host.
-                <br>
-                4. Keep TTL low during rollout (for example, 300 seconds), then increase after verification.
-                <br>
-                5. When HTTPS is enabled, ensure a valid TLS certificate is installed for the alias domain before switching traffic.
-            </div>
-
-            <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:12px;">
-                <div>
-                    <label style="display:block; font-size:13px; color:#4b5563; margin-bottom:6px;">Site Tags (comma separated)</label>
-                    <input type="text" name="site_tags" value="{{ old('site_tags', $siteTagsText) }}" placeholder="security, api-gateway, monitoring" style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:10px;">
-                </div>
-                <div>
-                    <label style="display:block; font-size:13px; color:#4b5563; margin-bottom:6px;">Features (one per line, "Title: description")</label>
-                    <textarea name="site_features" rows="4" style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:10px;">{{ old('site_features', $siteFeaturesText) }}</textarea>
+                    <label class="ag-label">Features (one per line, "Title: description")</label>
+                    <textarea class="ag-textarea" name="site_features" rows="4" style="width: 100%;">{{ old('site_features', $siteFeaturesText) }}</textarea>
                 </div>
             </div>
 
-            <div style="margin-bottom:12px;">
-                <label style="display:block; font-size:13px; color:#4b5563; margin-bottom:6px;">Metadata (JSON)</label>
-                <textarea name="site_metadata" rows="6" style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:10px; font-family:'Courier New', monospace;">{{ old('site_metadata', $siteMetadataText) }}</textarea>
+            <div style="margin-bottom: 12px;">
+                <label class="ag-label">Metadata (JSON)</label>
+                <textarea class="ag-textarea" name="site_metadata" rows="6" style="width: 100%;">{{ old('site_metadata', $siteMetadataText) }}</textarea>
             </div>
 
-            <h3 style="font-size:15px; font-weight:700; margin:18px 0 8px; padding-top:14px; border-top:1px solid #e5e7eb;">Public pages</h3>
-            <p style="font-size:13px; color:#6b7280; margin-bottom:10px;">These pages are linked from the home page Quick Links. A page with no content is hidden. Text fields accept Markdown.</p>
+            <h3 style="font-size: 15px; font-weight: 500; margin: 18px 0 8px; padding-top: 14px; border-top: 1px solid var(--ag-line);">Public pages</h3>
+            <p style="font-size: 13px; color: var(--ag-muted); margin-bottom: 10px;">These pages are linked from the home page Quick Links. A page with no content is hidden. Text fields accept Markdown.</p>
 
-            <div style="margin-bottom:12px;">
-                <label style="display:block; font-size:13px; color:#4b5563; margin-bottom:6px;">About page</label>
-                <textarea name="site_about" rows="6" placeholder="## Who we are" style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:10px;">{{ old('site_about', $siteAbout) }}</textarea>
+            <div style="margin-bottom: 12px;">
+                <label class="ag-label">About page</label>
+                <textarea class="ag-textarea" name="site_about" rows="6" placeholder="## Who we are" style="width: 100%;">{{ old('site_about', $siteAbout) }}</textarea>
             </div>
 
-            <div style="margin-bottom:12px;">
-                <label style="display:block; font-size:13px; color:#4b5563; margin-bottom:6px;">FAQ page</label>
+            <div style="margin-bottom: 12px;">
+                <label class="ag-label">FAQ page</label>
                 @php
                     $faqRows = old('faq_question') !== null
                         ? collect(old('faq_question'))->map(fn ($question, $index) => ['question' => $question, 'answer' => old('faq_answer')[$index] ?? ''])->all()
@@ -176,72 +266,72 @@
                 @endphp
                 <div id="faq-rows">
                     @foreach($faqRows as $faqRow)
-                        <div class="faq-row" style="border:1px solid #e5e7eb; border-radius:8px; padding:10px; margin-bottom:8px; background:#f9fafb;">
-                            <input type="text" name="faq_question[]" value="{{ $faqRow['question'] }}" placeholder="Question" maxlength="500" style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:10px; margin-bottom:6px; background:white;">
-                            <textarea name="faq_answer[]" rows="2" placeholder="Answer (Markdown)" style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:10px; background:white;">{{ $faqRow['answer'] }}</textarea>
-                            <button type="button" class="faq-remove" style="margin-top:6px; background:white; border:1px solid #d1d5db; border-radius:6px; padding:4px 10px; cursor:pointer; font-size:12px;">Remove</button>
+                        <div class="faq-row" style="border-radius: 12px; padding: 10px; margin-bottom: 8px; background: var(--ag-surface);">
+                            <input class="ag-input" type="text" name="faq_question[]" value="{{ $faqRow['question'] }}" placeholder="Question" maxlength="500" style="width: 100%; margin-bottom: 6px;">
+                            <textarea class="ag-textarea" name="faq_answer[]" rows="2" placeholder="Answer (Markdown)" style="width: 100%;">{{ $faqRow['answer'] }}</textarea>
+                            <button type="button" class="ag-btn ag-btn--ghost faq-remove" style="margin-top: 6px;">Remove</button>
                         </div>
                     @endforeach
                 </div>
-                <button type="button" id="faq-add" style="background:white; border:1px solid #d1d5db; border-radius:6px; padding:6px 12px; cursor:pointer; font-size:13px;">Add question</button>
+                <button class="ag-btn ag-btn--ghost" type="button" id="faq-add">Add question</button>
             </div>
 
-            <div style="margin-bottom:12px;">
-                <label style="display:block; font-size:13px; color:#4b5563; margin-bottom:6px;">Support page</label>
-                <p style="font-size:12px; color:#6b7280; margin-bottom:8px;">Who your users contact for support, and how they raise a request.</p>
-                <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:10px;">
-                    <input type="text" name="site_support_contact_name" value="{{ old('site_support_contact_name', $siteSupport['contact_name']) }}" placeholder="Support contact person" maxlength="255" style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:10px;">
-                    <input type="email" name="site_support_contact_email" value="{{ old('site_support_contact_email', $siteSupport['contact_email']) }}" placeholder="Support email" maxlength="255" style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:10px;">
-                    <input type="text" name="site_support_contact_phone" value="{{ old('site_support_contact_phone', $siteSupport['contact_phone']) }}" placeholder="Support phone" maxlength="50" style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:10px;">
-                    <input type="text" name="site_support_hours" value="{{ old('site_support_hours', $siteSupport['hours']) }}" placeholder="Support hours, e.g. Mon-Fri 09:00-18:00 IST" maxlength="255" style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:10px;">
+            <div style="margin-bottom: 12px;">
+                <label class="ag-label">Support page</label>
+                <p style="font-size: 12px; color: var(--ag-muted); margin-bottom: 8px;">Who your users contact for support, and how they raise a request.</p>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 10px;">
+                    <input class="ag-input" type="text" name="site_support_contact_name" value="{{ old('site_support_contact_name', $siteSupport['contact_name']) }}" placeholder="Support contact person" maxlength="255" style="width: 100%;">
+                    <input class="ag-input" type="email" name="site_support_contact_email" value="{{ old('site_support_contact_email', $siteSupport['contact_email']) }}" placeholder="Support email" maxlength="255" style="width: 100%;">
+                    <input class="ag-input" type="text" name="site_support_contact_phone" value="{{ old('site_support_contact_phone', $siteSupport['contact_phone']) }}" placeholder="Support phone" maxlength="50" style="width: 100%;">
+                    <input class="ag-input" type="text" name="site_support_hours" value="{{ old('site_support_hours', $siteSupport['hours']) }}" placeholder="Support hours, e.g. Mon-Fri 09:00-18:00 IST" maxlength="255" style="width: 100%;">
                 </div>
-                <input type="url" name="site_support_request_url" value="{{ old('site_support_request_url', $siteSupport['request_url']) }}" placeholder="Link to the guide or portal for raising a request (https://...)" maxlength="2048" style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:10px; margin-bottom:10px;">
-                <textarea name="site_support_details" rows="5" placeholder="Steps to raise a support request (Markdown)" style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:10px;">{{ old('site_support_details', $siteSupport['details']) }}</textarea>
+                <input class="ag-input" type="url" name="site_support_request_url" value="{{ old('site_support_request_url', $siteSupport['request_url']) }}" placeholder="Link to the guide or portal for raising a request (https://...)" maxlength="2048" style="width: 100%; margin-bottom: 10px;">
+                <textarea class="ag-textarea" name="site_support_details" rows="5" placeholder="Steps to raise a support request (Markdown)" style="width: 100%;">{{ old('site_support_details', $siteSupport['details']) }}</textarea>
             </div>
 
-            <div style="margin-bottom:14px;">
-                <label style="display:block; font-size:13px; color:#4b5563; margin-bottom:6px;">Contact page</label>
+            <div style="margin-bottom: 14px;">
+                <label class="ag-label">Contact page</label>
                 <input type="hidden" name="site_contact_enabled" value="0">
-                <label style="display:flex; gap:8px; align-items:center; font-size:13px; color:#374151; margin-bottom:8px;">
+                <label style="display: flex; gap: 8px; align-items: center; font-size: 13px; color: var(--ag-subtle); margin-bottom: 8px;">
                     <input type="checkbox" name="site_contact_enabled" value="1" {{ old('site_contact_enabled', $siteContactEnabled ? '1' : '0') === '1' ? 'checked' : '' }}>
                     Show the contact form. Messages are listed below.
                 </label>
-                <textarea name="site_contact_intro" rows="3" placeholder="Text above the contact form (Markdown)" style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:10px;">{{ old('site_contact_intro', $siteContactIntro) }}</textarea>
+                <textarea class="ag-textarea" name="site_contact_intro" rows="3" placeholder="Text above the contact form (Markdown)" style="width: 100%;">{{ old('site_contact_intro', $siteContactIntro) }}</textarea>
             </div>
 
-            <button type="submit" style="background:#000000; color:white; border:none; border-radius:8px; padding:10px 14px; font-weight:600; cursor:pointer;">Save Site Settings</button>
+            <button class="ag-btn" type="submit">Save Site Settings</button>
         </form>
 
-        <h3 style="font-size:15px; font-weight:700; margin:18px 0 8px; padding-top:14px; border-top:1px solid #e5e7eb;">Contact messages</h3>
+        <h3 style="font-size: 15px; font-weight: 500; margin: 18px 0 8px; padding-top: 14px; border-top: 1px solid var(--ag-line);">Contact messages</h3>
         @if(($contactSubmissions ?? collect())->isEmpty())
-            <p style="font-size:13px; color:#6b7280;">No messages yet.</p>
+            <p style="font-size: 13px; color: var(--ag-muted);">No messages yet.</p>
         @else
-            <p style="font-size:13px; color:#6b7280; margin-bottom:8px;">Latest 50 messages sent from the Contact page.</p>
+            <p style="font-size: 13px; color: var(--ag-muted); margin-bottom: 8px;">Latest 50 messages sent from the Contact page.</p>
             @foreach($contactSubmissions as $submission)
-                <div style="border:1px solid #e5e7eb; border-radius:8px; padding:10px; margin-bottom:8px;">
-                    <div style="display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap;">
-                        <div style="font-weight:600; color:#111827;">{{ $submission->subject }}</div>
-                        <div style="font-size:12px; color:#6b7280;">{{ \App\Support\UserPreferences::datetime($submission->created_at) }}</div>
+                <div class="ag-card" style="padding: 10px; margin-bottom: 8px;">
+                    <div style="display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap;">
+                        <div style="font-weight: 600; color: var(--ag-text);">{{ $submission->subject }}</div>
+                        <div style="font-size: 12px; color: var(--ag-muted);">{{ \App\Support\UserPreferences::datetime($submission->created_at) }}</div>
                     </div>
-                    <div style="font-size:13px; color:#374151; margin:2px 0 6px;">{{ $submission->name }} &lt;<a href="mailto:{{ $submission->email }}" style="color:#1d4ed8;">{{ $submission->email }}</a>&gt;</div>
-                    <div style="font-size:13px; color:#111827; white-space:pre-wrap; word-break:break-word;">{{ $submission->message }}</div>
-                    <form method="POST" action="{{ route('admin.settings.contact-submissions.delete', ['submissionId' => $submission->id]) }}" onsubmit="return confirm('Delete this message?');" style="margin-top:6px;">
+                    <div style="font-size: 13px; color: var(--ag-subtle); margin: 2px 0 6px;">{{ $submission->name }} &lt;<a href="mailto:{{ $submission->email }}" style="color: var(--ag-teal);">{{ $submission->email }}</a>&gt;</div>
+                    <div style="font-size: 13px; color: var(--ag-text); white-space: pre-wrap; word-break: break-word;">{{ $submission->message }}</div>
+                    <form method="POST" action="{{ route('admin.settings.contact-submissions.delete', ['submissionId' => $submission->id]) }}" onsubmit="return confirm('Delete this message?');" style="margin-top: 6px;">
                         @csrf
                         @method('DELETE')
-                        <button type="submit" style="background:white; border:1px solid #d1d5db; border-radius:6px; padding:4px 10px; cursor:pointer; font-size:12px; color:#b91c1c;">Delete</button>
+                        <button class="ag-btn ag-btn--danger" type="submit">Delete</button>
                     </form>
                 </div>
             @endforeach
         @endif
     </div>
 
-    <div id="tab-s3" class="settings-tab-content" style="display:{{ $activeTab === 's3' ? 'block' : 'none' }}; background:white; border:1px solid #b3b3b3; border-radius:10px; padding:22px; box-shadow:0 2px 10px rgba(0,0,0,0.06);">
-        <h2 style="font-size:18px; margin-bottom:8px;">S3 Configuration</h2>
+    <div id="tab-s3" class="settings-tab-content ag-card" style="display:{{ $activeTab === 's3' ? 'block' : 'none' }}; padding:24px;">
+        <h2 style="font-size: 18px; margin-bottom: 8px;">S3 Configuration</h2>
         @php
             $s3EnabledState = (string) old('s3_enabled', ($useS3Storage ?? false) ? '1' : '0');
         @endphp
-        <p style="font-size:13px; color:#6b7280; margin-bottom:14px;">Local storage is default. Enable S3 only when you want backups/migration to target S3.</p>
-        <div style="margin-bottom:14px; padding:10px; border-radius:8px; background:#f9fafb; border:1px solid #e5e7eb; color:#374151; font-size:13px; line-height:1.5;">
+        <p style="font-size: 13px; color: var(--ag-muted); margin-bottom: 14px;">Local storage is default. Enable S3 only when you want backups/migration to target S3.</p>
+        <div style="margin-bottom: 14px; padding: 10px; border-radius: 12px; background: var(--ag-surface); color: var(--ag-subtle); font-size: 13px; line-height: 1.5;">
             <strong>Note:</strong>
             <br>
             By default, all system data is stored in local storage.
@@ -255,78 +345,78 @@
         <form method="POST" action="{{ route('admin.settings.s3', ['tab' => 's3']) }}">
             @csrf
             <input type="hidden" name="s3_enabled" value="0">
-            <div style="margin-bottom:12px;">
-                <label style="display:flex; align-items:center; gap:8px;">
+            <div style="margin-bottom: 12px;">
+                <label style="display: flex; align-items: center; gap: 8px;">
                     <input type="checkbox" name="s3_enabled" value="1" {{ $s3EnabledState === '1' ? 'checked' : '' }}>
                     <span>Enable S3 configuration</span>
                 </label>
             </div>
 
-            <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:12px;">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 12px;">
                 <div>
-                    <label style="display:block; font-size:13px; color:#4b5563; margin-bottom:6px;">AWS Access Key</label>
-                    <input type="text" name="s3_access_key" value="{{ old('s3_access_key', $s3AccessKey) }}" required style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:10px;">
+                    <label class="ag-label">AWS Access Key</label>
+                    <input class="ag-input" type="text" name="s3_access_key" value="{{ old('s3_access_key', $s3AccessKey) }}" required style="width: 100%;">
                 </div>
                 <div>
-                    <label style="display:block; font-size:13px; color:#4b5563; margin-bottom:6px;">AWS Secret Key {{ $hasS3Secret ? '(leave blank to keep existing)' : '' }}</label>
-                    <input type="password" name="s3_secret_key" {{ $hasS3Secret ? '' : 'required' }} style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:10px;">
-                </div>
-            </div>
-
-            <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:12px;">
-                <div>
-                    <label style="display:block; font-size:13px; color:#4b5563; margin-bottom:6px;">AWS Region</label>
-                    <input type="text" name="s3_region" value="{{ old('s3_region', $s3Region) }}" required placeholder="ap-south-1" style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:10px;">
-                </div>
-                <div>
-                    <label style="display:block; font-size:13px; color:#4b5563; margin-bottom:6px;">AWS Bucket</label>
-                    <input type="text" name="s3_bucket" value="{{ old('s3_bucket', $s3Bucket) }}" required placeholder="my-bucket" style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:10px;">
+                    <label class="ag-label">AWS Secret Key {{ $hasS3Secret ? '(leave blank to keep existing)' : '' }}</label>
+                    <input class="ag-input" type="password" name="s3_secret_key" {{ $hasS3Secret ? '' : 'required' }} style="width: 100%;">
                 </div>
             </div>
 
-            <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:14px;">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 12px;">
                 <div>
-                    <div style="font-size:12px; color:#4b5563; margin-bottom:4px;">Local Storage Base URL</div>
-                    <div style="font-size:13px; color:#111827; font-weight:600;">{{ $localStorageBaseUrl }}</div>
+                    <label class="ag-label">AWS Region</label>
+                    <input class="ag-input" type="text" name="s3_region" value="{{ old('s3_region', $s3Region) }}" required placeholder="ap-south-1" style="width: 100%;">
                 </div>
                 <div>
-                    <div style="font-size:12px; color:#4b5563; margin-bottom:4px;">S3 Storage Base URL</div>
-                    <div style="font-size:13px; color:#111827; font-weight:600;">{{ $s3StorageBaseUrl !== '' ? $s3StorageBaseUrl : 'Will auto-generate after save' }}</div>
+                    <label class="ag-label">AWS Bucket</label>
+                    <input class="ag-input" type="text" name="s3_bucket" value="{{ old('s3_bucket', $s3Bucket) }}" required placeholder="my-bucket" style="width: 100%;">
                 </div>
             </div>
 
-            <button type="submit" style="background:#000000; color:white; border:none; border-radius:8px; padding:10px 14px; font-weight:600; cursor:pointer;">Save S3 Settings</button>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 14px;">
+                <div>
+                    <div style="font-size: 12px; color: var(--ag-subtle); margin-bottom: 4px;">Local Storage Base URL</div>
+                    <div style="font-size: 13px; color: var(--ag-text); font-weight: 600;">{{ $localStorageBaseUrl }}</div>
+                </div>
+                <div>
+                    <div style="font-size: 12px; color: var(--ag-subtle); margin-bottom: 4px;">S3 Storage Base URL</div>
+                    <div style="font-size: 13px; color: var(--ag-text); font-weight: 600;">{{ $s3StorageBaseUrl !== '' ? $s3StorageBaseUrl : 'Will auto-generate after save' }}</div>
+                </div>
+            </div>
+
+            <button class="ag-btn" type="submit">Save S3 Settings</button>
         </form>
     </div>
 
-    <div id="tab-email" class="settings-tab-content" style="display:{{ $activeTab === 'email' ? 'block' : 'none' }}; background:white; border:1px solid #b3b3b3; border-radius:10px; padding:22px; box-shadow:0 2px 10px rgba(0,0,0,0.06);">
-        <h2 style="font-size:18px; margin-bottom:12px;">Email Configuration</h2>
+    <div id="tab-email" class="settings-tab-content ag-card" style="display:{{ $activeTab === 'email' ? 'block' : 'none' }}; padding:24px;">
+        <h2 style="font-size: 18px; margin-bottom: 12px;">Email Configuration</h2>
         <form method="POST" action="{{ route('admin.settings.mail', ['tab' => 'email']) }}">
             @csrf
-            <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:12px;">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 12px;">
                 <div>
-                    <label style="display:block; font-size:13px; color:#4b5563; margin-bottom:6px;">SMTP Host</label>
-                    <input type="text" name="mail_host" value="{{ old('mail_host', $mailHost) }}" required style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:10px;">
+                    <label class="ag-label">SMTP Host</label>
+                    <input class="ag-input" type="text" name="mail_host" value="{{ old('mail_host', $mailHost) }}" required style="width: 100%;">
                 </div>
                 <div>
-                    <label style="display:block; font-size:13px; color:#4b5563; margin-bottom:6px;">SMTP Port</label>
-                    <input type="number" name="mail_port" value="{{ old('mail_port', $mailPort) }}" required style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:10px;">
-                </div>
-            </div>
-            <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:12px;">
-                <div>
-                    <label style="display:block; font-size:13px; color:#4b5563; margin-bottom:6px;">SMTP Username</label>
-                    <input type="text" name="mail_username" value="{{ old('mail_username', $mailUsername) }}" required style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:10px;">
-                </div>
-                <div>
-                    <label style="display:block; font-size:13px; color:#4b5563; margin-bottom:6px;">SMTP Password {{ $hasMailPassword ? '(leave blank to keep existing)' : '' }}</label>
-                    <input type="password" name="mail_password" {{ $hasMailPassword ? '' : 'required' }} style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:10px;">
+                    <label class="ag-label">SMTP Port</label>
+                    <input class="ag-input" type="number" name="mail_port" value="{{ old('mail_port', $mailPort) }}" required style="width: 100%;">
                 </div>
             </div>
-            <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:12px;">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 12px;">
                 <div>
-                    <label style="display:block; font-size:13px; color:#4b5563; margin-bottom:6px;">Encryption</label>
-                    <select name="mail_encryption" style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:10px;">
+                    <label class="ag-label">SMTP Username</label>
+                    <input class="ag-input" type="text" name="mail_username" value="{{ old('mail_username', $mailUsername) }}" required style="width: 100%;">
+                </div>
+                <div>
+                    <label class="ag-label">SMTP Password {{ $hasMailPassword ? '(leave blank to keep existing)' : '' }}</label>
+                    <input class="ag-input" type="password" name="mail_password" {{ $hasMailPassword ? '' : 'required' }} style="width: 100%;">
+                </div>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 12px;">
+                <div>
+                    <label class="ag-label">Encryption</label>
+                    <select class="ag-select" name="mail_encryption" style="width: 100%;">
                         <option value="" {{ old('mail_encryption', $mailEncryption) === '' ? 'selected' : '' }}>None</option>
                         <option value="tls" {{ old('mail_encryption', $mailEncryption) === 'tls' ? 'selected' : '' }}>TLS</option>
                         <option value="ssl" {{ old('mail_encryption', $mailEncryption) === 'ssl' ? 'selected' : '' }}>SSL</option>
@@ -334,26 +424,37 @@
                     </select>
                 </div>
                 <div>
-                    <label style="display:block; font-size:13px; color:#4b5563; margin-bottom:6px;">From Name</label>
-                    <input type="text" name="mail_from_name" value="{{ old('mail_from_name', $mailFromName) }}" required style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:10px;">
+                    <label class="ag-label">From Name</label>
+                    <input class="ag-input" type="text" name="mail_from_name" value="{{ old('mail_from_name', $mailFromName) }}" required style="width: 100%;">
                 </div>
             </div>
-            <div style="margin-bottom:12px;">
-                <label style="display:block; font-size:13px; color:#4b5563; margin-bottom:6px;">From Address</label>
-                <input type="email" name="mail_from_address" value="{{ old('mail_from_address', $mailFromAddress) }}" required style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:10px;">
+            <div style="margin-bottom: 12px;">
+                <label class="ag-label">From Address</label>
+                <input class="ag-input" type="email" name="mail_from_address" value="{{ old('mail_from_address', $mailFromAddress) }}" required style="width: 100%;">
             </div>
-            <div style="margin-bottom:12px;">
-                <label style="display:block; font-size:13px; color:#4b5563; margin-bottom:6px;">Alert Recipients (comma separated)</label>
-                <textarea name="mail_recipients" rows="3" required style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:10px;">{{ old('mail_recipients', $mailRecipientsText) }}</textarea>
+            <div style="margin-bottom: 12px;">
+                <label class="ag-label">Alert Recipients (comma separated)</label>
+                <textarea class="ag-textarea" name="mail_recipients" rows="3" required style="width: 100%;">{{ old('mail_recipients', $mailRecipientsText) }}</textarea>
             </div>
-            <button type="submit" style="background:#000000; color:white; border:none; border-radius:8px; padding:10px 14px; font-weight:600; cursor:pointer;">Save Email Settings</button>
+            <button class="ag-btn" type="submit">Save Email Settings</button>
         </form>
+
+        <div class="ag-card ag-card--flat" style="margin-top: 18px;">
+            <h3 style="font-size: 15px; font-weight: 500; margin-bottom: 6px;">Send test email</h3>
+            <p style="font-size: 13px; color: var(--ag-muted); margin-bottom: 10px;">Sends a test message with the saved settings above, the same way alerts are sent. Save your changes first.</p>
+            <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+                <label class="ag-label" for="mail-test-recipient" style="margin: 0;">Send to</label>
+                <input class="ag-input" id="mail-test-recipient" type="email" value="{{ auth()->user()->email }}" style="flex: 1; min-width: 220px;">
+                <button class="ag-btn ag-btn--ghost" type="button" id="mail-test-send"><i class="fas fa-paper-plane"></i> Send test email</button>
+            </div>
+            <p id="mail-test-result" class="hidden" style="font-size: 13px; margin-top: 8px; word-break: break-word;" role="status"></p>
+        </div>
     </div>
 
-    <div id="tab-migration" class="settings-tab-content" style="display:{{ $activeTab === 'migration' ? 'block' : 'none' }}; background:white; border:1px solid #b3b3b3; border-radius:10px; padding:22px; box-shadow:0 2px 10px rgba(0,0,0,0.06);">
-        <h2 style="font-size:18px; margin-bottom:8px;">Migration</h2>
-        <p style="font-size:13px; color:#6b7280; margin-bottom:14px;">One-click migration supports Local to S3 and S3 to Local for tracked configuration files while preserving path structure.</p>
-        <div style="margin-bottom:14px; padding:10px; border-radius:8px; background:#f9fafb; border:1px solid #e5e7eb; color:#374151; font-size:13px; line-height:1.5;">
+    <div id="tab-migration" class="settings-tab-content ag-card" style="display:{{ $activeTab === 'migration' ? 'block' : 'none' }}; padding:24px;">
+        <h2 style="font-size: 18px; margin-bottom: 8px;">Migration</h2>
+        <p style="font-size: 13px; color: var(--ag-muted); margin-bottom: 14px;">One-click migration supports Local to S3 and S3 to Local for tracked configuration files while preserving path structure.</p>
+        <div style="margin-bottom: 14px; padding: 10px; border-radius: 12px; background: var(--ag-surface); color: var(--ag-subtle); font-size: 13px; line-height: 1.5;">
             <strong>Note:</strong>
             <br>
             Migration is an on-demand mechanism used to move data between local storage and S3.
@@ -363,77 +464,135 @@
             The default behavior of the system remains unchanged - all data is stored and accessed from local storage unless explicitly migrated.
         </div>
 
-        <form method="POST" action="{{ route('admin.settings.migration.config', ['tab' => 'migration']) }}" style="margin-bottom:14px;">
+        <form method="POST" action="{{ route('admin.settings.migration.config', ['tab' => 'migration']) }}" style="margin-bottom: 14px;">
             @csrf
             <input type="hidden" name="migration_enabled" value="0">
-            <label style="display:flex; align-items:center; gap:8px; margin-bottom:10px;">
+            <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px;">
                 <input type="checkbox" name="migration_enabled" value="1" {{ old('migration_enabled', ($migrationEnabled ?? false) ? '1' : '0') === '1' ? 'checked' : '' }}>
                 <span>Enable Migration</span>
             </label>
-            <button type="submit" style="background:#000000; color:white; border:none; border-radius:8px; padding:8px 12px; font-weight:600; cursor:pointer;">Save Migration Setting</button>
+            <button class="ag-btn" type="submit">Save Migration Setting</button>
         </form>
 
         @if($migrationEnabled)
-            <div style="border:1px solid #e5e7eb; border-radius:8px; padding:14px; margin-bottom:12px; background:#fafafa;">
-                <form method="POST" action="{{ route('admin.settings.migration.analyze', ['tab' => 'migration']) }}" style="display:flex; flex-wrap:wrap; gap:10px; align-items:end; margin-bottom:10px;">
+            <div style="border-radius: 12px; padding: 14px; margin-bottom: 12px; background: var(--ag-surface);">
+                <form method="POST" action="{{ route('admin.settings.migration.analyze', ['tab' => 'migration']) }}" style="display: flex; flex-wrap: wrap; gap: 10px; align-items: end; margin-bottom: 10px;">
                     @csrf
                     <div>
-                        <label style="display:block; font-size:12px; color:#4b5563; margin-bottom:6px;">Migration Direction</label>
-                        <select name="direction" style="border:1px solid #d1d5db; border-radius:8px; padding:8px 10px;">
+                        <label class="ag-label">Migration Direction</label>
+                        <select class="ag-select" name="direction">
                             <option value="local_to_s3" {{ old('direction', $migrationDirection) === 'local_to_s3' ? 'selected' : '' }}>Local to S3</option>
                             <option value="s3_to_local" {{ old('direction', $migrationDirection) === 's3_to_local' ? 'selected' : '' }}>S3 to Local</option>
                         </select>
                     </div>
-                    <label style="display:flex; align-items:center; gap:8px;">
+                    <label style="display: flex; align-items: center; gap: 8px;">
                         <input type="checkbox" name="keep_source" value="1" {{ old('keep_source', $migrationKeepSource ? '1' : '0') === '1' ? 'checked' : '' }}>
-                        <span style="font-size:13px; color:#111827;">Keep source files after migration</span>
+                        <span style="font-size: 13px; color: var(--ag-text);">Keep source files after migration</span>
                     </label>
-                    <button type="submit" style="background:#374151; color:white; border:none; border-radius:8px; padding:8px 12px; font-weight:600; cursor:pointer;">Analyze</button>
+                    <button type="submit" style="background: #5b626b; color: white; border: none; border-radius: 12px; padding: 8px 12px; font-weight: 600; cursor: pointer;">Analyze</button>
                 </form>
 
-                <form method="POST" action="{{ route('admin.settings.migration.start', ['tab' => 'migration']) }}" style="display:flex; flex-wrap:wrap; gap:10px; align-items:center;">
+                <form method="POST" action="{{ route('admin.settings.migration.start', ['tab' => 'migration']) }}" style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center;">
                     @csrf
                     <input type="hidden" name="direction" value="{{ old('direction', $migrationDirection) }}">
                     <input type="hidden" name="keep_source" value="{{ old('keep_source', $migrationKeepSource ? '1' : '0') }}">
-                    <button type="submit" style="background:#000000; color:white; border:none; border-radius:8px; padding:8px 12px; font-weight:600; cursor:pointer;">Start One-Click Migration</button>
+                    <button class="ag-btn" type="submit">Start One-Click Migration</button>
                 </form>
             </div>
 
             @if(!empty($migrationNotice))
-                <div style="margin-bottom:10px; padding:10px; border-radius:8px; background:#eff6ff; color:#1e3a8a;">{{ $migrationNotice }}</div>
+                <div style="margin-bottom: 10px; padding: 10px; border-radius: 12px; background: #e4f6ff; color: #1f7fb8;">{{ $migrationNotice }}</div>
             @endif
 
             @if(is_array($migrationAnalysis))
-                <div style="margin-bottom:10px; padding:10px; border-radius:8px; background:#f9fafb; border:1px solid #e5e7eb;">
-                    <div style="font-weight:600; margin-bottom:6px;">Migration Analysis</div>
-                    <div style="font-size:13px; color:#374151;">Pending files: {{ $migrationAnalysis['files_pending_migration'] ?? 0 }}</div>
-                    <div style="font-size:13px; color:#374151;">Source files found: {{ $migrationAnalysis['source_files_found'] ?? 0 }}</div>
-                    <div style="font-size:13px; color:#374151;">Missing source files: {{ $migrationAnalysis['missing_source_files'] ?? 0 }}</div>
+                <div style="margin-bottom: 10px; padding: 10px; border-radius: 12px; background: var(--ag-surface);">
+                    <div style="font-weight: 600; margin-bottom: 6px;">Migration Analysis</div>
+                    <div style="font-size: 13px; color: var(--ag-subtle);">Pending files: {{ $migrationAnalysis['files_pending_migration'] ?? 0 }}</div>
+                    <div style="font-size: 13px; color: var(--ag-subtle);">Source files found: {{ $migrationAnalysis['source_files_found'] ?? 0 }}</div>
+                    <div style="font-size: 13px; color: var(--ag-subtle);">Missing source files: {{ $migrationAnalysis['missing_source_files'] ?? 0 }}</div>
                 </div>
             @endif
 
             @if(is_array($migrationResult))
-                <div style="padding:10px; border-radius:8px; background:#f0fdf4; border:1px solid #bbf7d0;">
-                    <div style="font-weight:600; margin-bottom:6px;">Migration Result</div>
-                    <div style="font-size:13px; color:#166534;">Migrated files: {{ $migrationResult['migrated_files'] ?? 0 }}</div>
-                    <div style="font-size:13px; color:#166534;">Verified files: {{ $migrationResult['verified_files'] ?? 0 }}</div>
-                    <div style="font-size:13px; color:#166534;">Progress: {{ $migrationResult['progress_percent'] ?? 0 }}%</div>
+                <div style="padding: 10px; border-radius: 12px; background: var(--ag-success-soft); border: 1px solid #bdf3e0;">
+                    <div style="font-weight: 600; margin-bottom: 6px;">Migration Result</div>
+                    <div style="font-size: 13px; color: var(--ag-success);">Migrated files: {{ $migrationResult['migrated_files'] ?? 0 }}</div>
+                    <div style="font-size: 13px; color: var(--ag-success);">Verified files: {{ $migrationResult['verified_files'] ?? 0 }}</div>
+                    <div style="font-size: 13px; color: var(--ag-success);">Progress: {{ $migrationResult['progress_percent'] ?? 0 }}%</div>
                 </div>
             @endif
         @else
-            <p style="color:#6b7280;">Migration is disabled. Enable it above to use one-click local to S3 or S3 to local migration.</p>
+            <p style="color: var(--ag-muted);">Migration is disabled. Enable it above to use one-click local to S3 or S3 to local migration.</p>
         @endif
     </div>
 
-    <div id="tab-plugins" class="settings-tab-content" style="display:{{ $activeTab === 'plugins' ? 'block' : 'none' }}; background:white; border:1px solid #b3b3b3; border-radius:10px; padding:22px; box-shadow:0 2px 10px rgba(0,0,0,0.06);">
-        <h2 style="font-size:18px; margin-bottom:8px;">Plugins</h2>
-        <p style="color:#6b7280;">Coming Soon</p>
+    <div id="tab-plugins" class="settings-tab-content ag-card" style="display:{{ $activeTab === 'plugins' ? 'block' : 'none' }}; padding:24px;">
+        <h2 style="font-size: 18px; margin-bottom: 8px;">Plugins</h2>
+        <p style="font-size: 13px; color: var(--ag-muted);">Optional features. Each one is off until you enable it.</p>
+        @php
+            $dv = $domainView;
+            $dvCanEdit = (int) auth()->user()->rbac_id === 100;
+            $dvSeen = $dv['proxy_seen'];
+            $dvStatus = isset($dvSeen['builtin'])
+                ? 'Built-in proxy detected (' . strtoupper($dvSeen['builtin']['scheme']) . ')'
+                : (isset($dvSeen['platform']) ? 'Platform proxy detected (' . strtoupper($dvSeen['platform']['scheme']) . ')' : 'Not detected yet. Open the console through the proxy once to confirm.');
+        @endphp
+        <div class="ag-card" style="margin-top: 12px;">
+            <div class="ag-card-header">
+                <span class="ag-card-icon"><i class="fas fa-globe"></i></span>
+                <h3 class="ag-card-title">Custom Domain &amp; HTTPS</h3>
+                <span class="ag-badge {{ $dv['plugin_enabled'] ? 'ag-badge--success' : '' }}" style="margin-left: auto;">{{ $dv['plugin_enabled'] ? 'Enabled' : 'Disabled' }}</span>
+            </div>
+            <p style="font-size: 13px; color: var(--ag-subtle); margin-bottom: 10px;">
+                Open the console on your own domain, e.g. <code>https://atglance.acme.com</code>. Nothing changes on the server until you follow the steps below.
+                <code>http://server-IP:8000</code> keeps working at all times.
+            </p>
+            @if($dvCanEdit)
+                <form method="POST" action="{{ route('admin.settings.domain.plugin') }}" style="margin-bottom: 12px;">
+                    @csrf
+                    <input type="hidden" name="enabled" value="{{ $dv['plugin_enabled'] ? '0' : '1' }}">
+                    <button class="ag-btn {{ $dv['plugin_enabled'] ? 'ag-btn--ghost' : '' }}" type="submit">{{ $dv['plugin_enabled'] ? 'Disable' : 'Enable' }}</button>
+                </form>
+            @else
+                <p style="font-size: 12px; color: var(--ag-muted); margin-bottom: 12px;">Only the super admin can change this.</p>
+            @endif
+
+            @if($dv['plugin_enabled'])
+                <div style="font-size: 13px; margin-bottom: 12px;"><strong>Status:</strong> {{ $dvStatus }}</div>
+                @if(isset($dvSeen['untrusted']))
+                    <div class="ag-alert ag-alert--warning" style="margin-bottom: 12px;">
+                        <span>A proxy at <code>{{ $dvSeen['untrusted']['address'] }}</code> sends X-Forwarded headers, but it is not trusted, so the console ignores them (no HTTPS detection, no redirect).
+                        If it is your load balancer, add its address or subnet to <code>ATGLANCE_TRUSTED_PROXIES</code> in the app environment (for example <code>127.0.0.1,::1,10.0.0.0/8</code>) and restart the app.</span>
+                    </div>
+                @endif
+                @if($dv['https_mode'] === 'custom' && $dv['certificate'] && $dv['certificate']['days_left'] <= 30)
+                    <div class="ag-alert {{ $dv['certificate']['days_left'] < 0 ? 'ag-alert--error' : 'ag-alert--warning' }}" style="margin-bottom: 12px;">
+                        {{ $dv['certificate']['days_left'] < 0 ? 'Your certificate has expired.' : 'Your certificate expires in ' . $dv['certificate']['days_left'] . ' days.' }}
+                        Upload the renewed one on the Site tab.
+                    </div>
+                @endif
+                <div style="font-size: 13px; line-height: 1.7;">
+                    <strong>VM / Docker Compose</strong> (built-in proxy on ports 80 and 443):
+                    <ol style="margin: 4px 0 10px 18px;">
+                        <li>Check ports 80 and 443 are free: <code>sudo ss -ltn '( sport = :80 or sport = :443 )'</code> (no output = free).</li>
+                        <li>In the install folder (default <code>/opt/atglance</code>) run: <code>docker compose -f docker-compose.yml -f docker-compose.domain.yml up -d</code>. If a port is taken, set <code>HTTP_PORT</code> / <code>HTTPS_PORT</code> in <code>.env</code> first.</li>
+                        <li>Open <code>http://server-IP</code> (port 80) once. The status above changes to "Built-in proxy detected".</li>
+                        <li>To undo: <code>docker compose up -d</code> (without the second file).</li>
+                    </ol>
+                    <strong>AWS ECS:</strong> ALB listener on 443 with an ACM certificate, forwarding to container port 8000 (route 8002 separately for the CLI). Then choose "Handled by my platform".<br>
+                    <strong>Azure Container Apps:</strong> ingress target port 8000, plus a custom domain with a managed certificate. Then choose "Handled by my platform".<br>
+                    <strong>Kubernetes:</strong> an Ingress to service port 8000, with cert-manager for TLS. Then choose "Handled by my platform".<br>
+                    On these platforms also set <code>ATGLANCE_TRUSTED_PROXIES</code> in the app environment to the load balancer's subnet (for example <code>127.0.0.1,::1,10.0.0.0/8</code>), so the console trusts its X-Forwarded headers.
+                </div>
+                <a class="ag-btn ag-btn--sm" style="margin-top: 12px;" href="{{ route('admin.settings', ['tab' => 'site']) }}">Set the domain on the Site tab</a>
+            @endif
+        </div>
     </div>
 
-    <div id="tab-backup-restore" class="settings-tab-content" style="display:{{ $activeTab === 'backup-restore' ? 'block' : 'none' }}; background:white; border:1px solid #b3b3b3; border-radius:10px; padding:22px; box-shadow:0 2px 10px rgba(0,0,0,0.06);">
-        <h2 style="font-size:18px; margin-bottom:8px;">Backup &amp; Restore</h2>
-        <p style="font-size:13px; color:#6b7280; margin-bottom:14px;">Default mode is local-only. Enable S3 backup options only when needed.</p>
-        <div style="margin-bottom:14px; padding:10px; border-radius:8px; background:#f9fafb; border:1px solid #e5e7eb; color:#374151; font-size:13px; line-height:1.5;">
+    <div id="tab-backup-restore" class="settings-tab-content ag-card" style="display:{{ $activeTab === 'backup-restore' ? 'block' : 'none' }}; padding:24px;">
+        <h2 style="font-size: 18px; margin-bottom: 8px;">Backup &amp; Restore</h2>
+        <p style="font-size: 13px; color: var(--ag-muted); margin-bottom: 14px;">Default mode is local-only. Enable S3 backup options only when needed.</p>
+        <div style="margin-bottom: 14px; padding: 10px; border-radius: 12px; background: var(--ag-surface); color: var(--ag-subtle); font-size: 13px; line-height: 1.5;">
             <strong>Note:</strong>
             <br>
             By default, all system data is stored in local storage.
@@ -455,10 +614,10 @@
 
         <form method="POST" action="{{ route('admin.settings.backup-restore', ['tab' => 'backup-restore']) }}">
             @csrf
-            <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:12px;">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 12px;">
                 <div>
-                    <label style="display:block; font-size:13px; color:#4b5563; margin-bottom:6px;">Enable Backup and Restore</label>
-                    <select name="backup_restore_enabled" id="backup-restore-enabled" style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:10px;">
+                    <label class="ag-label">Enable Backup and Restore</label>
+                    <select class="ag-select" name="backup_restore_enabled" id="backup-restore-enabled" style="width: 100%;">
                         <option value="0" {{ $backupRestoreEnabledState ? '' : 'selected' }}>No</option>
                         <option value="1" {{ $backupRestoreEnabledState ? 'selected' : '' }}>Yes</option>
                     </select>
@@ -466,17 +625,17 @@
             </div>
 
             <div id="backup-restore-details" style="display:{{ $backupRestoreEnabledState ? 'block' : 'none' }};">
-                <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:12px;">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 12px;">
                     <div>
-                        <label style="display:block; font-size:13px; color:#4b5563; margin-bottom:6px;">Save configuration files backup on S3 (Yes/No)</label>
-                        <select name="backup_config_to_s3" id="backup-config-to-s3" style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:10px;">
+                        <label class="ag-label">Save configuration files backup on S3 (Yes/No)</label>
+                        <select class="ag-select" name="backup_config_to_s3" id="backup-config-to-s3" style="width: 100%;">
                             <option value="0" {{ $backupConfigToS3State ? '' : 'selected' }}>No</option>
                             <option value="1" {{ $backupConfigToS3State ? 'selected' : '' }}>Yes</option>
                         </select>
                     </div>
                     <div id="backup-config-cron-wrap" style="display:{{ $backupConfigToS3State ? 'block' : 'none' }};">
-                        <label style="display:block; font-size:13px; color:#4b5563; margin-bottom:6px;">Configuration backup cron</label>
-                        <select name="backup_config_cron" style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:10px;">
+                        <label class="ag-label">Configuration backup cron</label>
+                        <select class="ag-select" name="backup_config_cron" style="width: 100%;">
                             <option value="" {{ $backupConfigCronValue === '' ? 'selected' : '' }}>Select frequency</option>
                             <option value="hourly" {{ $backupConfigCronValue === 'hourly' ? 'selected' : '' }}>Every hour</option>
                             <option value="every_six_hours" {{ $backupConfigCronValue === 'every_six_hours' ? 'selected' : '' }}>Every six hours</option>
@@ -488,17 +647,17 @@
                     </div>
                 </div>
 
-                <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:14px;">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 14px;">
                     <div>
-                        <label style="display:block; font-size:13px; color:#4b5563; margin-bottom:6px;">Save portal regular (.env file, settings, DB) backup on S3 (Yes/No)</label>
-                        <select name="backup_portal_to_s3" id="backup-portal-to-s3" style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:10px;">
+                        <label class="ag-label">Save portal regular (.env file, settings, DB) backup on S3 (Yes/No)</label>
+                        <select class="ag-select" name="backup_portal_to_s3" id="backup-portal-to-s3" style="width: 100%;">
                             <option value="0" {{ $backupPortalToS3State ? '' : 'selected' }}>No</option>
                             <option value="1" {{ $backupPortalToS3State ? 'selected' : '' }}>Yes</option>
                         </select>
                     </div>
                     <div id="backup-portal-cron-wrap" style="display:{{ $backupPortalToS3State ? 'block' : 'none' }};">
-                        <label style="display:block; font-size:13px; color:#4b5563; margin-bottom:6px;">Portal backup cron</label>
-                        <select name="backup_portal_cron" style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:10px;">
+                        <label class="ag-label">Portal backup cron</label>
+                        <select class="ag-select" name="backup_portal_cron" style="width: 100%;">
                             <option value="" {{ $backupPortalCronValue === '' ? 'selected' : '' }}>Select frequency</option>
                             <option value="daily" {{ $backupPortalCronValue === 'daily' ? 'selected' : '' }}>Every day</option>
                             <option value="weekly" {{ $backupPortalCronValue === 'weekly' ? 'selected' : '' }}>Every week</option>
@@ -508,15 +667,15 @@
                 </div>
             </div>
 
-            <button type="submit" style="background:#000000; color:white; border:none; border-radius:8px; padding:10px 14px; font-weight:600; cursor:pointer;">Save Backup Settings</button>
+            <button class="ag-btn" type="submit">Save Backup Settings</button>
         </form>
 
-        <div id="restore-section" data-url="{{ route('admin.settings.backups') }}" style="margin-top:18px; padding-top:16px; border-top:1px solid #e5e7eb;">
-            <h3 style="font-size:16px; margin-bottom:6px;">Restore</h3>
-            <p style="font-size:13px; color:#6b7280; margin-bottom:10px;">
+        <div id="restore-section" data-url="{{ route('admin.settings.backups') }}" style="margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--ag-line);">
+            <h3 style="font-size: 16px; margin-bottom: 6px;">Restore</h3>
+            <p style="font-size: 13px; color: var(--ag-muted); margin-bottom: 10px;">
                 Backups from S3 and pre-restore snapshots on this server. A snapshot of the current state is saved before every restore.
             </p>
-            <div style="margin-bottom:12px; padding:10px; border-radius:8px; background:#fef2f2; border:1px solid #fecaca; color:#991b1b; font-size:13px; line-height:1.5;">
+            <div style="margin-bottom: 12px; padding: 10px; border-radius: 12px; background: var(--ag-danger-soft); border: 1px solid #f9d6d6; color: var(--ag-danger); font-size: 13px; line-height: 1.5;">
                 <strong>Warning:</strong> a restore overwrites current data.
                 <br>
                 Configuration files backup: adds missing records back and resets changed records to their backed-up values. Records created after the backup are kept.
@@ -524,55 +683,55 @@
                 Portal backup: replaces the whole database and the .env file. Only the super admin can run it. Restart the app containers afterwards.
             </div>
 
-            <div id="restore-errors" style="display:none; margin-bottom:10px; font-size:13px; color:#b91c1c;"></div>
-            <div style="overflow-x:auto; margin-bottom:12px;">
-                <table style="width:100%; border-collapse:collapse; font-size:13px;">
+            <div id="restore-errors" style="display: none; margin-bottom: 10px; font-size: 13px; color: var(--ag-danger);"></div>
+            <div style="overflow-x: auto; margin-bottom: 12px;">
+                <table class="ag-table" style="width: 100%;">
                     <thead>
-                        <tr style="text-align:left; border-bottom:1px solid #e5e7eb; color:#4b5563;">
-                            <th style="padding:6px;">Type</th>
-                            <th style="padding:6px;">Source</th>
-                            <th style="padding:6px;">Backup</th>
-                            <th style="padding:6px;">Created</th>
-                            <th style="padding:6px;">Size</th>
-                            <th style="padding:6px;"></th>
+                        <tr style="text-align: left; border-bottom: 1px solid var(--ag-line); color: var(--ag-subtle);">
+                            <th style="padding: 6px;">Type</th>
+                            <th style="padding: 6px;">Source</th>
+                            <th style="padding: 6px;">Backup</th>
+                            <th style="padding: 6px;">Created</th>
+                            <th style="padding: 6px;">Size</th>
+                            <th style="padding: 6px;"></th>
                         </tr>
                     </thead>
                     <tbody id="restore-backup-rows">
-                        <tr><td colspan="6" style="padding:8px; color:#6b7280;">Loading backups...</td></tr>
+                        <tr><td colspan="6" style="padding: 8px;">Loading backups...</td></tr>
                     </tbody>
                 </table>
             </div>
 
-            <form method="POST" action="{{ route('admin.settings.restore') }}" id="restore-form" style="display:none; padding:12px; border:1px solid #e5e7eb; border-radius:8px; background:#f9fafb;">
+            <form method="POST" action="{{ route('admin.settings.restore') }}" id="restore-form" style="display: none; padding: 12px; border-radius: 12px; background: var(--ag-surface);">
                 @csrf
                 <input type="hidden" name="source" id="restore-source">
                 <input type="hidden" name="path" id="restore-path">
-                <div style="font-size:13px; color:#111827; margin-bottom:10px;">Selected backup: <strong id="restore-selected-name"></strong></div>
-                <div style="margin-bottom:10px; max-width:320px;">
-                    <label style="display:block; font-size:13px; color:#4b5563; margin-bottom:6px;">Confirm your password</label>
-                    <input type="password" name="password" required autocomplete="current-password" style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:10px;">
+                <div style="font-size: 13px; color: var(--ag-text); margin-bottom: 10px;">Selected backup: <strong id="restore-selected-name"></strong></div>
+                <div style="margin-bottom: 10px; max-width: 320px;">
+                    <label class="ag-label">Confirm your password</label>
+                    <input class="ag-input" type="password" name="password" required autocomplete="current-password" style="width: 100%;">
                 </div>
-                <label style="display:flex; gap:8px; align-items:center; font-size:13px; color:#374151; margin-bottom:12px;">
+                <label style="display: flex; gap: 8px; align-items: center; font-size: 13px; color: var(--ag-subtle); margin-bottom: 12px;">
                     <input type="checkbox" name="confirm_overwrite" value="1" required>
                     I understand that current data will be overwritten.
                 </label>
-                <button type="submit" style="background:#b91c1c; color:white; border:none; border-radius:8px; padding:10px 14px; font-weight:600; cursor:pointer;">Restore Backup</button>
-                <button type="button" id="restore-cancel" style="margin-left:6px; background:#ffffff; color:#111827; border:1px solid #d1d5db; border-radius:8px; padding:10px 14px; cursor:pointer;">Cancel</button>
+                <button class="ag-btn ag-btn--danger" type="submit">Restore Backup</button>
+                <button class="ag-btn ag-btn--ghost" type="button" id="restore-cancel" style="margin-left: 6px;">Cancel</button>
             </form>
         </div>
     </div>
 
-    <div id="tab-crons" class="settings-tab-content" style="display:{{ $activeTab === 'crons' ? 'block' : 'none' }}; background:white; border:1px solid #b3b3b3; border-radius:10px; padding:22px; box-shadow:0 2px 10px rgba(0,0,0,0.06);">
-        <h2 style="font-size:18px; margin-bottom:8px;">Crons</h2>
-        <p style="font-size:13px; color:#6b7280; margin-bottom:10px;">Shows only what is currently configured.</p>
+    <div id="tab-crons" class="settings-tab-content ag-card" style="display:{{ $activeTab === 'crons' ? 'block' : 'none' }}; padding:24px;">
+        <h2 style="font-size: 18px; margin-bottom: 8px;">Crons</h2>
+        <p style="font-size: 13px; color: var(--ag-muted); margin-bottom: 10px;">Shows only what is currently configured.</p>
 
         @if(!empty($configuredCronSetups ?? []))
-            <div style="display:grid; grid-template-columns:1fr; gap:10px;">
+            <div style="display: grid; grid-template-columns: 1fr; gap: 10px;">
                 @foreach(($configuredCronSetups ?? []) as $cronSetup)
-                    <div style="padding:10px; border:1px solid #e5e7eb; border-radius:8px; background:#f9fafb;">
-                        <div style="font-weight:600; color:#111827;">{{ $cronSetup['name'] ?? 'Cron' }}</div>
-                        <div style="font-size:13px; color:#374151;">{{ $cronSetup['frequency'] ?? 'Not configured' }}</div>
-                        <div style="font-size:13px; color:#374151; margin-top:4px;">CRON: <span style="font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;">{{ $cronSetup['expression'] ?? '* * * * * *' }}</span></div>
+                    <div style="padding: 10px; border-radius: 12px; background: var(--ag-surface);">
+                        <div style="font-weight: 600; color: var(--ag-text);">{{ $cronSetup['name'] ?? 'Cron' }}</div>
+                        <div style="font-size: 13px; color: var(--ag-subtle);">{{ $cronSetup['frequency'] ?? 'Not configured' }}</div>
+                        <div style="font-size: 13px; color: var(--ag-subtle); margin-top: 4px;">CRON: <span>{{ $cronSetup['expression'] ?? '* * * * * *' }}</span></div>
                         @php
                             $lastRun = $cronSetup['last_run'] ?? [];
                             $lastRunStatus = $lastRun['status'] ?? '';
@@ -582,28 +741,92 @@
                                 default => '#92400e',
                             };
                         @endphp
-                        <div style="font-size:13px; color:#374151; margin-top:4px;">
+                        <div style="font-size: 13px; color: var(--ag-subtle); margin-top: 4px;">
                             Last run:
                             @if(!empty($lastRun))
                                 <span style="font-weight:600; color:{{ $lastRunColor }};">{{ ucfirst($lastRunStatus) }}</span>
                                 at {{ \App\Support\UserPreferences::datetime($lastRun['finished_at'] ?? $lastRun['started_at']) }}
                                 @if(!empty($lastRun['message']))
-                                    <div style="font-size:12px; color:#6b7280; margin-top:2px; word-break:break-all;">{{ $lastRun['message'] }}</div>
+                                    <div style="font-size: 12px; color: var(--ag-muted); margin-top: 2px; word-break: break-all;">{{ $lastRun['message'] }}</div>
                                 @endif
                             @else
-                                <span style="color:#6b7280;">Never</span>
+                                <span style="color: var(--ag-muted);">Never</span>
                             @endif
                         </div>
                     </div>
                 @endforeach
             </div>
         @else
-            <p style="color:#6b7280;">No cron schedules configured yet.</p>
+            <p style="color: var(--ag-muted);">No cron schedules configured yet.</p>
         @endif
     </div>
 
-    <div id="tab-ai-connect" class="settings-tab-content" style="display:{{ $activeTab === 'ai-connect' ? 'block' : 'none' }}; background:white; border:1px solid #b3b3b3; border-radius:10px; padding:22px; box-shadow:0 2px 10px rgba(0,0,0,0.06);">
-        <h2 style="font-size:18px; margin-bottom:8px;">AI Connect</h2>
+    <div id="tab-licence" class="settings-tab-content ag-card" style="display:{{ $activeTab === 'licence' ? 'block' : 'none' }}; padding:24px;">
+        <h2 style="font-size: 18px; margin-bottom: 8px;">Licence</h2>
+        @php
+            $licence = \App\Support\License::summary();
+        @endphp
+
+        @if($licence['active'])
+            <div style="margin-bottom: 14px; padding: 10px; border-radius: 12px; background: var(--ag-success-soft); color: var(--ag-success); font-size: 13px; font-weight: 600;">Licence active</div>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-bottom: 16px; font-size: 14px;">
+                <div><div style="font-size: 12px; color: var(--ag-muted);">Licence name</div><div>{{ $licence['name'] !== '' ? $licence['name'] : '-' }}</div></div>
+                <div><div style="font-size: 12px; color: var(--ag-muted);">Plan</div><div>{{ $licence['plan'] !== '' ? $licence['plan'] : '-' }}</div></div>
+                <div><div style="font-size: 12px; color: var(--ag-muted);">Expires</div><div>{{ $licence['expires_at'] !== '' ? $licence['expires_at'] : '-' }}</div></div>
+                <div><div style="font-size: 12px; color: var(--ag-muted);">Licence key</div><div>{{ $licence['masked_key'] }}</div></div>
+                <div><div style="font-size: 12px; color: var(--ag-muted);">Activated on</div><div>{{ \App\Support\License::date($licence['activated_at']) ?: '-' }}</div></div>
+                <div><div style="font-size: 12px; color: var(--ag-muted);">Validated on</div><div>{{ \App\Support\License::date($licence['verified_at']) ?: '-' }}</div></div>
+            </div>
+            @php
+                $licenceExtra = collect($licence['details'])->except(['license.name', 'plan', 'license.expires_at']);
+            @endphp
+            @if($licenceExtra->isNotEmpty())
+                <details style="margin-bottom: 16px; font-size: 13px;">
+                    <summary style="cursor: pointer; color: var(--ag-subtle);">All licence details</summary>
+                    <table class="ag-table" style="margin-top: 8px;">
+                        @foreach($licenceExtra as $field => $value)
+                            <tr>
+                                <td style="padding: 4px 12px 4px 0;">{{ $field }}</td>
+                                <td style="padding: 4px 0;">{{ is_bool($value) ? ($value ? 'true' : 'false') : $value }}</td>
+                            </tr>
+                        @endforeach
+                    </table>
+                </details>
+            @endif
+        @else
+            <div style="margin-bottom: 14px; padding: 12px; border-radius: 12px; background: var(--ag-warning-soft); border: 1px solid #fcd34d; color: var(--ag-warning); font-size: 13px;">
+                <strong>No active licence.</strong> Until a licence is added, nobody can create or register users and no API keys can be created.
+                @if($licence['check_message'] !== '')
+                    <div style="margin-top: 6px;">Last check ({{ \App\Support\License::date($licence['verified_at']) }}): {{ $licence['check_message'] }}</div>
+                @endif
+            </div>
+        @endif
+
+        <div style="border-radius: 12px; padding: 12px; background: var(--ag-surface); margin-bottom: 14px;">
+            <strong style="font-size: 13px;">Get a licence</strong>
+            <ol style="margin: 6px 0 0 18px; padding: 0; font-size: 13px; color: var(--ag-subtle); line-height: 1.6;">
+                <li>Log in to <a href="{{ \App\Support\License::portalUrl() }}" target="_blank" rel="noopener" style="color: var(--ag-teal); text-decoration: underline;">atglance.live</a>.</li>
+                <li>Generate a licence.</li>
+                <li>Copy the licence key and paste it below.</li>
+            </ol>
+        </div>
+
+        <p style="font-size: 12px; color: var(--ag-muted); margin-bottom: 10px;">
+            A licence works on one console only. This console's ID is <span>{{ \App\Support\License::instanceId() }}</span>.
+        </p>
+
+        <form method="POST" action="{{ route('admin.settings.licence') }}">
+            @csrf
+            <label class="ag-label" for="license-key">{{ $licence['active'] ? 'Replace licence key' : 'Licence key' }}</label>
+            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                <input class="ag-input" id="license-key" type="text" name="license_key" required autocomplete="off" spellcheck="false" placeholder="Paste your licence key" style="flex: 1; min-width: 240px;">
+                <button class="ag-btn" type="submit">Verify &amp; Save</button>
+            </div>
+        </form>
+    </div>
+
+    <div id="tab-ai-connect" class="settings-tab-content ag-card" style="display:{{ $activeTab === 'ai-connect' ? 'block' : 'none' }}; padding:24px;">
+        <h2 style="font-size: 18px; margin-bottom: 8px;">AI Connect</h2>
         @php
             $aiCanEdit = (int) auth()->user()->rbac_id === 100;
             $aiProviders = \App\Support\AiSettings::PROVIDERS;
@@ -612,75 +835,75 @@
             $aiHasKey = \App\Support\AiSettings::apiKey() !== '';
             $aiLastTest = \App\Support\AiSettings::lastTest();
         @endphp
-        <p style="font-size:13px; color:#6b7280; margin-bottom:10px;">
+        <p style="font-size: 13px; color: var(--ag-muted); margin-bottom: 10px;">
             Connect an AI provider to {{ $brandName ?? 'AtGlance' }}. Cloud providers need an API key; self-hosted models (Ollama, LM Studio, OpenClaw) need a base URL the server can reach.
         </p>
         @unless($aiCanEdit)
-            <div style="margin-bottom:12px; padding:10px; border-radius:8px; background:#f9fafb; border:1px solid #e5e7eb; color:#374151; font-size:13px;">Only the super admin can change these settings.</div>
+            <div style="margin-bottom: 12px; padding: 10px; border-radius: 12px; background: var(--ag-surface); color: var(--ag-subtle); font-size: 13px;">Only the super admin can change these settings.</div>
         @endunless
 
         <form id="ai-connect-form" method="POST" action="{{ route('admin.settings.ai') }}" data-test-url="{{ route('admin.settings.ai.test') }}" data-models-url="{{ route('admin.settings.ai.models') }}">
             @csrf
-            <fieldset {{ $aiCanEdit ? '' : 'disabled' }} style="border:none; padding:0; margin:0;">
-                <label style="display:flex; gap:8px; align-items:center; font-size:14px; margin-bottom:14px;">
+            <fieldset {{ $aiCanEdit ? '' : 'disabled' }} style="border: none; padding: 0; margin: 0;">
+                <label style="display: flex; gap: 8px; align-items: center; font-size: 14px; margin-bottom: 14px;">
                     <input type="checkbox" name="ai_enabled" value="1" {{ old('ai_enabled', \App\Support\AiSettings::enabled()) ? 'checked' : '' }}>
                     Enable AI features
                 </label>
 
-                <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:12px; margin-bottom:12px;">
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; margin-bottom: 12px;">
                     <div>
-                        <label for="ai-provider" style="display:block; font-size:12px; color:#4b5563; margin-bottom:4px;">Provider</label>
-                        <select id="ai-provider" name="ai_provider" style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:8px; background:white;">
+                        <label class="ag-label" for="ai-provider">Provider</label>
+                        <select class="ag-select" id="ai-provider" name="ai_provider" style="width: 100%;">
                             @foreach($aiProviders as $aiKey => $aiMeta)
                                 <option value="{{ $aiKey }}" {{ $aiProvider === $aiKey ? 'selected' : '' }}>{{ $aiMeta['label'] }}</option>
                             @endforeach
                         </select>
                     </div>
                     <div>
-                        <label for="ai-base-url" style="display:block; font-size:12px; color:#4b5563; margin-bottom:4px;">Base URL <span id="ai-base-url-note" style="color:#6b7280;"></span></label>
-                        <input id="ai-base-url" type="text" name="ai_base_url" value="{{ old('ai_base_url', \App\Support\AiSettings::baseUrl()) }}" style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:8px;">
+                        <label class="ag-label" for="ai-base-url">Base URL <span id="ai-base-url-note" style="color: var(--ag-muted);"></span></label>
+                        <input class="ag-input" id="ai-base-url" type="text" name="ai_base_url" value="{{ old('ai_base_url', \App\Support\AiSettings::baseUrl()) }}" style="width: 100%;">
                     </div>
                     <div id="ai-key-wrap">
-                        <label for="ai-api-key" style="display:block; font-size:12px; color:#4b5563; margin-bottom:4px;">API key <span id="ai-key-note" style="color:#6b7280;"></span></label>
-                        <input id="ai-api-key" type="password" name="ai_api_key" autocomplete="new-password" data-saved="{{ $aiHasKey ? '1' : '0' }}" placeholder="{{ $aiHasKey ? 'Saved; leave blank to keep' : 'Not set' }}" style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:8px;">
+                        <label class="ag-label" for="ai-api-key">API key <span id="ai-key-note" style="color: var(--ag-muted);"></span></label>
+                        <input class="ag-input" id="ai-api-key" type="password" name="ai_api_key" autocomplete="new-password" data-saved="{{ $aiHasKey ? '1' : '0' }}" placeholder="{{ $aiHasKey ? 'Saved; leave blank to keep' : 'Not set' }}" style="width: 100%;">
                         @if($aiHasKey)
-                            <label style="display:flex; gap:6px; align-items:center; font-size:12px; color:#6b7280; margin-top:4px;">
+                            <label style="display: flex; gap: 6px; align-items: center; font-size: 12px; color: var(--ag-muted); margin-top: 4px;">
                                 <input type="checkbox" name="ai_clear_api_key" value="1"> Remove saved key
                             </label>
                         @endif
                     </div>
                     <div>
-                        <label for="ai-model" style="display:block; font-size:12px; color:#4b5563; margin-bottom:4px;">Model</label>
-                        <div style="display:flex; gap:6px;">
-                            <input id="ai-model" type="text" name="ai_model" list="ai-model-options" value="{{ old('ai_model', \App\Support\AiSettings::model()) }}" style="flex:1; min-width:0; border:1px solid #d1d5db; border-radius:8px; padding:8px;">
+                        <label class="ag-label" for="ai-model">Model</label>
+                        <div style="display: flex; gap: 6px;">
+                            <input class="ag-input" id="ai-model" type="text" name="ai_model" list="ai-model-options" value="{{ old('ai_model', \App\Support\AiSettings::model()) }}" style="flex: 1; min-width: 0;">
                             @if($aiCanEdit)
-                                <button type="button" id="ai-load-models" style="border:1px solid #d1d5db; background:#ffffff; border-radius:8px; padding:8px 10px; cursor:pointer; white-space:nowrap;">Load models</button>
+                                <button class="ag-btn ag-btn--ghost" type="button" id="ai-load-models" style="white-space: nowrap;">Load models</button>
                             @endif
                         </div>
                         <datalist id="ai-model-options"></datalist>
-                        <div id="ai-model-hint" style="font-size:12px; color:#6b7280; margin-top:4px;"></div>
+                        <div id="ai-model-hint" style="font-size: 12px; color: var(--ag-muted); margin-top: 4px;"></div>
                     </div>
                 </div>
 
-                <div style="border:1px solid #e5e7eb; border-radius:8px; padding:12px; background:#f9fafb; margin-bottom:14px;">
-                    <strong id="ai-steps-title" style="font-size:13px;">Setup</strong>
-                    <ol id="ai-steps" style="margin:6px 0 0 18px; padding:0; font-size:13px; color:#374151; line-height:1.6;"></ol>
+                <div style="border-radius: 12px; padding: 12px; background: var(--ag-surface); margin-bottom: 14px;">
+                    <strong id="ai-steps-title" style="font-size: 13px;">Setup</strong>
+                    <ol id="ai-steps" style="margin: 6px 0 0 18px; padding: 0; font-size: 13px; color: var(--ag-subtle); line-height: 1.6;"></ol>
                 </div>
 
-                <div id="ai-result" role="status" style="display:none; margin-bottom:12px; padding:10px; border-radius:8px; font-size:13px; word-break:break-word;"></div>
+                <div id="ai-result" role="status" style="display: none; margin-bottom: 12px; padding: 10px; border-radius: 12px; font-size: 13px; word-break: break-word;"></div>
 
                 @if($aiLastTest)
-                    <div id="ai-last-test" style="font-size:12px; color:#6b7280; margin-bottom:12px;">
-                        Last test: <span style="color:{{ $aiLastTest['ok'] ? '#065f46' : '#b91c1c' }}; font-weight:600;">{{ $aiLastTest['ok'] ? 'Success' : 'Failed' }}</span>
+                    <div id="ai-last-test" style="font-size: 12px; color: var(--ag-muted); margin-bottom: 12px;">
+                        Last test: <span style="color:{{ $aiLastTest['ok'] ? '#137a54' : '#b91c1c' }}; font-weight:600;">{{ $aiLastTest['ok'] ? 'Success' : 'Failed' }}</span>
                         ({{ $aiProviders[$aiLastTest['provider']]['label'] ?? $aiLastTest['provider'] }}{{ $aiLastTest['model'] ? ', ' . $aiLastTest['model'] : '' }})
                         {{ \Illuminate\Support\Carbon::parse($aiLastTest['at'])->diffForHumans() }} - {{ $aiLastTest['message'] }}
                     </div>
                 @endif
 
                 @if($aiCanEdit)
-                    <div style="display:flex; gap:8px; flex-wrap:wrap;">
-                        <button type="button" id="ai-test" style="background:#ffffff; color:#111827; border:1px solid #111827; border-radius:8px; padding:10px 14px; font-weight:600; cursor:pointer;">Test connection</button>
-                        <button type="submit" style="background:#000000; color:white; border:none; border-radius:8px; padding:10px 14px; font-weight:600; cursor:pointer;">Save AI Connection</button>
+                    <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                        <button class="ag-btn ag-btn--ghost" type="button" id="ai-test">Test connection</button>
+                        <button class="ag-btn" type="submit">Save AI Connection</button>
                     </div>
                 @endif
             </fieldset>
@@ -688,44 +911,44 @@
         <script type="application/json" id="ai-provider-catalog">@json(\App\Support\AiSettings::catalogForView())</script>
     </div>
 
-    <div id="tab-notification" class="settings-tab-content" style="display:{{ $activeTab === 'notification' ? 'block' : 'none' }}; background:white; border:1px solid #b3b3b3; border-radius:10px; padding:22px; box-shadow:0 2px 10px rgba(0,0,0,0.06);">
-        <h2 style="font-size:18px; margin-bottom:8px;">Notification</h2>
+    <div id="tab-notification" class="settings-tab-content ag-card" style="display:{{ $activeTab === 'notification' ? 'block' : 'none' }}; padding:24px;">
+        <h2 style="font-size: 18px; margin-bottom: 8px;">Notification</h2>
         @php
             $notifyCanEdit = (int) auth()->user()->rbac_id === 100;
         @endphp
-        <p style="font-size:13px; color:#6b7280; margin-bottom:10px;">
+        <p style="font-size: 13px; color: var(--ag-muted); margin-bottom: 10px;">
             Allow the channels that workspace admins can use, and set the organization-level connection for each one.
             Workspace admins then add their own groups (email lists, channels, chats) on the
-            <a href="{{ route('admin.notifications') }}" style="color:#1d4ed8; text-decoration:underline;">Notifications</a> page.
+            <a href="{{ route('admin.notifications') }}" style="color: var(--ag-teal); text-decoration: underline;">Notifications</a> page.
         </p>
         @unless($notifyCanEdit)
-            <div style="margin-bottom:12px; padding:10px; border-radius:8px; background:#f9fafb; border:1px solid #e5e7eb; color:#374151; font-size:13px;">Only the super admin can change these settings.</div>
+            <div style="margin-bottom: 12px; padding: 10px; border-radius: 12px; background: var(--ag-surface); color: var(--ag-subtle); font-size: 13px;">Only the super admin can change these settings.</div>
         @endunless
 
         <form method="POST" action="{{ route('admin.settings.notifications') }}">
             @csrf
-            <fieldset {{ $notifyCanEdit ? '' : 'disabled' }} style="border:none; padding:0; margin:0;">
-                <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(280px, 1fr)); gap:12px; margin-bottom:14px;">
+            <fieldset {{ $notifyCanEdit ? '' : 'disabled' }} style="border: none; padding: 0; margin: 0;">
+                <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; margin-bottom: 14px;">
                     @foreach(\App\Support\NotificationSettings::CHANNELS as $notifyChannel => $notifyMeta)
                         @php
                             $notifyAllowed = \App\Support\NotificationSettings::isAllowed($notifyChannel);
                             $notifyMissing = $notifyAllowed ? \App\Support\NotificationSettings::missingSetup($notifyChannel) : null;
                         @endphp
                         <div style="border:1px solid #e5e7eb; border-radius:8px; padding:12px; background:{{ $notifyMeta['available'] ? '#ffffff' : '#f9fafb' }};">
-                            <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:6px;">
-                                <strong style="font-size:14px;">{{ $notifyMeta['label'] }}</strong>
+                            <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 6px;">
+                                <strong style="font-size: 14px;">{{ $notifyMeta['label'] }}</strong>
                                 @if(!$notifyMeta['available'])
-                                    <span style="font-size:11px; color:#92400e; background:#fef3c7; border-radius:999px; padding:2px 8px;">Waiting for provider API details</span>
+                                    <span style="font-size: 11px; color: var(--ag-warning); background: var(--ag-warning-soft); border-radius: 999px; padding: 2px 8px;">Waiting for provider API details</span>
                                 @elseif($notifyAllowed && $notifyMissing === null)
-                                    <span style="font-size:11px; color:#065f46; background:#d1fae5; border-radius:999px; padding:2px 8px;">Ready</span>
+                                    <span style="font-size: 11px; color: #137a54; background: var(--ag-success-soft); border-radius: 999px; padding: 2px 8px;">Ready</span>
                                 @elseif($notifyAllowed)
-                                    <span style="font-size:11px; color:#991b1b; background:#fee2e2; border-radius:999px; padding:2px 8px;">Setup needed</span>
+                                    <span style="font-size: 11px; color: var(--ag-danger); background: var(--ag-danger-soft); border-radius: 999px; padding: 2px 8px;">Setup needed</span>
                                 @endif
                             </div>
-                            <div style="font-size:12px; color:#6b7280; margin-bottom:8px;">Groups enter: {{ $notifyMeta['target'] }}</div>
+                            <div style="font-size: 12px; color: var(--ag-muted); margin-bottom: 8px;">Groups enter: {{ $notifyMeta['target'] }}</div>
 
                             @if($notifyMeta['available'])
-                                <label style="display:flex; gap:8px; align-items:center; font-size:13px; color:#374151; margin-bottom:8px;">
+                                <label style="display: flex; gap: 8px; align-items: center; font-size: 13px; color: var(--ag-subtle); margin-bottom: 8px;">
                                     <input type="hidden" name="allowed[{{ $notifyChannel }}]" value="0">
                                     <input type="checkbox" name="allowed[{{ $notifyChannel }}]" value="1" {{ $notifyAllowed ? 'checked' : '' }}>
                                     Allow workspace admins to use this channel
@@ -733,9 +956,9 @@
                             @endif
 
                             @if($notifyChannel === 'email')
-                                <div style="font-size:12px; color:#374151;">
+                                <div style="font-size: 12px; color: var(--ag-subtle);">
                                     SMTP server: {{ \App\Support\NotificationSettings::mailConfigured() ? 'configured' : 'not configured' }} on the
-                                    <a href="{{ route('admin.settings', ['tab' => 'email']) }}" style="color:#1d4ed8; text-decoration:underline;">Email Configuration</a> tab.
+                                    <a href="{{ route('admin.settings', ['tab' => 'email']) }}" style="color: var(--ag-teal); text-decoration: underline;">Email Configuration</a> tab.
                                 </div>
                             @endif
 
@@ -743,52 +966,52 @@
                                 @php
                                     $notifySaved = \App\Support\NotificationSettings::credential($notifyKey);
                                 @endphp
-                                <div style="margin-top:8px;">
-                                    <label style="display:block; font-size:12px; color:#4b5563; margin-bottom:4px;">{{ $notifyCredential['label'] }}</label>
+                                <div style="margin-top: 8px;">
+                                    <label class="ag-label">{{ $notifyCredential['label'] }}</label>
                                     @if($notifyCredential['secret'])
-                                        <input type="password" name="{{ $notifyKey }}" autocomplete="new-password" placeholder="{{ $notifySaved !== '' ? 'Saved; leave blank to keep' : 'Not set' }}" style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:8px;">
+                                        <input class="ag-input" type="password" name="{{ $notifyKey }}" autocomplete="new-password" placeholder="{{ $notifySaved !== '' ? 'Saved; leave blank to keep' : 'Not set' }}" style="width: 100%;">
                                         @if($notifySaved !== '')
-                                            <label style="display:flex; gap:6px; align-items:center; font-size:12px; color:#6b7280; margin-top:4px;">
+                                            <label style="display: flex; gap: 6px; align-items: center; font-size: 12px; color: var(--ag-muted); margin-top: 4px;">
                                                 <input type="checkbox" name="clear[{{ $notifyKey }}]" value="1"> Remove saved value
                                             </label>
                                         @endif
                                     @else
-                                        <input type="text" name="{{ $notifyKey }}" value="{{ old($notifyKey, $notifySaved) }}" style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:8px;">
+                                        <input class="ag-input" type="text" name="{{ $notifyKey }}" value="{{ old($notifyKey, $notifySaved) }}" style="width: 100%;">
                                     @endif
                                 </div>
                             @endforeach
 
                             @if($notifyMissing)
-                                <div style="font-size:12px; color:#b91c1c; margin-top:8px;">{{ $notifyMissing }}</div>
+                                <div style="font-size: 12px; color: var(--ag-danger); margin-top: 8px;">{{ $notifyMissing }}</div>
                             @endif
                         </div>
                     @endforeach
                 </div>
 
                 @if($notifyCanEdit)
-                    <button type="submit" style="background:#000000; color:white; border:none; border-radius:8px; padding:10px 14px; font-weight:600; cursor:pointer;">Save Notification Channels</button>
+                    <button class="ag-btn" type="submit">Save Notification Channels</button>
                 @endif
             </fieldset>
         </form>
     </div>
 
-    <div id="tab-sso" class="settings-tab-content" style="display:{{ $activeTab === 'sso' ? 'block' : 'none' }}; background:white; border:1px solid #b3b3b3; border-radius:10px; padding:22px; box-shadow:0 2px 10px rgba(0,0,0,0.06);">
-        <h2 style="font-size:18px; margin-bottom:12px;">SSO Configuration</h2>
+    <div id="tab-sso" class="settings-tab-content ag-card" style="display:{{ $activeTab === 'sso' ? 'block' : 'none' }}; padding:24px;">
+        <h2 style="font-size: 18px; margin-bottom: 12px;">SSO Configuration</h2>
         <form method="POST" action="{{ route('admin.settings.sso', ['tab' => 'sso']) }}">
             @csrf
-            <div style="margin-bottom:12px;">
-                <label style="display:flex; align-items:center; gap:8px;">
+            <div style="margin-bottom: 12px;">
+                <label style="display: flex; align-items: center; gap: 8px;">
                     <input id="sso-enabled-toggle" type="checkbox" name="sso_enabled" value="1" {{ old('sso_enabled', $ssoEnabled) ? 'checked' : '' }}>
                     <span>Enable SSO login</span>
                 </label>
             </div>
 
             <div id="disable-email-registration-wrap" style="margin-bottom:12px; {{ old('sso_enabled', $ssoEnabled) ? '' : 'display:none;' }}">
-                <label style="display:flex; align-items:center; gap:8px;">
+                <label style="display: flex; align-items: center; gap: 8px;">
                     <input id="disable-email-registration-toggle" type="checkbox" name="disable_email_registration" value="1" {{ old('disable_email_registration', $disableEmailRegistration ?? false) ? 'checked' : '' }}>
                     <span>Disable user registration with email/password</span>
                 </label>
-                <p style="margin:6px 0 0 26px; font-size:12px; color:#6b7280;">When enabled, registration and forgot-password by email are disabled on the login page.</p>
+                <p style="margin: 6px 0 0 26px; font-size: 12px; color: var(--ag-muted);">When enabled, registration and forgot-password by email are disabled on the login page.</p>
             </div>
 
             @php
@@ -799,67 +1022,67 @@
                 $providerTenantIds = old('sso_provider_tenant_ids', $ssoProviderTenantIds ?? []);
             @endphp
 
-            <div style="margin-bottom:14px;">
-                <label style="display:block; font-size:13px; color:#4b5563; margin-bottom:8px; font-weight:600;">Enable Providers</label>
-                <div style="display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:10px;">
+            <div style="margin-bottom: 14px;">
+                <label class="ag-label">Enable Providers</label>
+                <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px;">
                     @foreach(($ssoProviderOptions ?? []) as $providerKey => $providerMeta)
-                        <label style="display:flex; align-items:center; gap:8px; border:1px solid #e5e7eb; border-radius:8px; padding:8px 10px; cursor:pointer;">
+                        <label style="display: flex; align-items: center; gap: 8px; border-radius: 12px; padding: 8px 10px; cursor: pointer; background: var(--ag-surface);">
                             <input class="sso-provider-checkbox" type="checkbox" name="sso_enabled_providers[]" value="{{ $providerKey }}" {{ in_array($providerKey, $selectedProviders, true) ? 'checked' : '' }}>
                             <span>{{ $providerMeta['label'] ?? ucfirst($providerKey) }}</span>
                         </label>
                     @endforeach
                 </div>
                 @error('sso_enabled_providers')
-                    <div style="margin-top:8px; font-size:12px; color:#b91c1c;">{{ $message }}</div>
+                    <div style="margin-top: 8px; font-size: 12px; color: var(--ag-danger);">{{ $message }}</div>
                 @enderror
             </div>
 
-            <div style="margin-bottom:14px;">
-                <label style="display:block; font-size:13px; color:#4b5563; margin-bottom:8px; font-weight:600;">Provider Login URLs</label>
-                <p style="font-size:12px; color:#6b7280; margin-bottom:10px;">Only selected providers are shown below. Configure URL and Client ID/Secret per provider. Tenant/Domain is optional and not required for GitHub.</p>
-                <p style="font-size:12px; color:#374151; margin-bottom:10px;">Configure callback/redirect URL on your identity platform, not here. App callback format: <strong>{{ url('/auth/sso/{provider}/callback') }}</strong></p>
-                <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+            <div style="margin-bottom: 14px;">
+                <label class="ag-label">Provider Login URLs</label>
+                <p style="font-size: 12px; color: var(--ag-muted); margin-bottom: 10px;">Only selected providers are shown below. Configure URL and Client ID/Secret per provider. Tenant/Domain is optional and not required for GitHub.</p>
+                <p style="font-size: 12px; color: var(--ag-subtle); margin-bottom: 10px;">Configure callback/redirect URL on your identity platform, not here. App callback format: <strong>{{ url('/auth/sso/{provider}/callback') }}</strong></p>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
                     @foreach(($ssoProviderOptions ?? []) as $providerKey => $providerMeta)
                         <div class="provider-url-group" data-provider="{{ $providerKey }}" style="display:{{ in_array($providerKey, $selectedProviders, true) ? 'block' : 'none' }};">
-                            <div style="font-size:12px; color:#111827; margin-bottom:6px;">Callback URL for {{ $providerMeta['label'] ?? ucfirst($providerKey) }}: <strong>{{ url('/auth/sso/' . $providerKey . '/callback') }}</strong></div>
-                            <label style="display:block; font-size:12px; color:#4b5563; margin-bottom:5px;">{{ $providerMeta['label'] ?? ucfirst($providerKey) }} URL</label>
+                            <div style="font-size: 12px; color: var(--ag-text); margin-bottom: 6px;">Callback URL for {{ $providerMeta['label'] ?? ucfirst($providerKey) }}: <strong>{{ url('/auth/sso/' . $providerKey . '/callback') }}</strong></div>
+                            <label class="ag-label">{{ $providerMeta['label'] ?? ucfirst($providerKey) }} URL</label>
                             <input
-                                class="provider-config-input"
+                                class="ag-input provider-config-input"
                                 type="url"
                                 name="sso_provider_urls[{{ $providerKey }}]"
                                 value="{{ $providerUrls[$providerKey] ?? '' }}"
                                 placeholder="https://..."
-                                style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:10px;"
+                                style="width: 100%;"
                             >
 
-                            <label style="display:block; font-size:12px; color:#4b5563; margin:8px 0 5px;">{{ $providerMeta['label'] ?? ucfirst($providerKey) }} Client ID</label>
+                            <label class="ag-label" style="margin: 8px 0 5px;">{{ $providerMeta['label'] ?? ucfirst($providerKey) }} Client ID</label>
                             <input
-                                class="provider-config-input"
+                                class="ag-input provider-config-input"
                                 type="text"
                                 name="sso_provider_client_ids[{{ $providerKey }}]"
                                 value="{{ $providerClientIds[$providerKey] ?? '' }}"
                                 placeholder="Client ID"
-                                style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:10px;"
+                                style="width: 100%;"
                             >
 
-                            <label style="display:block; font-size:12px; color:#4b5563; margin:8px 0 5px;">{{ $providerMeta['label'] ?? ucfirst($providerKey) }} Client Secret {{ !empty($hasProviderClientSecrets[$providerKey] ?? false) ? '(leave blank to keep existing)' : '' }}</label>
+                            <label class="ag-label" style="margin: 8px 0 5px;">{{ $providerMeta['label'] ?? ucfirst($providerKey) }} Client Secret {{ !empty($hasProviderClientSecrets[$providerKey] ?? false) ? '(leave blank to keep existing)' : '' }}</label>
                             <input
-                                class="provider-config-input"
+                                class="ag-input provider-config-input"
                                 type="password"
                                 name="sso_provider_client_secrets[{{ $providerKey }}]"
                                 placeholder="Client Secret"
-                                style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:10px;"
+                                style="width: 100%;"
                             >
 
                             @if($providerKey !== 'github')
-                                <label style="display:block; font-size:12px; color:#4b5563; margin:8px 0 5px;">{{ $providerMeta['label'] ?? ucfirst($providerKey) }} Tenant ID / Domain (optional)</label>
+                                <label class="ag-label" style="margin: 8px 0 5px;">{{ $providerMeta['label'] ?? ucfirst($providerKey) }} Tenant ID / Domain (optional)</label>
                                 <input
-                                    class="provider-config-input"
+                                    class="ag-input provider-config-input"
                                     type="text"
                                     name="sso_provider_tenant_ids[{{ $providerKey }}]"
                                     value="{{ $providerTenantIds[$providerKey] ?? '' }}"
                                     placeholder="Tenant ID or Domain"
-                                    style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:10px;"
+                                    style="width: 100%;"
                                 >
                             @endif
                         </div>
@@ -867,8 +1090,10 @@
                 </div>
             </div>
 
-            <button type="submit" style="background:#000000; color:white; border:none; border-radius:8px; padding:10px 14px; font-weight:600; cursor:pointer;">Save SSO Settings</button>
+            <button class="ag-btn" type="submit">Save SSO Settings</button>
         </form>
+    </div>
+    </div>
     </div>
 </div>
 
@@ -894,13 +1119,7 @@
         });
 
         tabButtons.forEach((button) => {
-            if (button.dataset.tab === tabName) {
-                button.style.background = '#7a7a7a';
-                button.style.color = '#ffffff';
-            } else {
-                button.style.background = '#ffffff';
-                button.style.color = '#111827';
-            }
+            button.classList.toggle('active', button.dataset.tab === tabName);
         });
 
         const url = new URL(window.location.href);
@@ -979,7 +1198,7 @@
                     const row = document.createElement('tr');
                     const cell = restoreCell('No backups found.');
                     cell.colSpan = 6;
-                    cell.style.color = '#6b7280';
+                    cell.style.color = '#8a9099';
                     row.appendChild(cell);
                     restoreRows.appendChild(row);
                     return;
@@ -1000,7 +1219,7 @@
                     button.type = 'button';
                     button.textContent = allowed ? 'Restore' : 'Super admin only';
                     button.disabled = !allowed;
-                    button.style.cssText = 'border:1px solid #d1d5db; border-radius:6px; padding:4px 10px; background:#ffffff; cursor:' + (allowed ? 'pointer' : 'not-allowed') + '; color:' + (allowed ? '#111827' : '#9ca3af') + ';';
+                    button.style.cssText = 'border:0; border-radius:999px; padding:5px 12px; background:#f4f6f8; cursor:' + (allowed ? 'pointer' : 'not-allowed') + '; color:' + (allowed ? '#14171b' : '#8a9099') + ';';
                     button.addEventListener('click', () => selectBackup(backup));
                     actionCell.appendChild(button);
                     row.appendChild(actionCell);
@@ -1209,6 +1428,79 @@
 
     providerSelect.addEventListener('change', updateProviderHints);
     updateProviderHints();
+})();
+
+// Email Configuration: send a test email with the saved settings.
+(function () {
+    var button = document.getElementById('mail-test-send');
+    var result = document.getElementById('mail-test-result');
+    var form = document.querySelector('form[action="{{ route('admin.settings.mail', ['tab' => 'email']) }}"]');
+    if (!button || !result) { return; }
+    var dirty = false;
+    if (form) {
+        form.addEventListener('input', function () { dirty = true; });
+    }
+
+    function show(ok, message) {
+        result.classList.remove('hidden');
+        result.textContent = message;
+        result.style.color = ok ? 'var(--ag-success)' : 'var(--ag-danger)';
+    }
+
+    button.addEventListener('click', function () {
+        if (dirty) {
+            show(false, 'You have unsaved changes. Save the email settings first, then send the test.');
+            return;
+        }
+        button.disabled = true;
+        show(true, 'Sending...');
+        result.style.color = 'var(--ag-subtle)';
+        fetch(@json(route('admin.settings.mail.test')), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': @json(csrf_token()) },
+            body: JSON.stringify({ recipient: document.getElementById('mail-test-recipient').value.trim() })
+        }).then(function (r) {
+            return r.json().then(function (data) { return { status: r.status, data: data }; });
+        }).then(function (res) {
+            var data = res.data || {};
+            if (res.status === 429) {
+                show(false, 'Too many test emails. Wait a minute and try again.');
+            } else if (data.errors && data.errors.recipient) {
+                show(false, data.errors.recipient[0]);
+            } else {
+                show(!!data.ok, data.message || 'The test email could not be sent.');
+            }
+        }).catch(function () {
+            show(false, 'Could not reach the server. Try again.');
+        }).finally(function () {
+            button.disabled = false;
+        });
+    });
+})();
+
+// Access URL: show the certificate fields for "own certificate", and run the DNS check.
+(function () {
+    var mode = document.getElementById('dv-mode');
+    var custom = document.getElementById('dv-custom');
+    if (mode && custom) {
+        mode.addEventListener('change', function () { custom.style.display = mode.value === 'custom' ? '' : 'none'; });
+    }
+    var check = document.getElementById('dv-check');
+    var result = document.getElementById('dv-check-result');
+    if (check && result) {
+        check.addEventListener('click', function () {
+            result.classList.remove('hidden');
+            result.textContent = 'Checking...';
+            fetch(@json(route('admin.settings.domain.check')), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': @json(csrf_token()) },
+                body: JSON.stringify({ domain: document.getElementById('dv-domain').value, server_ip: document.getElementById('dv-ip').value })
+            }).then(function (r) { return r.json(); }).then(function (data) {
+                result.textContent = data.message + ' (This is the server\'s DNS view; other networks may differ.)';
+                result.style.color = data.ok ? 'var(--ag-success)' : 'var(--ag-warning)';
+            }).catch(function () { result.textContent = 'Could not run the check.'; });
+        });
+    }
 })();
 </script>
 @endsection

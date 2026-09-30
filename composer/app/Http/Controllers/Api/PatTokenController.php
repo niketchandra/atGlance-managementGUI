@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\PatToken;
+use App\Support\License;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 
@@ -32,6 +33,10 @@ class PatTokenController extends Controller
 
     public function store(Request $request)
     {
+        if (!License::isActive()) {
+            return response()->json(['message' => License::REQUIRED_MESSAGE], 403);
+        }
+
         $data = $request->validate([
             'name' => ['required', 'string', 'max:100'],
             'abilities' => ['sometimes', 'array'],

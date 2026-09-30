@@ -71,6 +71,50 @@ class SiteConfigurationTest extends TestCase
         $this->saveSite(['site_support_request_url' => 'javascript:alert(1)'])->assertSessionHasErrors('site_support_request_url');
     }
 
+    public function test_site_logo_is_saved(): void
+    {
+        $this->actingAsRole(101);
+
+        $this->saveSite([
+            'site_logo' => UploadedFile::fake()->createWithContent('logo.png', base64_decode(self::PNG_BASE64)),
+        ])->assertSessionHasNoErrors();
+
+        $this->assertNotSame('', (string) AdminSetting::getValue('site_logo_path'));
+    }
+
+    public function test_site_form_no_longer_changes_domain_settings(): void
+    {
+        $this->actingAsRole(101);
+        AdminSetting::putValue('site', 'site_domain_alias_ip', '10.0.0.5:8000');
+
+        // Domain and server IP moved to the Access URL form (DomainSettingsController).
+        $this->saveSite(['site_domain_alias_ip' => 'not-an-ip', 'site_domain_alias' => 'x.com'])->assertSessionHasNoErrors();
+
+        $this->assertSame('10.0.0.5:8000', AdminSetting::getValue('site_domain_alias_ip'));
+        $this->assertNull(AdminSetting::getValue('site_domain_alias'));
+    }
+
+    public function test_default_branding_uses_atglance_wordmark_and_icon_favicon(): void
+    {
+        $this->get(route('home'))
+            ->assertOk()
+            ->assertSee('branding/atglance-logo.png', false)
+            ->assertSee('<link rel="icon" href="' . asset('branding/favicon.ico') . '">', false)
+            ->assertSee('branding/apple-touch-icon.png', false);
+    }
+
+    public function test_uploaded_logo_replaces_default_logo_and_favicon(): void
+    {
+        $this->actingAsRole(101);
+        $this->saveSite(['site_logo' => UploadedFile::fake()->createWithContent('logo.png', base64_decode(self::PNG_BASE64))])->assertSessionHasNoErrors();
+        $path = AdminSetting::getValue('site_logo_path');
+
+        $this->get(route('profile'))
+            ->assertOk()
+            ->assertSee('<link rel="icon" href="' . url('/site-logo/' . $path) . '">', false)
+            ->assertDontSee('branding/atglance-logo.png', false);
+    }
+
     public function test_logo_upload_is_served_and_used_in_layout(): void
     {
         $this->actingAsRole(101);

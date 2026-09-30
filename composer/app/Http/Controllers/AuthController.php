@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Support\AccountAlerts;
 use App\Support\ActivityRecorder;
+use App\Support\License;
 use App\Support\UserAgent;
 
 use App\Models\AdminSetting;
@@ -183,6 +184,12 @@ class AuthController extends Controller
 
         $user = User::where('email', $email)->first();
         if (!$user) {
+            if (!License::isActive()) {
+                return redirect()->route('home')->withErrors([
+                    'login' => 'New accounts cannot be created until an admin adds a licence.',
+                ]);
+            }
+
             $user = User::create([
                 'name' => $displayName,
                 'email' => $email,
@@ -253,6 +260,10 @@ class AuthController extends Controller
             return back()->withErrors([
                 'register' => 'Email registration is disabled. Please continue with SSO.',
             ]);
+        }
+
+        if (!License::isActive()) {
+            return back()->withErrors(['register' => 'Registration is unavailable until an admin adds a licence.']);
         }
 
         $validated = $request->validate([

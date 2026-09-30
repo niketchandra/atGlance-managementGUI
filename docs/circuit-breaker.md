@@ -4,10 +4,10 @@
 The circuit breaker protects the API from repeated database failures. When the database is unstable or down, it opens the circuit to stop expensive retries, returns a fast 503 to callers, and lets the queue handle writes.
 
 ## Where the code lives
-- Core implementation: [composer/app/Services/CircuitBreaker.php](composer/app/Services/CircuitBreaker.php)
-- Database wrapper: [composer/app/Services/DatabaseCircuitBreaker.php](composer/app/Services/DatabaseCircuitBreaker.php)
-- Usage in user endpoints: [composer/app/Http/Controllers/Api/UserController.php](composer/app/Http/Controllers/Api/UserController.php)
-- Usage in product endpoints: [composer/app/Http/Controllers/Api/ProductController.php](composer/app/Http/Controllers/Api/ProductController.php)
+- Core implementation: [composer/app/Services/CircuitBreaker.php](../composer/app/Services/CircuitBreaker.php)
+- Database wrapper: [composer/app/Services/DatabaseCircuitBreaker.php](../composer/app/Services/DatabaseCircuitBreaker.php)
+- Usage in user endpoints: [composer/app/Http/Controllers/Api/UserController.php](../composer/app/Http/Controllers/Api/UserController.php)
+- Usage in product endpoints: [composer/app/Http/Controllers/Api/ProductController.php](../composer/app/Http/Controllers/Api/ProductController.php)
 
 ## What the code means
 - `CircuitBreaker` maintains state in cache with four keys: `state`, `failures`, `successes`, `opened_at`.

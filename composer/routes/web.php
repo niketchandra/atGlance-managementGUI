@@ -6,7 +6,10 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\AdminDashboardController;
 use App\Http\Controllers\AiConnectController;
 use App\Http\Controllers\BackupRestoreController;
+use App\Http\Controllers\DomainSettingsController;
 use App\Http\Controllers\InstallerController;
+use App\Http\Controllers\LicenseController;
+use App\Http\Controllers\MailTestController;
 use App\Http\Controllers\NotificationSettingsController;
 use App\Http\Controllers\NotificationsController;
 use App\Http\Controllers\PublicPageController;
@@ -15,6 +18,9 @@ use App\Support\SiteProfile;
 
 Route::get('/install', [InstallerController::class, 'show'])->name('install.show');
 Route::post('/install', [InstallerController::class, 'install'])->name('install.run');
+Route::post('/install/license/verify', [InstallerController::class, 'verifyLicense'])
+    ->middleware('throttle:10,1')
+    ->name('install.license.verify');
 Route::get('/install/info', [InstallerController::class, 'info'])->name('install.info');
 
 // Root route - installer first, then login/registration app page
@@ -104,6 +110,12 @@ Route::middleware('app.installed')->group(function () {
             Route::post('/settings/restore', [BackupRestoreController::class, 'restore'])->name('admin.settings.restore');
             Route::post('/settings/notifications', [NotificationSettingsController::class, 'update'])->name('admin.settings.notifications');
             Route::post('/settings/ai', [AiConnectController::class, 'update'])->name('admin.settings.ai');
+            Route::post('/settings/licence', [LicenseController::class, 'update'])->name('admin.settings.licence');
+            Route::post('/settings/domain/plugin', [DomainSettingsController::class, 'togglePlugin'])->name('admin.settings.domain.plugin');
+            Route::post('/settings/domain', [DomainSettingsController::class, 'save'])->name('admin.settings.domain');
+            Route::post('/settings/domain/check', [DomainSettingsController::class, 'check'])->name('admin.settings.domain.check');
+            Route::delete('/settings/domain/certificate', [DomainSettingsController::class, 'removeCertificate'])->name('admin.settings.domain.certificate.remove');
+            Route::get('/settings/domain/ca.crt', [DomainSettingsController::class, 'downloadCa'])->name('admin.settings.domain.ca');
             Route::post('/settings/ai/test', [AiConnectController::class, 'test'])->name('admin.settings.ai.test');
             Route::post('/settings/ai/models', [AiConnectController::class, 'models'])->name('admin.settings.ai.models');
             Route::get('/notifications', [NotificationsController::class, 'index'])->name('admin.notifications');
@@ -115,6 +127,7 @@ Route::middleware('app.installed')->group(function () {
             Route::post('/settings/migration/analyze', [AdminDashboardController::class, 'analyzeMigration'])->name('admin.settings.migration.analyze');
             Route::post('/settings/migration/start', [AdminDashboardController::class, 'startMigration'])->name('admin.settings.migration.start');
             Route::post('/settings/mail', [AdminDashboardController::class, 'updateMailSettings'])->name('admin.settings.mail');
+            Route::post('/settings/mail/test', [MailTestController::class, 'send'])->middleware('throttle:5,1')->name('admin.settings.mail.test');
             Route::post('/settings/sso', [AdminDashboardController::class, 'updateSsoSettings'])->name('admin.settings.sso');
         });
 

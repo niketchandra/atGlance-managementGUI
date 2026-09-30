@@ -1,0 +1,12 @@
+# Opt-in: custom domain and HTTPS through the built-in proxy.
+#   docker compose -f docker-compose.yml -f docker-compose.domain.yml up -d
+# Undo: docker compose up -d
+# Set HTTP_PORT / HTTPS_PORT in .env if 80 or 443 is already in use.
+# Then set the domain in Admin Settings > Site. See docs/custom-domain.md.
+services:
+  app:
+    environment:
+      ATGLANCE_PROXY: builtin
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"

@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Support\ActivityRecorder;
+use App\Support\DomainSettings;
+use App\Support\License;
 use App\Models\AdminSetting;
 use App\Models\ConfigurationFile;
 use App\Models\ContactSubmission;
@@ -190,6 +192,10 @@ class AdminDashboardController extends Controller
 
     public function createUser(Request $request): RedirectResponse
     {
+        if (!License::isActive()) {
+            return redirect()->back()->withInput()->withErrors(['licence' => License::REQUIRED_MESSAGE]);
+        }
+
         $actor = Auth::user();
         $validated = $request->validate([
             'username' => ['required', 'string', 'max:255'],
@@ -848,17 +854,9 @@ class AdminDashboardController extends Controller
         $siteUrl = rtrim((string) config('app.url', ''), '/');
         $siteDomain = parse_url($siteUrl, PHP_URL_HOST) ?: $siteUrl;
         $sitePort = parse_url($siteUrl, PHP_URL_PORT);
-        $siteScheme = strtolower((string) (parse_url($siteUrl, PHP_URL_SCHEME) ?: 'http'));
         if (!empty($sitePort) && is_numeric($sitePort)) {
             $siteDomain .= ':' . $sitePort;
         }
-
-        $siteDomainAlias = trim((string) AdminSetting::getValue('site_domain_alias', ''));
-        $siteDomainAliasIp = trim((string) AdminSetting::getValue('site_domain_alias_ip', ''));
-        if ($siteDomainAliasIp === '') {
-            $siteDomainAliasIp = $this->resolveApplicationIpAddress();
-        }
-        $siteHttpsEnabled = $this->isFeatureEnabledSetting('site_https_enabled', $siteScheme === 'https');
 
         $organizationName = Organization::query()
             ->where('id', 200)
@@ -939,9 +937,7 @@ class AdminDashboardController extends Controller
             'siteLogoUrlOverride' => AdminSetting::getValue('site_logo_url', ''),
             'siteDescription' => AdminSetting::getValue('site_description', AdminSetting::getValue('site_content', '')),
             'siteContent' => AdminSetting::getValue('site_content', ''),
-            'siteDomainAlias' => $siteDomainAlias,
-            'siteDomainAliasIp' => $siteDomainAliasIp,
-            'siteHttpsEnabled' => $siteHttpsEnabled,
+            'domainView' => DomainSettings::viewData(request()->getHost()),
             'siteMetadataText' => json_encode($siteMetadata, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES),
             'siteTagsText' => implode(',', $siteTags),
             'siteFeaturesText' => implode("\n", $siteFeatures),
@@ -1017,20 +1013,11 @@ class AdminDashboardController extends Controller
             'site_support_details' => ['nullable', 'string', 'max:20000'],
             'site_contact_enabled' => ['nullable', 'boolean'],
             'site_contact_intro' => ['nullable', 'string', 'max:5000'],
-            'site_domain_alias' => ['nullable', 'string', 'max:255', 'regex:/^[A-Za-z0-9.-]+$/'],
-            'site_domain_alias_ip' => ['nullable', 'ip'],
-            'site_https_enabled' => ['nullable', 'boolean'],
             'site_metadata' => ['nullable', 'string', 'max:20000'],
             'site_tags' => ['nullable', 'string', 'max:2000'],
             'site_features' => ['nullable', 'string'],
             'site_content' => ['nullable', 'string', 'max:5000'],
         ]);
-
-        $domainAlias = strtolower(trim((string) ($validated['site_domain_alias'] ?? ''), " ."));
-        $submittedAliasIp = trim((string) ($validated['site_domain_alias_ip'] ?? ''));
-        $domainAliasIp = $submittedAliasIp !== ''
-            ? $submittedAliasIp
-            : ($domainAlias !== '' ? $this->resolveApplicationIpAddress() : '');
 
         $metadata = [];
         if (!empty($validated['site_metadata'])) {
@@ -1084,9 +1071,6 @@ class AdminDashboardController extends Controller
         AdminSetting::putValue('site', 'site_contact_intro', trim((string) ($validated['site_contact_intro'] ?? '')));
 
         AdminSetting::putValue('site', 'site_description', $validated['site_description'] ?? '');
-        AdminSetting::putValue('site', 'site_domain_alias', $domainAlias);
-        AdminSetting::putValue('site', 'site_domain_alias_ip', $domainAliasIp);
-        AdminSetting::putValue('site', 'site_https_enabled', $request->boolean('site_https_enabled'));
         AdminSetting::putValue('site', 'site_metadata', $metadata);
         AdminSetting::putValue('site', 'site_tags', $tags);
         AdminSetting::putValue('site', 'site_features', $features);
@@ -1138,26 +1122,6 @@ class AdminDashboardController extends Controller
         ContactSubmission::query()->whereKey($submissionId)->delete();
 
         return redirect()->route('admin.settings', ['tab' => 'site'])->with('success', 'Contact message deleted.');
-    }
-
-    private function resolveApplicationIpAddress(): string
-    {
-        $storedIp = trim((string) AdminSetting::getValue('site_domain_alias_ip', ''));
-        if ($storedIp !== '' && filter_var($storedIp, FILTER_VALIDATE_IP)) {
-            return $storedIp;
-        }
-
-        $appUrlHost = (string) (parse_url((string) config('app.url', ''), PHP_URL_HOST) ?: '');
-        if ($appUrlHost !== '' && filter_var($appUrlHost, FILTER_VALIDATE_IP)) {
-            return $appUrlHost;
-        }
-
-        $serverAddr = (string) request()->server('SERVER_ADDR', '');
-        if ($serverAddr !== '' && filter_var($serverAddr, FILTER_VALIDATE_IP)) {
-            return $serverAddr;
-        }
-
-        return '127.0.0.1';
     }
 
     public function updateS3Settings(Request $request): RedirectResponse

@@ -3,21 +3,21 @@
 @section('title', 'Workspace Details - ' . $brandName)
 
 @section('dashboard-content')
-<div style="padding:40px;">
-    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
-        <h1 style="font-size:28px; color:#111827;">Workspace: {{ $workspace->name }}</h1>
-        <a href="{{ $isSuperAdmin ? route('enterprise.console') : route('admin.workspaces') }}" style="text-decoration:none; color:#111827;">&larr; Back</a>
+<div style="padding: 40px;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+        <h1 style="font-size: 30px; color: var(--ag-text);">Workspace: {{ $workspace->name }}</h1>
+        <a href="{{ $isSuperAdmin ? route('enterprise.console') : route('admin.workspaces') }}" style="text-decoration: none; color: var(--ag-text);">&larr; Back</a>
     </div>
 
     @if(session('success'))
-        <div style="padding:12px; border-radius:8px; background:#dcfce7; color:#166534; margin-bottom:16px;">
+        <div style="padding: 12px; border-radius: 12px; background: var(--ag-success-soft); color: var(--ag-success); margin-bottom: 16px;">
             {{ session('success') }}
         </div>
     @endif
 
     @if($errors->any())
-        <div style="padding:12px; border-radius:8px; background:#fee2e2; color:#991b1b; margin-bottom:16px;">
-            <ul style="margin-left:16px;">
+        <div style="padding: 12px; border-radius: 12px; background: var(--ag-danger-soft); color: var(--ag-danger); margin-bottom: 16px;">
+            <ul style="margin-left: 16px;">
                 @foreach($errors->all() as $error)
                     <li>{{ $error }}</li>
                 @endforeach
@@ -25,125 +25,125 @@
         </div>
     @endif
 
-    <div style="display:grid; grid-template-columns:1fr 1fr; gap:18px; margin-bottom:18px;">
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-bottom: 18px;">
         @if($canEditWorkspaceMetadata)
-        <div style="background:white; border:1px solid #e5e7eb; border-radius:10px; padding:18px; box-shadow:0 2px 10px rgba(0,0,0,0.06);">
-            <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:8px;">
-                <h2 style="font-size:18px; color:#111827; margin:0;">Edit Workspace</h2>
-                <form method="POST" action="{{ route($workspaceDeleteRouteName, $workspace->id) }}" style="margin:0;">
+        <div class="ag-card" style="padding: 18px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 8px;">
+                <h2 style="font-size: 18px; color: var(--ag-text); margin: 0;">Edit Workspace</h2>
+                <form method="POST" action="{{ route($workspaceDeleteRouteName, $workspace->id) }}" style="margin: 0;">
                     @csrf
                     @method('DELETE')
-                    <button type="submit" onclick="return confirm('Delete this workspace? This action cannot be undone.');" style="background:#dc2626; color:white; border:none; border-radius:8px; padding:8px 12px; font-weight:600; cursor:pointer;">Delete Workspace</button>
+                    <button class="ag-btn ag-btn--danger" type="submit" onclick="return confirm('Delete this workspace? This action cannot be undone.');">Delete Workspace</button>
                 </form>
             </div>
-            <p style="font-size:13px; color:#6b7280; margin-bottom:14px;">Update workspace name, description, and status.</p>
+            <p style="font-size: 13px; color: var(--ag-muted); margin-bottom: 14px;">Update workspace name, description, and status.</p>
 
             <form method="POST" action="{{ route($workspaceUpdateRouteName, $workspace->id) }}">
                 @csrf
                 @method('PUT')
                 
-                <div style="margin-bottom:12px;">
-                    <label style="display:block; font-size:13px; color:#4b5563; margin-bottom:6px;">Workspace Name</label>
-                    <input type="text" name="name" value="{{ old('name', $workspace->name) }}" required style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:10px;">
+                <div style="margin-bottom: 12px;">
+                    <label class="ag-label">Workspace Name</label>
+                    <input class="ag-input" type="text" name="name" value="{{ old('name', $workspace->name) }}" required style="width: 100%;">
                 </div>
 
-                <div style="margin-bottom:12px;">
-                    <label style="display:block; font-size:13px; color:#4b5563; margin-bottom:6px;">Description</label>
-                    <textarea name="description" rows="3" style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:10px;">{{ old('description', $workspace->description) }}</textarea>
+                <div style="margin-bottom: 12px;">
+                    <label class="ag-label">Description</label>
+                    <textarea class="ag-textarea" name="description" rows="3" style="width: 100%;">{{ old('description', $workspace->description) }}</textarea>
                 </div>
 
-                <div style="margin-bottom:14px;">
-                    <label style="display:block; font-size:13px; color:#4b5563; margin-bottom:6px;">Status</label>
-                    <select name="status" required style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:10px; background:white;">
+                <div style="margin-bottom: 14px;">
+                    <label class="ag-label">Status</label>
+                    <select class="ag-select" name="status" required style="width: 100%;">
                         <option value="active" {{ old('status', $workspace->status) === 'active' ? 'selected' : '' }}>Active</option>
                         <option value="inactive" {{ old('status', $workspace->status) === 'inactive' ? 'selected' : '' }}>Inactive</option>
                     </select>
                 </div>
 
-                <button type="submit" style="background:#111827; color:white; border:none; border-radius:8px; padding:10px 14px; font-weight:600; cursor:pointer;">Save Changes</button>
+                <button class="ag-btn" type="submit">Save Changes</button>
             </form>
         </div>
         @endif
 
         @if($canManageAdmins)
-        <div style="background:white; border:1px solid #e5e7eb; border-radius:10px; padding:18px; box-shadow:0 2px 10px rgba(0,0,0,0.06);">
-            <h2 style="font-size:18px; color:#111827; margin-bottom:8px;">Add Admin to Workspace</h2>
-            <p style="font-size:13px; color:#6b7280; margin-bottom:14px;">Assign an existing admin to this workspace.</p>
+        <div class="ag-card" style="padding: 18px;">
+            <h2 style="font-size: 18px; color: var(--ag-text); margin-bottom: 8px;">Add Admin to Workspace</h2>
+            <p style="font-size: 13px; color: var(--ag-muted); margin-bottom: 14px;">Assign an existing admin to this workspace.</p>
 
             <form method="POST" action="{{ route('workspace.admins.add', $workspace->id) }}">
                 @csrf
                 
-                <div style="margin-bottom:14px;">
-                    <label for="adminSearchInput" style="display:block; font-size:13px; color:#4b5563; margin-bottom:6px;">Search Admin</label>
-                    <input id="adminSearchInput" type="text" autocomplete="off" placeholder="Type name or email" style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:10px; margin-bottom:8px;">
+                <div style="margin-bottom: 14px;">
+                    <label class="ag-label" for="adminSearchInput">Search Admin</label>
+                    <input class="ag-input" id="adminSearchInput" type="text" autocomplete="off" placeholder="Type name or email" style="width: 100%; margin-bottom: 8px;">
                     <input id="adminIdInput" type="hidden" name="admin_id" required>
 
-                    <div id="adminSelectedTag" style="display:none; margin-bottom:8px; font-size:12px; color:#1f2937; background:#f3f4f6; border:1px solid #e5e7eb; border-radius:999px; padding:6px 10px; width:fit-content;"></div>
-                    <div id="adminResults" style="border:1px solid #d1d5db; border-radius:8px; max-height:180px; overflow:auto; background:white; display:none;"></div>
-                    <p style="margin-top:6px; font-size:12px; color:#6b7280;">Start typing to search admins quickly by name or email.</p>
+                    <div id="adminSelectedTag" style="display: none; margin-bottom: 8px; font-size: 12px; color: var(--ag-text); background: var(--ag-surface); border-radius: 999px; padding: 6px 10px; width: fit-content;"></div>
+                    <div id="adminResults" style="border-radius: 12px; max-height: 180px; overflow: auto; background: var(--ag-card); display: none;"></div>
+                    <p style="margin-top: 6px; font-size: 12px; color: var(--ag-muted);">Start typing to search admins quickly by name or email.</p>
                 </div>
 
-                <button type="submit" style="background:#111827; color:white; border:none; border-radius:8px; padding:10px 14px; font-weight:600; cursor:pointer;">Add Admin</button>
+                <button class="ag-btn" type="submit">Add Admin</button>
             </form>
         </div>
         @endif
 
-        <div style="background:white; border:1px solid #e5e7eb; border-radius:10px; padding:18px; box-shadow:0 2px 10px rgba(0,0,0,0.06);">
-            <h2 style="font-size:18px; color:#111827; margin-bottom:8px;">Add User to Workspace</h2>
-            <p style="font-size:13px; color:#6b7280; margin-bottom:14px;">Assign a regular user to this workspace.</p>
+        <div class="ag-card" style="padding: 18px;">
+            <h2 style="font-size: 18px; color: var(--ag-text); margin-bottom: 8px;">Add User to Workspace</h2>
+            <p style="font-size: 13px; color: var(--ag-muted); margin-bottom: 14px;">Assign a regular user to this workspace.</p>
 
             <form method="POST" action="{{ route($workspaceAddUserRouteName, $workspace->id) }}">
                 @csrf
 
-                <div style="margin-bottom:14px;">
-                    <label for="userSearchInput" style="display:block; font-size:13px; color:#4b5563; margin-bottom:6px;">Search User</label>
-                    <input id="userSearchInput" type="text" autocomplete="off" placeholder="Type name or email" style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:10px; margin-bottom:8px;">
+                <div style="margin-bottom: 14px;">
+                    <label class="ag-label" for="userSearchInput">Search User</label>
+                    <input class="ag-input" id="userSearchInput" type="text" autocomplete="off" placeholder="Type name or email" style="width: 100%; margin-bottom: 8px;">
                     <input id="userIdInput" type="hidden" name="user_id" required>
 
-                    <div id="userSelectedTag" style="display:none; margin-bottom:8px; font-size:12px; color:#1f2937; background:#f3f4f6; border:1px solid #e5e7eb; border-radius:999px; padding:6px 10px; width:fit-content;"></div>
-                    <div id="userResults" style="border:1px solid #d1d5db; border-radius:8px; max-height:180px; overflow:auto; background:white; display:none;"></div>
-                    <p style="margin-top:6px; font-size:12px; color:#6b7280;">Start typing to search users quickly by name or email.</p>
+                    <div id="userSelectedTag" style="display: none; margin-bottom: 8px; font-size: 12px; color: var(--ag-text); background: var(--ag-surface); border-radius: 999px; padding: 6px 10px; width: fit-content;"></div>
+                    <div id="userResults" style="border-radius: 12px; max-height: 180px; overflow: auto; background: var(--ag-card); display: none;"></div>
+                    <p style="margin-top: 6px; font-size: 12px; color: var(--ag-muted);">Start typing to search users quickly by name or email.</p>
                 </div>
 
-                <button type="submit" style="background:#111827; color:white; border:none; border-radius:8px; padding:10px 14px; font-weight:600; cursor:pointer;">Add User</button>
+                <button class="ag-btn" type="submit">Add User</button>
             </form>
         </div>
     </div>
 
-    <div style="display:grid; grid-template-columns:1fr 1fr; gap:18px;">
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 18px;">
         <!-- Workspace Admins -->
-        <div style="background:white; border:1px solid #e5e7eb; border-radius:10px; padding:18px; box-shadow:0 2px 10px rgba(0,0,0,0.06);">
-            <h2 style="font-size:18px; color:#111827; margin-bottom:8px;">Workspace Admins</h2>
-            <p style="font-size:13px; color:#6b7280; margin-bottom:14px;">Admins assigned to this workspace.</p>
+        <div class="ag-card" style="padding: 18px;">
+            <h2 style="font-size: 18px; color: var(--ag-text); margin-bottom: 8px;">Workspace Admins</h2>
+            <p style="font-size: 13px; color: var(--ag-muted); margin-bottom: 14px;">Admins assigned to this workspace.</p>
 
             @if($admins->isEmpty())
-                <div style="padding:12px; background:#f3f4f6; border-radius:8px; color:#6b7280; text-align:center; font-size:13px;">
+                <div style="padding: 12px; background: var(--ag-surface); border-radius: 12px; color: var(--ag-muted); text-align: center; font-size: 13px;">
                     No admins assigned yet.
                 </div>
             @else
-                <div style="overflow-x:auto;">
-                    <table style="width:100%; border-collapse:collapse;">
+                <div style="overflow-x: auto;">
+                    <table class="ag-table" style="width: 100%;">
                         <thead>
-                            <tr style="background:#f9fafb; border-bottom:1px solid #e5e7eb;">
-                                <th style="text-align:left; padding:10px; font-size:12px; color:#6b7280;">Name</th>
-                                <th style="text-align:left; padding:10px; font-size:12px; color:#6b7280;">Email</th>
-                                <th style="text-align:left; padding:10px; font-size:12px; color:#6b7280;">Action</th>
+                            <tr style="background: var(--ag-surface); border-bottom: 1px solid var(--ag-line);">
+                                <th style="text-align: left; padding: 10px;">Name</th>
+                                <th style="text-align: left; padding: 10px;">Email</th>
+                                <th style="text-align: left; padding: 10px;">Action</th>
                             </tr>
                         </thead>
                         <tbody>
                             @foreach($admins as $admin)
-                                <tr style="border-bottom:1px solid #f3f4f6;">
-                                    <td style="padding:10px; font-size:13px;"><span style="display:inline-flex; align-items:center; gap:8px;"><x-user-avatar :user="$admin" size="26" />{{ $admin->name }}</span></td>
-                                    <td style="padding:10px; font-size:13px;">{{ $admin->email }}</td>
-                                    <td style="padding:10px;">
+                                <tr style="border-bottom: 1px solid var(--ag-line);">
+                                    <td style="padding: 10px; font-size: 13px;"><span style="display: inline-flex; align-items: center; gap: 8px;"><x-user-avatar :user="$admin" size="26" />{{ $admin->name }}</span></td>
+                                    <td style="padding: 10px; font-size: 13px;">{{ $admin->email }}</td>
+                                    <td style="padding: 10px;">
                                         @if($canManageAdmins)
-                                            <form method="POST" action="{{ route($workspaceRemoveUserRouteName, [$workspace->id, $admin->id]) }}" style="display:inline;">
+                                            <form method="POST" action="{{ route($workspaceRemoveUserRouteName, [$workspace->id, $admin->id]) }}" style="display: inline;">
                                                 @csrf
                                                 @method('DELETE')
-                                                <button type="submit" onclick="return confirm('Remove this admin from workspace?')" style="background:#dc2626; color:white; border:none; border-radius:6px; padding:4px 8px; font-size:12px; cursor:pointer;">Remove</button>
+                                                <button class="ag-btn ag-btn--danger" type="submit" onclick="return confirm('Remove this admin from workspace?')">Remove</button>
                                             </form>
                                         @else
-                                            <span style="font-size:12px; color:#6b7280;">Read only</span>
+                                            <span style="font-size: 12px; color: var(--ag-muted);">Read only</span>
                                         @endif
                                     </td>
                                 </tr>
@@ -155,34 +155,34 @@
         </div>
 
         <!-- Workspace Users -->
-        <div style="background:white; border:1px solid #e5e7eb; border-radius:10px; padding:18px; box-shadow:0 2px 10px rgba(0,0,0,0.06);">
-            <h2 style="font-size:18px; color:#111827; margin-bottom:8px;">Workspace Users</h2>
-            <p style="font-size:13px; color:#6b7280; margin-bottom:14px;">Regular users assigned to this workspace.</p>
+        <div class="ag-card" style="padding: 18px;">
+            <h2 style="font-size: 18px; color: var(--ag-text); margin-bottom: 8px;">Workspace Users</h2>
+            <p style="font-size: 13px; color: var(--ag-muted); margin-bottom: 14px;">Regular users assigned to this workspace.</p>
 
             @if($regularUsers->isEmpty())
-                <div style="padding:12px; background:#f3f4f6; border-radius:8px; color:#6b7280; text-align:center; font-size:13px;">
+                <div style="padding: 12px; background: var(--ag-surface); border-radius: 12px; color: var(--ag-muted); text-align: center; font-size: 13px;">
                     No users assigned yet.
                 </div>
             @else
-                <div style="overflow-x:auto;">
-                    <table style="width:100%; border-collapse:collapse;">
+                <div style="overflow-x: auto;">
+                    <table class="ag-table" style="width: 100%;">
                         <thead>
-                            <tr style="background:#f9fafb; border-bottom:1px solid #e5e7eb;">
-                                <th style="text-align:left; padding:10px; font-size:12px; color:#6b7280;">Name</th>
-                                <th style="text-align:left; padding:10px; font-size:12px; color:#6b7280;">Email</th>
-                                <th style="text-align:left; padding:10px; font-size:12px; color:#6b7280;">Action</th>
+                            <tr style="background: var(--ag-surface); border-bottom: 1px solid var(--ag-line);">
+                                <th style="text-align: left; padding: 10px;">Name</th>
+                                <th style="text-align: left; padding: 10px;">Email</th>
+                                <th style="text-align: left; padding: 10px;">Action</th>
                             </tr>
                         </thead>
                         <tbody>
                             @foreach($regularUsers as $user)
-                                <tr style="border-bottom:1px solid #f3f4f6;">
-                                    <td style="padding:10px; font-size:13px;"><span style="display:inline-flex; align-items:center; gap:8px;"><x-user-avatar :user="$user" size="26" />{{ $user->name }}</span></td>
-                                    <td style="padding:10px; font-size:13px;">{{ $user->email }}</td>
-                                    <td style="padding:10px;">
-                                        <form method="POST" action="{{ route($workspaceRemoveUserRouteName, [$workspace->id, $user->id]) }}" style="display:inline;">
+                                <tr style="border-bottom: 1px solid var(--ag-line);">
+                                    <td style="padding: 10px; font-size: 13px;"><span style="display: inline-flex; align-items: center; gap: 8px;"><x-user-avatar :user="$user" size="26" />{{ $user->name }}</span></td>
+                                    <td style="padding: 10px; font-size: 13px;">{{ $user->email }}</td>
+                                    <td style="padding: 10px;">
+                                        <form method="POST" action="{{ route($workspaceRemoveUserRouteName, [$workspace->id, $user->id]) }}" style="display: inline;">
                                             @csrf
                                             @method('DELETE')
-                                            <button type="submit" onclick="return confirm('Remove this user from workspace?')" style="background:#dc2626; color:white; border:none; border-radius:6px; padding:4px 8px; font-size:12px; cursor:pointer;">Remove</button>
+                                            <button class="ag-btn ag-btn--danger" type="submit" onclick="return confirm('Remove this user from workspace?')">Remove</button>
                                         </form>
                                     </td>
                                 </tr>
@@ -292,7 +292,7 @@
                     empty.textContent = 'No matches found';
                     empty.style.padding = '10px';
                     empty.style.fontSize = '12px';
-                    empty.style.color = '#6b7280';
+                    empty.style.color = '#8a9099';
                     results.appendChild(empty);
                     results.style.display = 'block';
                     return;
@@ -313,7 +313,7 @@
                     item.style.borderBottom = '1px solid #f3f4f6';
 
                     item.addEventListener('mouseenter', function () {
-                        item.style.background = '#f9fafb';
+                        item.style.background = '#f4f6f8';
                     });
 
                     item.addEventListener('mouseleave', function () {
