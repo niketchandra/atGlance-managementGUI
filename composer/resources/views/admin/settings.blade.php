@@ -83,6 +83,10 @@
             $dvCanEdit = (int) auth()->user()->rbac_id === 100;
             $dvLocked = !$dv['plugin_enabled'] || !$dvCanEdit;
             $dvMode = old('https_mode', $dv['https_mode']);
+            // A selected option that is also disabled is not submitted; fall back to Off.
+            if (in_array($dvMode, ['builtin', 'custom'], true) && !$dv['builtin_seen']) {
+                $dvMode = 'off';
+            }
         @endphp
         <div class="ag-card ag-card--flat" style="margin-bottom: 18px;">
             <h3 style="font-size: 15px; font-weight: 500; margin-bottom: 6px;">Access URL</h3>

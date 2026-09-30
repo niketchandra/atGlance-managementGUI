@@ -101,6 +101,20 @@ class CustomDomainViewTest extends TestCase
             ->assertSee('value="custom"  disabled', false);
     }
 
+    public function test_legacy_https_flag_never_selects_a_disabled_option(): void
+    {
+        // Old installer "Use HTTPS = Yes" left site_https_enabled=true, which
+        // derives mode "builtin". A selected+disabled option is not submitted,
+        // so the form could never be saved.
+        $this->actingAsRole(100);
+        \App\Models\AdminSetting::putValue('site', 'site_https_enabled', true);
+        DomainSettings::setPluginEnabled(true);
+
+        $this->get(route('admin.settings', ['tab' => 'site']))
+            ->assertDontSee('value="builtin" selected', false)
+            ->assertSee('value="off" selected', false);
+    }
+
     public function test_info_tab_shows_access_url(): void
     {
         $this->actingAsRole(100);

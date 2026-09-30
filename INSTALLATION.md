@@ -287,7 +287,7 @@ Keep the same EFS volume and mount point. All three must share `/app/storage`.
 
    Redirect HTTP 80 to 443.
 4. Point your domain (Route 53 or other DNS) at the load balancer.
-5. After the install, set the domain in Admin Settings > Plugins > Custom Domain & HTTPS, then on the Site tab with HTTPS "Handled by my platform". See [Custom domain and HTTPS](docs/custom-domain.md).
+5. Add `ATGLANCE_TRUSTED_PROXIES=127.0.0.1,::1,<VPC CIDR>` to the app task definition, so the console trusts the load balancer's `X-Forwarded-*` headers. After the install, set the domain in Admin Settings > Plugins > Custom Domain & HTTPS, then on the Site tab with HTTPS "Handled by my platform". See [Custom domain and HTTPS](docs/custom-domain.md).
 
 #### Step 6: Create the services in this order
 
