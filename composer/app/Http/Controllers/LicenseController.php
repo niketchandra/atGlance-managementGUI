@@ -25,7 +25,7 @@ class LicenseController extends Controller
 
         $key = trim((string) $validated['license_key']);
         $orgName = trim((string) Organization::query()->whereKey(SiteProfile::DEFAULT_ORGANIZATION_ID)->value('name'));
-        $result = $client->activate($key, $orgName !== '' ? $orgName : config('app.name', 'AtGlance'));
+        $result = $client->activateIfAvailable($key, $orgName !== '' ? $orgName : config('app.name', 'AtGlance'));
 
         if (!$result['ok']) {
             return $back->withErrors(['license_key' => $result['message']]);

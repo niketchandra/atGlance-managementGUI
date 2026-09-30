@@ -51,7 +51,7 @@ class InstallerController extends Controller
             return response()->json(['ok' => false, 'message' => 'Application is already installed.'], 403);
         }
 
-        $result = $client->verify((string) $request->input('license_key', ''));
+        $result = $client->checkAvailable((string) $request->input('license_key', ''));
 
         return response()->json([
             'ok' => $result['ok'],
@@ -107,11 +107,12 @@ class InstallerController extends Controller
 
         $organizationName = trim((string) $validated['organization_name']);
 
-        // Links the licence to this console and organisation (marks it In Use on atglance.live).
+        // Links the licence to this console and organisation (marks it In Use on
+        // atglance.live). A key in use by another console is refused before activate.
         $licenseKey = $request->input('license_later') === '1' ? '' : trim((string) ($validated['license_key'] ?? ''));
         $licenseResult = null;
         if ($licenseKey !== '') {
-            $licenseResult = $licenseClient->activate($licenseKey, $organizationName);
+            $licenseResult = $licenseClient->activateIfAvailable($licenseKey, $organizationName);
             if (!$licenseResult['ok']) {
                 return back()
                     ->withInput($request->except(['superadmin_password', 'superadmin_password_confirmation']))

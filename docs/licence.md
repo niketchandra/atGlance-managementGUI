@@ -40,9 +40,18 @@ No body. Nothing changes on atglance.live.
 | HTTP | `status` | Result in the console |
 |---|---|---|
 | 200 | `available` | Valid; not used by any org yet |
-| 200 | `in_use` | Valid; the message names `console.org_name` |
+| 200 | `in_use`, `console.instance_id` = this console | Valid; already activated for this console (reinstall) |
+| 200 | `in_use`, any other console | Refused: "This licence key is already in use by another AtGlance console. Deactivate it on atglance.live, or create a new licence key and use that one." The org name is not shown |
 | 403 | `unverified` / `under_review` | Rejected: not usable yet |
 | 401 | - | Rejected: wrong or revoked key |
+
+### One licence, one console
+
+The installer submit and Admin Settings > Licence both call **verify** first
+(`LicenseClient::activateIfAvailable()`). **Activate** is called only when the
+key is `available` or already `in_use` by this console. A key in use by any
+other console or organisation is refused and never sent to activate, so it
+cannot be moved to a new org name from here.
 
 ### Activate (installer submit, Admin Settings > Licence)
 
@@ -73,7 +82,31 @@ return `409 in_use_elsewhere`. Portal backup/restore does not include it.
 | 401 | - | Rejected: wrong or revoked key |
 
 On success the console saves `license.name`, `plan` and the other response
-fields (`user.*`, `console.*`) flattened to dot keys.
+fields (`console.*`, ...) flattened to dot keys. The licence owner fields
+(`user.*`) are not stored or shown.
+
+## Daily check
+
+`php artisan license:check` runs every day at 02:15 (scheduler container). It
+calls **verify** (check only) with the stored key and sets **Validated On** to
+the check date.
+
+| Verify result | Effect |
+|---|---|
+| `in_use` by this console (`console.instance_id` matches) | Licence stays active; details refreshed |
+| `available` (released on atglance.live) | Licence turned off |
+| `in_use` by another console | Licence turned off |
+| 401 / 403 | Licence turned off |
+| Server unreachable, 5xx, 429 | Nothing changes (checked again next day) |
+
+When the licence is turned off, Admin Settings > Licence shows the reason.
+An admin activates it again with **Verify & Save**.
+
+## Sidebar licence card
+
+Shows plan, licence name, **Activated On** (`console.activated_at` from
+atglance.live, date only) and **Validated On** (last successful activation or
+daily check, date only).
 
 Rate limits per key on atglance.live: verify 30/min, activate 30/min.
 
@@ -84,10 +117,12 @@ Rate limits per key on atglance.live: verify 30/min, activate 30/min.
 | Key | Content |
 |---|---|
 | `license_key` | licence key, encrypted |
-| `license_status` | `in_use` when verified |
+| `license_status` | `in_use` when active; otherwise the status that turned it off |
 | `license_name`, `license_plan`, `license_expires_at` | from the activate response |
-| `license_details` | JSON of the other scalar response fields |
-| `license_verified_at` | time of the last successful activation |
+| `license_details` | JSON of the other scalar response fields (no `user.*`) |
+| `license_activated_at` | `console.activated_at` from atglance.live (Activated On) |
+| `license_verified_at` | last activation or daily check (Validated On) |
+| `license_check_message` | reason from the last daily check that turned the licence off |
 
 Code: `App\Services\LicenseClient` (`verify()` and `activate()`), `App\Support\License`
 (storage and `License::isActive()`), `App\Http\Controllers\LicenseController`.

@@ -4,6 +4,7 @@ namespace App\Support;
 
 use App\Models\AdminSetting;
 use App\Services\LicenseClient;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
 
 /**
@@ -28,38 +29,122 @@ class License
     }
 
     /**
-     * Saves a verified licence from a successful LicenseClient::verify() result.
+     * Saves a licence from a successful LicenseClient::activate() result.
      */
     public static function store(string $key, array $result): void
     {
         $details = $result['details'] ?? [];
+        $extra = $details['extra'] ?? [];
 
         AdminSetting::putValue('license', 'license_key', trim($key), true);
         AdminSetting::putValue('license', 'license_status', (string) ($result['status'] ?? ''));
         AdminSetting::putValue('license', 'license_name', (string) ($details['name'] ?? ''));
         AdminSetting::putValue('license', 'license_plan', (string) ($details['plan'] ?? ''));
         AdminSetting::putValue('license', 'license_expires_at', (string) ($details['expires_at'] ?? ''));
-        AdminSetting::putValue('license', 'license_details', $details['extra'] ?? []);
+        AdminSetting::putValue('license', 'license_details', $extra);
+        AdminSetting::putValue('license', 'license_activated_at', (string) ($extra['console.activated_at'] ?? now()->toDateTimeString()));
         AdminSetting::putValue('license', 'license_verified_at', now()->toDateTimeString());
+        AdminSetting::putValue('license', 'license_check_message', '');
     }
 
     /**
-     * @return array{active: bool, name: string, plan: string, expires_at: string, verified_at: string, masked_key: string, details: array<string, mixed>}
+     * Daily check (`license:check`): asks atglance.live whether the stored
+     * licence is still in use by this console, without changing anything there.
+     *
+     * The licence stays active while the key is in_use by this console. It is
+     * turned off when atglance.live rejects the key (401/403), or reports it
+     * "available" (released) or in use by another console. When atglance.live
+     * cannot be reached or returns a server error, nothing changes.
+     *
+     * @return array{result: string, message: string} result: none, active, inactive or skipped
+     */
+    public static function check(LicenseClient $client): array
+    {
+        $key = trim((string) AdminSetting::getValue('license_key', ''));
+        if ($key === '') {
+            return ['result' => 'none', 'message' => 'No licence key is stored.'];
+        }
+
+        $response = $client->verify($key);
+        $httpStatus = (int) ($response['http_status'] ?? 0);
+        $details = $response['details'];
+        $extra = $details['extra'] ?? [];
+        $owner = trim((string) ($extra['console.instance_id'] ?? ''));
+
+        if ($response['ok'] && $response['status'] === LicenseClient::VERIFIED_STATUS && ($owner === '' || $owner === self::instanceId())) {
+            AdminSetting::putValue('license', 'license_status', LicenseClient::VERIFIED_STATUS);
+            AdminSetting::putValue('license', 'license_name', (string) ($details['name'] ?? ''));
+            AdminSetting::putValue('license', 'license_plan', (string) ($details['plan'] ?? ''));
+            AdminSetting::putValue('license', 'license_expires_at', (string) ($details['expires_at'] ?? ''));
+            AdminSetting::putValue('license', 'license_details', $extra);
+            if (!empty($extra['console.activated_at'])) {
+                AdminSetting::putValue('license', 'license_activated_at', (string) $extra['console.activated_at']);
+            }
+            AdminSetting::putValue('license', 'license_verified_at', now()->toDateTimeString());
+            AdminSetting::putValue('license', 'license_check_message', '');
+
+            return ['result' => 'active', 'message' => 'Licence is active.'];
+        }
+
+        if (!$response['ok'] && !in_array($httpStatus, [401, 403, 409], true)) {
+            return ['result' => 'skipped', 'message' => 'Licence not checked: ' . $response['message']];
+        }
+
+        if ($response['ok']) {
+            $status = $response['status'] === 'available' ? 'available' : 'in_use_elsewhere';
+            $message = $status === 'available'
+                ? 'This licence is no longer activated for this console. Activate it again below.'
+                : 'This licence is now in use by another AtGlance console.';
+        } else {
+            $status = $response['status'] !== '' ? $response['status'] : 'rejected';
+            $message = $response['message'];
+        }
+
+        AdminSetting::putValue('license', 'license_status', $status);
+        AdminSetting::putValue('license', 'license_verified_at', now()->toDateTimeString());
+        AdminSetting::putValue('license', 'license_check_message', $message);
+
+        return ['result' => 'inactive', 'message' => $message];
+    }
+
+    /**
+     * @return array{active: bool, name: string, plan: string, expires_at: string, activated_at: string, verified_at: string, check_message: string, masked_key: string, details: array<string, mixed>}
      */
     public static function summary(): array
     {
         $key = trim((string) AdminSetting::getValue('license_key', ''));
         $details = json_decode((string) AdminSetting::getValue('license_details', '[]'), true);
+        $details = is_array($details) ? $details : [];
+        // Licence owner fields (user.*) are not shown in the console.
+        $details = array_filter($details, fn ($field) => !str_starts_with((string) $field, 'user.'), ARRAY_FILTER_USE_KEY);
 
         return [
             'active' => self::isActive(),
             'name' => (string) AdminSetting::getValue('license_name', ''),
             'plan' => (string) AdminSetting::getValue('license_plan', ''),
             'expires_at' => (string) AdminSetting::getValue('license_expires_at', ''),
+            'activated_at' => (string) AdminSetting::getValue('license_activated_at', ''),
             'verified_at' => (string) AdminSetting::getValue('license_verified_at', ''),
+            'check_message' => (string) AdminSetting::getValue('license_check_message', ''),
             'masked_key' => self::mask($key),
-            'details' => is_array($details) ? $details : [],
+            'details' => $details,
         ];
+    }
+
+    /**
+     * A stored date/time as a date only ("Sep 30, 2026"); '' when empty.
+     */
+    public static function date(string $value): string
+    {
+        if (trim($value) === '') {
+            return '';
+        }
+
+        try {
+            return Carbon::parse($value)->format('M j, Y');
+        } catch (\Throwable) {
+            return $value;
+        }
     }
 
     /**
