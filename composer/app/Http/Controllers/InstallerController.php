@@ -72,32 +72,6 @@ class InstallerController extends Controller
         $validated = $request->validate([
             'organization_name' => ['required', 'string', 'max:255'],
             'app_ip' => ['required', 'string', 'max:255', new IpAddressWithOptionalPort()],
-            'app_domain' => [
-                'nullable',
-                'string',
-                'max:255',
-                function (string $attribute, mixed $value, \Closure $fail): void {
-                    $input = trim((string) $value);
-                    if ($input === '') {
-                        return;
-                    }
-
-                    if (preg_match('/^https?:\/\//i', $input)) {
-                        $fail('Enter domain only, without http:// or https://.');
-                        return;
-                    }
-
-                    if (str_contains($input, '/')) {
-                        $fail('Domain cannot include path segments.');
-                        return;
-                    }
-
-                    if (!preg_match('/^[A-Za-z0-9.-]+(?::\d{1,5})?$/', $input)) {
-                        $fail('Enter a valid domain.');
-                    }
-                },
-            ],
-            'use_https' => ['required', 'in:0,1'],
             'superadmin_email' => ['required', 'email', 'max:255'],
             'superadmin_password' => ['required', 'string', 'min:8', 'confirmed'],
             'license_later' => ['nullable', 'in:0,1'],
@@ -122,16 +96,12 @@ class InstallerController extends Controller
         }
 
         $appIpAddress = strtolower(trim((string) $validated['app_ip']));
-        $appDomainAlias = strtolower(trim((string) ($validated['app_domain'] ?? '')));
-        $httpsEnabled = $validated['use_https'] === '1';
         $superAdminEmail = strtolower(trim((string) $validated['superadmin_email']));
         $superAdminPassword = (string) $validated['superadmin_password'];
-        $normalizedUrl = ($httpsEnabled ? 'https://' : 'http://') . $appIpAddress;
+        // A custom domain and HTTPS are set up after installation (Admin Settings > Plugins).
+        $normalizedUrl = 'http://' . $appIpAddress;
 
-        EnvFile::set([
-            'APP_URL' => $normalizedUrl,
-            'APP_FORCE_HTTPS' => $httpsEnabled ? 'true' : 'false',
-        ]);
+        EnvFile::set(['APP_URL' => $normalizedUrl]);
 
         try {
             Artisan::call('migrate', ['--force' => true]);
@@ -172,9 +142,7 @@ class InstallerController extends Controller
             }
 
             if (Schema::hasTable('admin_settings')) {
-                AdminSetting::putValue('site', 'site_domain_alias', $appDomainAlias);
                 AdminSetting::putValue('site', 'site_domain_alias_ip', $appIpAddress);
-                AdminSetting::putValue('site', 'site_https_enabled', $httpsEnabled);
 
                 if ($licenseResult !== null) {
                     License::store($licenseKey, $licenseResult);
@@ -191,11 +159,9 @@ class InstallerController extends Controller
         InstallationState::markInstalled([
             'installed_at' => now()->toDateTimeString(),
             'organization_name' => $organizationName,
-            'app_domain' => $appDomainAlias !== '' ? $appDomainAlias : $appIpAddress,
+            'app_domain' => $appIpAddress,
             'app_ip' => $appIpAddress,
-            'app_alias_domain' => $appDomainAlias,
             'app_url' => $normalizedUrl,
-            'https_enabled' => $httpsEnabled,
             'superadmin_email' => $superAdminEmail,
             'default_superadmin_email' => 'superadmin@admin.com',
             'superadmin_password' => $superAdminPassword,
