@@ -278,13 +278,18 @@ cover <domain>. Upload a certificate for it, or choose another HTTPS option."
 ## 10. Request handling in the app
 
 - **Trusted proxies** (`bootstrap/app.php`):
-  - `$middleware->trustProxies(at: ['127.0.0.1', '10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16'])`,
-    with the headers `X-Forwarded-For`, `-Host`, `-Port` and `-Proto`.
-  - The ranges cover the built-in proxy, Docker networks and private load
-    balancers.
-  - An operator can replace the list with the env variable
-    `ATGLANCE_TRUSTED_PROXIES` (comma-separated). `bootstrap/app.php` reads the
-    env variable directly, because config is not loaded yet at that point.
+  - `$middleware->trustProxies(at: ['127.0.0.1', '::1'])`, with the headers
+    `X-Forwarded-For`, `-Host`, `-Port` and `-Proto`.
+  - Only the built-in proxy is trusted by default. Trusting private ranges
+    would let any LAN client forge its IP (activity log, login alerts,
+    throttles) on default installs. This changed after the final review.
+  - A platform load balancer is added with the env variable
+    `ATGLANCE_TRUSTED_PROXIES` (comma-separated; it replaces the default).
+    `bootstrap/app.php` reads the env variable directly, because config is not
+    loaded yet at that point.
+  - A proxy that sends `X-Forwarded-*` from an untrusted address is recorded
+    as `untrusted`. The Plugins card shows its address, and it never triggers
+    the HTTPS redirect, so there is no redirect loop.
 - **HTTPS redirect.** The middleware `EnforceDomainHttps` redirects only when
   all of these are true:
   1. the plugin is enabled;
@@ -452,7 +457,7 @@ streams `root.crt` when the file exists. Otherwise it answers `404` with
 | HTTPS switched off after being on | The redirect was a `302`, so browsers are not stuck on `https://`. `http://<domain>` works immediately. |
 | Uploaded certificate expires | Warning 30 days before; error banner after. Caddy keeps serving the expired certificate, so browsers warn, until a new one is uploaded. No silent switch to another issuer. |
 | Uploaded key does not match, wrong password, wrong domain | The upload is rejected with the reason. The previous certificate stays in use. |
-| Spoofed `X-Forwarded-*` from outside | Only the private ranges are trusted. The detection records only what it sees. The worst case is a wrong status label, and the admin can see that. |
+| Spoofed `X-Forwarded-*` from outside | Ignored: only `127.0.0.1`/`::1` (and addresses in `ATGLANCE_TRUSTED_PROXIES`) are trusted. The request is recorded as an `untrusted` proxy and is never redirected. |
 
 ## 13. Code layout
 

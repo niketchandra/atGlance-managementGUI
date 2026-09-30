@@ -50,7 +50,11 @@ domain with a managed certificate.
 TLS.
 
 For these three platforms, choose "Handled by my platform" as the HTTPS option
-in step 3.
+in step 3. Also set `ATGLANCE_TRUSTED_PROXIES` in the app environment to the
+load balancer's subnet, for example `127.0.0.1,::1,10.0.0.0/8`. Without it,
+the console ignores the load balancer's `X-Forwarded-*` headers: it does not
+see HTTPS, does not redirect, and the Plugins card warns with the proxy's
+address.
 
 ## 3. Set the domain
 
@@ -109,9 +113,13 @@ one machine first, add the hosts-file line the page shows.
   - Both endpoints answer only Caddy itself: local requests without
     `X-Forwarded-For` or `X-AtGlance-Proxy` headers.
   - Caddy also answers `404` for `/api/internal/*` from outside.
-- **Trusted proxy ranges:** `127.0.0.1, ::1, 10.0.0.0/8, 172.16.0.0/12,
-  192.168.0.0/16`. Override them with `ATGLANCE_TRUSTED_PROXIES`
-  (comma-separated).
+- **Trusted proxies:** only `127.0.0.1` and `::1` (the built-in proxy) by
+  default, so no client can forge its IP with `X-Forwarded-For`. A platform
+  load balancer is added with `ATGLANCE_TRUSTED_PROXIES` (comma-separated
+  IPs or CIDRs; it replaces the default, so keep `127.0.0.1,::1` in it).
+  Redirects happen only for requests from a trusted proxy.
+- **Saving the domain applies at once.** The app reads `APP_URL` from the
+  database when it boots, and saving restarts the queue worker.
 - **Storage.**
   - Settings live in `admin_settings`: `domain_plugin_enabled`,
     `site_domain_alias`, `site_domain_alias_ip`, `site_https_mode`,

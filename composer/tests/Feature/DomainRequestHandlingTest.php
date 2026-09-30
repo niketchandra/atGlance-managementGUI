@@ -94,13 +94,33 @@ class DomainRequestHandlingTest extends TestCase
         $this->assertTrue(DomainSettings::builtinProxySeen());
     }
 
-    public function test_detects_platform_proxy(): void
+    public function test_detects_trusted_platform_proxy(): void
     {
-        $this->withHeaders(['X-Forwarded-Proto' => 'https'])
-            ->withServerVariables(['REMOTE_ADDR' => '10.0.0.8'])->get('http://10.0.0.5/');
+        // 127.0.0.1 is trusted by default; a platform proxy is trusted via ATGLANCE_TRUSTED_PROXIES.
+        $this->withHeaders(['X-Forwarded-Proto' => 'https', 'X-Forwarded-For' => '203.0.113.9'])->get('http://10.0.0.5/');
 
         $this->assertSame('https', DomainSettings::proxySeen()['platform']['scheme']);
         $this->assertFalse(DomainSettings::builtinProxySeen());
+    }
+
+    public function test_lan_client_cannot_forge_its_ip_by_default(): void
+    {
+        \Illuminate\Support\Facades\Route::middleware('web')->get('/_test_ip', fn (\Illuminate\Http\Request $r) => $r->ip());
+
+        $ip = $this->withHeaders(['X-Forwarded-For' => '1.2.3.4'])
+            ->withServerVariables(['REMOTE_ADDR' => '192.168.1.50'])
+            ->get('http://10.0.0.5/_test_ip')->getContent();
+
+        $this->assertSame('192.168.1.50', $ip);
+    }
+
+    public function test_untrusted_proxy_is_flagged_and_never_redirected(): void
+    {
+        $response = $this->withHeaders(['X-Forwarded-Proto' => 'http', 'X-Forwarded-For' => '203.0.113.9'])
+            ->withServerVariables(['REMOTE_ADDR' => '10.0.0.8'])->get('http://ops.eu.acme.com/');
+
+        $this->assertStringNotContainsString('https://', (string) $response->headers->get('Location'));
+        $this->assertSame('10.0.0.8', DomainSettings::proxySeen()['untrusted']['address']);
     }
 
     public function test_builtin_header_from_remote_address_is_not_builtin(): void

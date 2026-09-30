@@ -16,12 +16,13 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->append(\App\Http\Middleware\ActivityLogger::class);
 
-        // Built-in proxy (127.0.0.1), Docker networks and private load balancers.
-        // Override with ATGLANCE_TRUSTED_PROXIES (comma-separated).
+        // Only the built-in proxy (127.0.0.1) by default, so clients cannot forge
+        // their IP with X-Forwarded-For. A platform load balancer is added with
+        // ATGLANCE_TRUSTED_PROXIES (comma-separated IPs/CIDRs, replaces the default).
         $middleware->trustProxies(
             at: array_values(array_filter(array_map('trim', explode(',', (string) env(
                 'ATGLANCE_TRUSTED_PROXIES',
-                '127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16'
+                '127.0.0.1,::1'
             ))))),
             headers: \Illuminate\Http\Request::HEADER_X_FORWARDED_FOR
                 | \Illuminate\Http\Request::HEADER_X_FORWARDED_HOST

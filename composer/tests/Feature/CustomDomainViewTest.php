@@ -71,6 +71,17 @@ class CustomDomainViewTest extends TestCase
         $this->get(route('admin.settings', ['tab' => 'plugins']))->assertSee('Built-in proxy detected (HTTP)');
     }
 
+    public function test_plugins_card_warns_about_untrusted_proxy(): void
+    {
+        $this->actingAsRole(100);
+        DomainSettings::setPluginEnabled(true);
+        DomainSettings::recordProxy('untrusted', 'http', '10.0.0.8');
+
+        $this->get(route('admin.settings', ['tab' => 'plugins']))
+            ->assertSee('10.0.0.8')
+            ->assertSee('ATGLANCE_TRUSTED_PROXIES');
+    }
+
     public function test_admin_sees_read_only_controls(): void
     {
         $this->actingAsRole(101);

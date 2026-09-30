@@ -22,6 +22,7 @@ final class DomainSettings
 
     public const PROXY_BUILTIN = 'builtin';
     public const PROXY_PLATFORM = 'platform';
+    public const PROXY_UNTRUSTED = 'untrusted';
 
     private const HOSTNAME_PATTERN = '/^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/';
 
@@ -198,17 +199,17 @@ final class DomainSettings
     }
 
     /** Records that a request came through a proxy; writes at most once a minute per type and scheme. */
-    public static function recordProxy(string $type, string $scheme): void
+    public static function recordProxy(string $type, string $scheme, string $address = ''): void
     {
-        if (!Cache::add('domain.proxy_seen.' . $type . '.' . $scheme, true, 60)) {
+        if (!Cache::add('domain.proxy_seen.' . $type . '.' . $scheme . '.' . $address, true, 60)) {
             return;
         }
         $seen = self::proxySeen();
-        $seen[$type] = ['scheme' => $scheme, 'at' => now()->toIso8601String()];
+        $seen[$type] = ['scheme' => $scheme, 'address' => $address, 'at' => now()->toIso8601String()];
         AdminSetting::putValue('domain', 'proxy_seen', $seen);
     }
 
-    /** @return array<string, array{scheme: string, at: string}> */
+    /** @return array<string, array{scheme: string, address: string, at: string}> */
     public static function proxySeen(): array
     {
         $seen = json_decode((string) self::get('proxy_seen', '[]'), true);

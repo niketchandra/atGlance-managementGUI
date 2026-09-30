@@ -24,7 +24,10 @@ class EnforceDomainHttps
         // Only requests that came through a proxy (built-in Caddy or a platform
         // load balancer) are redirected; a direct hit on the app port (:8000)
         // is the recovery path and is never redirected.
-        $viaProxy = $request->headers->has('X-Forwarded-For') || $request->headers->has('X-Forwarded-Proto');
+        // An untrusted proxy's X-Forwarded-Proto is ignored, so redirecting it
+        // could loop; it is flagged on the Plugins card instead.
+        $viaProxy = $request->isFromTrustedProxy()
+            && ($request->headers->has('X-Forwarded-For') || $request->headers->has('X-Forwarded-Proto'));
 
         if ($viaProxy
             && !$request->isSecure()

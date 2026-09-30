@@ -544,6 +544,12 @@
 
             @if($dv['plugin_enabled'])
                 <div style="font-size: 13px; margin-bottom: 12px;"><strong>Status:</strong> {{ $dvStatus }}</div>
+                @if(isset($dvSeen['untrusted']))
+                    <div class="ag-alert ag-alert--warning" style="margin-bottom: 12px;">
+                        <span>A proxy at <code>{{ $dvSeen['untrusted']['address'] }}</code> sends X-Forwarded headers, but it is not trusted, so the console ignores them (no HTTPS detection, no redirect).
+                        If it is your load balancer, add its address or subnet to <code>ATGLANCE_TRUSTED_PROXIES</code> in the app environment (for example <code>127.0.0.1,::1,10.0.0.0/8</code>) and restart the app.</span>
+                    </div>
+                @endif
                 @if($dv['https_mode'] === 'custom' && $dv['certificate'] && $dv['certificate']['days_left'] <= 30)
                     <div class="ag-alert {{ $dv['certificate']['days_left'] < 0 ? 'ag-alert--error' : 'ag-alert--warning' }}" style="margin-bottom: 12px;">
                         {{ $dv['certificate']['days_left'] < 0 ? 'Your certificate has expired.' : 'Your certificate expires in ' . $dv['certificate']['days_left'] . ' days.' }}
@@ -560,7 +566,8 @@
                     </ol>
                     <strong>AWS ECS:</strong> ALB listener on 443 with an ACM certificate, forwarding to container port 8000 (route 8002 separately for the CLI). Then choose "Handled by my platform".<br>
                     <strong>Azure Container Apps:</strong> ingress target port 8000, plus a custom domain with a managed certificate. Then choose "Handled by my platform".<br>
-                    <strong>Kubernetes:</strong> an Ingress to service port 8000, with cert-manager for TLS. Then choose "Handled by my platform".
+                    <strong>Kubernetes:</strong> an Ingress to service port 8000, with cert-manager for TLS. Then choose "Handled by my platform".<br>
+                    On these platforms also set <code>ATGLANCE_TRUSTED_PROXIES</code> in the app environment to the load balancer's subnet (for example <code>127.0.0.1,::1,10.0.0.0/8</code>), so the console trusts its X-Forwarded headers.
                 </div>
                 <a class="ag-btn ag-btn--sm" style="margin-top: 12px;" href="{{ route('admin.settings', ['tab' => 'site']) }}">Set the domain on the Site tab</a>
             @endif
