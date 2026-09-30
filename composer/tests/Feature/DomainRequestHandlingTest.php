@@ -28,9 +28,18 @@ class DomainRequestHandlingTest extends TestCase
 
     public function test_domain_over_http_redirects_with_302(): void
     {
-        $this->get('http://ops.eu.acme.com/')
+        $this->withHeaders(['X-Forwarded-For' => '10.0.0.7', 'X-Forwarded-Proto' => 'http'])
+            ->get('http://ops.eu.acme.com/')
             ->assertStatus(302)
             ->assertRedirect('https://ops.eu.acme.com/');
+    }
+
+    public function test_direct_request_to_app_port_is_never_redirected(): void
+    {
+        // http://<domain>:8000 reaches the app without a proxy: the recovery path.
+        $location = (string) $this->get('http://ops.eu.acme.com:8000/')->headers->get('Location');
+
+        $this->assertStringNotContainsString('https://', $location);
     }
 
     public function test_fallback_hosts_are_never_redirected(): void

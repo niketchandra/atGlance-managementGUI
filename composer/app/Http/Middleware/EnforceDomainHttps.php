@@ -9,8 +9,9 @@ use Symfony\Component\HttpFoundation\Response;
 
 /**
  * Session cookie follows the request scheme, and only the configured domain
- * is redirected to HTTPS (302, GET/HEAD only). IPs, localhost and
- * atglance.internal are never redirected, so they always work for recovery.
+ * is redirected to HTTPS (302, GET/HEAD only, through a proxy). IPs,
+ * localhost, atglance.internal and direct hits on :8000 are never
+ * redirected, so they always work for recovery.
  */
 class EnforceDomainHttps
 {
@@ -20,7 +21,13 @@ class EnforceDomainHttps
             config(['session.secure' => $request->isSecure()]);
         }
 
-        if (!$request->isSecure()
+        // Only requests that came through a proxy (built-in Caddy or a platform
+        // load balancer) are redirected; a direct hit on the app port (:8000)
+        // is the recovery path and is never redirected.
+        $viaProxy = $request->headers->has('X-Forwarded-For') || $request->headers->has('X-Forwarded-Proto');
+
+        if ($viaProxy
+            && !$request->isSecure()
             && in_array($request->method(), ['GET', 'HEAD'], true)
             && DomainSettings::pluginEnabled()
             && DomainSettings::httpsOn()) {
