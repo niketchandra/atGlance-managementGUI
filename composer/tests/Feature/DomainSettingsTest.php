@@ -101,6 +101,23 @@ class DomainSettingsTest extends TestCase
         $this->assertSame('ops.acme.com', DomainSettings::domain());
     }
 
+    public function test_https_mode_change_asks_builtin_proxy_to_reload(): void
+    {
+        $marker = storage_path('caddy/reload');
+        @unlink($marker);
+
+        DomainSettings::save('ops.acme.com', 'builtin', '10.0.0.5');
+        $this->assertFileExists($marker);
+
+        unlink($marker);
+        DomainSettings::save('ops.acme.com', 'builtin', '10.0.0.6');
+        $this->assertFileDoesNotExist($marker, 'same mode and domain: no reload');
+
+        DomainSettings::save('ops.acme.com', 'custom', '10.0.0.6');
+        $this->assertFileExists($marker);
+        unlink($marker);
+    }
+
     public function test_record_proxy_keeps_each_type(): void
     {
         DomainSettings::recordProxy('platform', 'https');

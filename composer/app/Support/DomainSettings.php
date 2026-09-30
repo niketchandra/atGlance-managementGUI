@@ -160,6 +160,12 @@ final class DomainSettings
 
     public static function save(string $domain, string $mode, string $serverAddress): void
     {
+        // Caddy serves a certificate it already holds before asking the app, so
+        // a new domain or HTTPS mode needs the built-in proxy restarted.
+        if ($domain !== self::domain() || $mode !== self::httpsMode()) {
+            self::requestProxyReload();
+        }
+
         AdminSetting::putValue('site', 'site_domain_alias', $domain);
         AdminSetting::putValue('site', 'site_domain_alias_ip', $serverAddress);
         AdminSetting::putValue('domain', 'site_https_mode', $mode);
@@ -189,6 +195,16 @@ final class DomainSettings
     public static function builtinProxySeen(): bool
     {
         return isset(self::proxySeen()[self::PROXY_BUILTIN]);
+    }
+
+    /** Touches the marker the entrypoint watches; the built-in proxy restarts within ~5 s. */
+    public static function requestProxyReload(): void
+    {
+        $marker = storage_path('caddy/reload');
+        if (!is_dir(dirname($marker))) {
+            @mkdir(dirname($marker), 0775, true);
+        }
+        @touch($marker);
     }
 
     /** Root certificate of Caddy's internal CA (Caddy storage is /app/storage/caddy). */
