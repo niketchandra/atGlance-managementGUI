@@ -304,7 +304,7 @@ Keep the same EFS volume and mount point. All three must share `/app/storage`.
 
 Your servers set the CLI management URL to `https://<your-domain>:8002`.
 
-Continue with [After the install](#after-the-install). In the setup wizard, enter your public domain and choose HTTPS.
+Continue with [After the install](#after-the-install). After the install, set your public domain in Admin Settings > Plugins > Custom Domain & HTTPS.
 
 #### Upgrade on ECS
 
@@ -394,10 +394,12 @@ Open the app URL in a browser: `http://<server-ip>:8000` on a VM, or `https://<y
 
 - the organization name
 - your super admin account (email and password)
-- the IP address and, optionally, the domain, and whether it uses HTTPS
-- a licence key, or "add later"
+- the IP address
+- a licence key, or "add later". A key that atglance.live shows as "In Use" is refused, even on a reinstall of the same server: deactivate it there first, or create a new key.
 
-It ends on a summary page. Log in with the super admin account you created.
+It ends on a summary page (`/install/info`). Save the details it shows: the page is only available until the first login. After that it redirects to the login page, and the stored super admin password is removed. Log in with the super admin account you created.
+
+A custom domain and HTTPS are set up after the install: see [Custom domain and HTTPS](docs/custom-domain.md).
 
 ### Back up the app key
 

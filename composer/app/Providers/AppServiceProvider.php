@@ -28,6 +28,12 @@ class AppServiceProvider extends ServiceProvider
     {
         \App\Support\DomainSettings::applyRuntimeAppUrl();
 
+        // The first successful login (password or SSO) closes /install/info.
+        \Illuminate\Support\Facades\Event::listen(
+            \Illuminate\Auth\Events\Login::class,
+            fn () => \App\Support\InstallationState::markFirstLogin()
+        );
+
         $defaultLogoUrl = asset('branding/atglance-logo.png');
         $defaultFaviconUrl = asset('branding/favicon.ico');
 

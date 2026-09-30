@@ -49,6 +49,11 @@
 
             <p class="text-sm text-slate-600 sm:text-base">Your AtGlance application is ready. Please use the details below to sign in and continue setup.</p>
 
+            <div class="mt-4 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900" role="note">
+                <p class="font-bold">Note: This page is only available until the first login.</p>
+                <p class="mt-1">Save these details now, somewhere safe. After anyone signs in for the first time, this page closes and redirects to the login page, and the password shown here is removed from the server.</p>
+            </div>
+
             <div class="mt-6 grid grid-cols-1 gap-4 text-sm md:grid-cols-2">
                 <div class="rounded-xl border border-cccccc bg-white p-4">
                     <p class="font-semibold text-slate-800">Organization Name</p>

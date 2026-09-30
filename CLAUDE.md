@@ -107,7 +107,10 @@ documented elsewhere:
   redirects to `install.show`. The root `/` route does the same check
   manually.
 - `InstallerController` (`GET/POST /install`, `GET /install/info`): renders
-  the setup form (org name, admin name/email/password, domain, HTTPS toggle)
+  the setup form (org name, admin email/password, IP, licence; the domain and
+  HTTPS are set after install, see `docs/custom-domain.md`). `/install/info`
+  is available only until the first login (`InstallationState::markFirstLogin()`
+  on the `Login` event also removes the stored password), then redirects home
   → on submit, runs `migrate --force`, checks for a duplicate admin email,
   stashes form values into runtime `config('installer.*')`
   (`config/installer.php`), runs `db:seed --class=InstallationSeeder --force`,

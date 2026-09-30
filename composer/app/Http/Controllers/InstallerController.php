@@ -179,6 +179,11 @@ class InstallerController extends Controller
             return redirect()->route('install.show');
         }
 
+        // The page shows the generated credentials; it closes after the first login.
+        if (!InstallationState::isInfoAvailable()) {
+            return redirect()->route('home');
+        }
+
         return view('install.info', [
             'installation' => InstallationState::getData(),
         ]);
