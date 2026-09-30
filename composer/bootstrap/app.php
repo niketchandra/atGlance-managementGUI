@@ -16,6 +16,24 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->append(\App\Http\Middleware\ActivityLogger::class);
 
+        // Built-in proxy (127.0.0.1), Docker networks and private load balancers.
+        // Override with ATGLANCE_TRUSTED_PROXIES (comma-separated).
+        $middleware->trustProxies(
+            at: array_values(array_filter(array_map('trim', explode(',', (string) env(
+                'ATGLANCE_TRUSTED_PROXIES',
+                '127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16'
+            ))))),
+            headers: \Illuminate\Http\Request::HEADER_X_FORWARDED_FOR
+                | \Illuminate\Http\Request::HEADER_X_FORWARDED_HOST
+                | \Illuminate\Http\Request::HEADER_X_FORWARDED_PORT
+                | \Illuminate\Http\Request::HEADER_X_FORWARDED_PROTO,
+        );
+
+        $middleware->web(append: [
+            \App\Http\Middleware\DetectFrontProxy::class,
+            \App\Http\Middleware\EnforceDomainHttps::class,
+        ]);
+
         $middleware->alias([
             'auth.session' => \App\Http\Middleware\AuthenticateSession::class,
             'auth.pat' => \App\Http\Middleware\AuthenticatePatToken::class,
