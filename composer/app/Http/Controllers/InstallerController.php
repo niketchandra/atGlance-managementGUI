@@ -42,7 +42,8 @@ class InstallerController extends Controller
     }
 
     /**
-     * "Verify" button on the installer: checks the key before the form is submitted.
+     * "Verify" button on the installer: checks the key only. The licence is
+     * activated for this console and organisation when the form is submitted.
      */
     public function verifyLicense(Request $request, LicenseClient $client): JsonResponse
     {
@@ -104,19 +105,20 @@ class InstallerController extends Controller
             'license_key.required_unless' => 'Enter your licence key, or tick "I\'ll add later".',
         ]);
 
-        // The key is verified again here; the browser-side check is only a convenience.
+        $organizationName = trim((string) $validated['organization_name']);
+
+        // Links the licence to this console and organisation (marks it In Use on atglance.live).
         $licenseKey = $request->input('license_later') === '1' ? '' : trim((string) ($validated['license_key'] ?? ''));
         $licenseResult = null;
         if ($licenseKey !== '') {
-            $licenseResult = $licenseClient->verify($licenseKey);
+            $licenseResult = $licenseClient->activate($licenseKey, $organizationName);
             if (!$licenseResult['ok']) {
                 return back()
                     ->withInput($request->except(['superadmin_password', 'superadmin_password_confirmation']))
-                    ->withErrors(['license_key' => 'Licence verification failed: ' . $licenseResult['message']]);
+                    ->withErrors(['license_key' => 'Licence activation failed: ' . $licenseResult['message']]);
             }
         }
 
-        $organizationName = trim((string) $validated['organization_name']);
         $appIpAddress = strtolower(trim((string) $validated['app_ip']));
         $appDomainAlias = strtolower(trim((string) ($validated['app_domain'] ?? '')));
         $httpsEnabled = $validated['use_https'] === '1';

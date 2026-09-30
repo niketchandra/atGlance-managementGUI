@@ -36,8 +36,10 @@ return [
     ],
 
     'atglance_license' => [
-        // Licence verification endpoint on atglance.live, used by the installer and Admin Settings > Licence.
+        // Licence endpoints on atglance.live. verify: installer "Verify" button (check only).
+        // activate: installer submit and Admin Settings > Licence (links the licence to this console and org).
         'verify_url' => env('ATGLANCE_LICENSE_VERIFY_URL', 'https://atglance.live/api/licenses/verify'),
+        'activate_url' => env('ATGLANCE_LICENSE_ACTIVATE_URL', 'https://atglance.live/api/licenses/activate'),
         'portal_url' => env('ATGLANCE_LICENSE_PORTAL_URL', 'https://atglance.live'),
     ],
 

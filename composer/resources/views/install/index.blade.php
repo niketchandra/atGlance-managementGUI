@@ -339,7 +339,7 @@
                             if (data.name) { parts.push('Licence: ' + data.name); }
                             if (data.plan) { parts.push('Plan: ' + data.plan); }
                             if (data.expires_at) { parts.push('Expires: ' + data.expires_at); }
-                            showResult(true, 'Licence verified.' + (parts.length ? ' ' + parts.join(' · ') : ''));
+                            showResult(true, (data.message || 'Licence is valid.') + (parts.length ? ' ' + parts.join(' · ') : ''));
                         } else {
                             showResult(false, data.message || 'Licence verification failed.');
                         }

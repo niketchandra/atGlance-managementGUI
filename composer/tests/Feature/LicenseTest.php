@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\AdminSetting;
+use App\Models\Organization;
 use App\Models\PatToken;
 use App\Models\User;
 use App\Services\LicenseClient;
@@ -20,6 +21,7 @@ class LicenseTest extends TestCase
 
     private const KEY = 'atg_test_licence_key_123456';
     private const VERIFY_URL = 'https://atglance.live/api/licenses/verify';
+    private const ACTIVATE_URL = 'https://atglance.live/api/licenses/activate';
 
     protected function setUp(): void
     {
@@ -39,6 +41,11 @@ class LicenseTest extends TestCase
         Http::fake([self::VERIFY_URL => Http::response($body, $status)]);
     }
 
+    private function fakeActivate(array $body, int $status = 201): void
+    {
+        Http::fake([self::ACTIVATE_URL => Http::response($body, $status)]);
+    }
+
     private function inUseBody(): array
     {
         return [
@@ -47,25 +54,63 @@ class LicenseTest extends TestCase
             'user' => ['id' => '1', 'email' => 'ops@company.com', 'name' => 'ops'],
             'license' => ['name' => 'Ops licence'],
             'plan' => 'free',
-            'console' => ['instance_id' => 'abc', 'hostname' => 'ops-01', 'version' => '1.0.0'],
+            'console' => ['instance_id' => 'abc', 'org_name' => 'Acme Corp', 'hostname' => 'ops-01', 'version' => '1.0.0'],
         ];
     }
 
-    public function test_client_accepts_in_use_and_reads_details(): void
+    public function test_verify_only_checks_the_key(): void
     {
-        $this->fakeVerify($this->inUseBody(), 201);
+        $this->fakeVerify(['valid' => true, 'status' => 'available', 'license' => ['name' => 'Ops licence'], 'plan' => 'free']);
 
         $result = app(LicenseClient::class)->verify(self::KEY);
 
         $this->assertTrue($result['ok']);
+        $this->assertSame('available', $result['status']);
+        $this->assertSame('Licence is valid.', $result['message']);
+        $this->assertSame('Ops licence', $result['details']['name']);
+        Http::assertSent(fn (HttpRequest $request) => $request->url() === self::VERIFY_URL
+            && $request->hasHeader('Authorization', 'Bearer ' . self::KEY)
+            && $request->hasHeader('Accept', 'application/json')
+            && $request->data() === []);
+        Http::assertNotSent(fn (HttpRequest $request) => $request->url() === self::ACTIVATE_URL);
+    }
+
+    public function test_verify_names_the_org_using_the_licence(): void
+    {
+        $this->fakeVerify($this->inUseBody());
+
+        $result = app(LicenseClient::class)->verify(self::KEY);
+
+        $this->assertTrue($result['ok']);
+        $this->assertSame('Licence is valid. It is in use by "Acme Corp".', $result['message']);
+    }
+
+    public function test_activate_sends_org_and_console_identity(): void
+    {
+        $this->fakeActivate($this->inUseBody(), 201);
+
+        $result = app(LicenseClient::class)->activate(self::KEY, 'Acme Corp');
+
+        $this->assertTrue($result['ok']);
+        $this->assertSame('in_use', $result['status']);
         $this->assertSame('Ops licence', $result['details']['name']);
         $this->assertSame('free', $result['details']['plan']);
         $this->assertSame('ops@company.com', $result['details']['extra']['user.email']);
         $this->assertSame('ops-01', $result['details']['extra']['console.hostname']);
-        Http::assertSent(fn (HttpRequest $request) => $request->hasHeader('Authorization', 'Bearer ' . self::KEY)
+        Http::assertSent(fn (HttpRequest $request) => $request->url() === self::ACTIVATE_URL
+            && $request->hasHeader('Authorization', 'Bearer ' . self::KEY)
             && $request->hasHeader('Accept', 'application/json')
+            && $request['org_name'] === 'Acme Corp'
             && $request['instance_id'] === License::instanceId()
             && isset($request['hostname'], $request['version']));
+    }
+
+    public function test_activate_requires_org_name(): void
+    {
+        $result = app(LicenseClient::class)->activate(self::KEY, '  ');
+
+        $this->assertFalse($result['ok']);
+        Http::assertNothingSent();
     }
 
     public function test_instance_id_is_stable(): void
@@ -76,9 +121,9 @@ class LicenseTest extends TestCase
 
     public function test_client_explains_licence_used_by_another_console(): void
     {
-        $this->fakeVerify(['valid' => false, 'status' => 'in_use_elsewhere'], 409);
+        $this->fakeActivate(['valid' => false, 'status' => 'in_use_elsewhere'], 409);
 
-        $result = app(LicenseClient::class)->verify(self::KEY);
+        $result = app(LicenseClient::class)->activate(self::KEY, 'Acme Corp');
 
         $this->assertFalse($result['ok']);
         $this->assertStringContainsString('another AtGlance console', $result['message']);
@@ -104,16 +149,19 @@ class LicenseTest extends TestCase
         $this->assertSame('The licence key is wrong or has been revoked.', $result['message']);
     }
 
-    public function test_admin_saves_verified_licence(): void
+    public function test_admin_saves_activated_licence(): void
     {
+        Organization::query()->updateOrCreate(['id' => 200], ['name' => 'Acme Corp']);
         $this->actingAsRole(100);
-        $this->fakeVerify($this->inUseBody(), 201);
+        $this->fakeActivate($this->inUseBody(), 201);
 
         $this->post(route('admin.settings.licence'), ['license_key' => self::KEY])
             ->assertRedirect(route('admin.settings', ['tab' => 'licence']))
             ->assertSessionHasNoErrors();
 
         $this->assertTrue(License::isActive());
+        Http::assertSent(fn (HttpRequest $request) => $request->url() === self::ACTIVATE_URL
+            && $request['org_name'] === 'Acme Corp');
         $summary = License::summary();
         $this->assertSame('Ops licence', $summary['name']);
         $this->assertSame('free', $summary['plan']);
@@ -128,10 +176,10 @@ class LicenseTest extends TestCase
             ->assertSee('ops@company.com');
     }
 
-    public function test_failed_verification_does_not_save(): void
+    public function test_failed_activation_does_not_save(): void
     {
         $this->actingAsRole(101);
-        $this->fakeVerify(['valid' => false, 'status' => 'in_use_elsewhere'], 409);
+        $this->fakeActivate(['valid' => false, 'status' => 'in_use_elsewhere'], 409);
 
         $this->post(route('admin.settings.licence'), ['license_key' => self::KEY])
             ->assertSessionHasErrors('license_key');
