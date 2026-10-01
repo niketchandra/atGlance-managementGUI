@@ -66,6 +66,40 @@ if [ "${ATGLANCE_ROLE:-app}" = "app" ] && [ "${ATGLANCE_AUTO_MIGRATE:-true}" = "
     done
 fi
 
+# Built-in proxy (opt-in, docker-compose.domain.yml). A failure here must not
+# stop the console: it keeps serving on :8000.
+# The app touches storage/caddy/reload when the domain or HTTPS mode changes
+# (Caddy serves a certificate it already holds before asking the app); the
+# watcher below restarts Caddy within ~5 s. Caddy's admin API is off, so it is
+# stopped through its pid file.
+start_builtin_proxy() {
+    caddy start --config /etc/caddy/Caddyfile --adapter caddyfile --pidfile /tmp/caddy.pid >/dev/null 2>&1
+}
+
+if [ "${ATGLANCE_ROLE:-app}" = "app" ] && [ "${ATGLANCE_PROXY:-}" = "builtin" ]; then
+    mkdir -p storage/caddy
+    if start_builtin_proxy; then
+        echo "atglance: built-in proxy started on :80 and :443"
+        (
+            last=$(stat -c %Y storage/caddy/reload 2>/dev/null || echo none)
+            while sleep 5; do
+                now=$(stat -c %Y storage/caddy/reload 2>/dev/null || echo none)
+                [ "$now" = "$last" ] && continue
+                last=$now
+                kill "$(cat /tmp/caddy.pid 2>/dev/null)" 2>/dev/null || true
+                sleep 1
+                if start_builtin_proxy; then
+                    echo "atglance: built-in proxy reloaded"
+                else
+                    echo "atglance: built-in proxy failed to restart; the console stays on :8000" >&2
+                fi
+            done
+        ) &
+    else
+        echo "atglance: built-in proxy failed to start; the console stays on :8000" >&2
+    fi
+fi
+
 chmod -R ug+rwX storage bootstrap/cache 2>/dev/null || true
 
 exec "$@"

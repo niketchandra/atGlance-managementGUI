@@ -71,26 +71,27 @@ class SiteConfigurationTest extends TestCase
         $this->saveSite(['site_support_request_url' => 'javascript:alert(1)'])->assertSessionHasErrors('site_support_request_url');
     }
 
-    public function test_alias_ip_saved_by_the_installer_with_a_port_is_accepted(): void
+    public function test_site_logo_is_saved(): void
     {
         $this->actingAsRole(101);
 
-        // The installer stores "IP:port"; the site form sends it back unchanged.
         $this->saveSite([
-            'site_domain_alias_ip' => '127.0.0.1:8000',
             'site_logo' => UploadedFile::fake()->createWithContent('logo.png', base64_decode(self::PNG_BASE64)),
         ])->assertSessionHasNoErrors();
 
-        $this->assertSame('127.0.0.1:8000', AdminSetting::getValue('site_domain_alias_ip'));
         $this->assertNotSame('', (string) AdminSetting::getValue('site_logo_path'));
     }
 
-    public function test_alias_ip_must_still_be_an_ip(): void
+    public function test_site_form_no_longer_changes_domain_settings(): void
     {
         $this->actingAsRole(101);
+        AdminSetting::putValue('site', 'site_domain_alias_ip', '10.0.0.5:8000');
 
-        $this->saveSite(['site_domain_alias_ip' => 'not-an-ip'])->assertSessionHasErrors('site_domain_alias_ip');
-        $this->saveSite(['site_domain_alias_ip' => '10.0.0.1:70000'])->assertSessionHasErrors('site_domain_alias_ip');
+        // Domain and server IP moved to the Access URL form (DomainSettingsController).
+        $this->saveSite(['site_domain_alias_ip' => 'not-an-ip', 'site_domain_alias' => 'x.com'])->assertSessionHasNoErrors();
+
+        $this->assertSame('10.0.0.5:8000', AdminSetting::getValue('site_domain_alias_ip'));
+        $this->assertNull(AdminSetting::getValue('site_domain_alias'));
     }
 
     public function test_default_branding_uses_atglance_wordmark_and_icon_favicon(): void

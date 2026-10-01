@@ -1,0 +1,39 @@
+# Built-in proxy for the AtGlance console (VM installs only; opt-in through
+# docker-compose.domain.yml, which sets ATGLANCE_PROXY=builtin). The domain,
+# HTTPS mode and certificate come from the app at request time:
+#   ask             -> /api/internal/domain/tls-allowed
+#   get_certificate -> /api/internal/domain/certificate (own certificate)
+# See docs/custom-domain.md.
+{
+	admin off
+	# The app decides the HTTP->HTTPS redirect (configured domain only), so
+	# plain-HTTP mode and the fallback names keep working on port 80.
+	auto_https disable_redirects
+	storage file_system /app/storage/caddy
+	on_demand_tls {
+		ask http://127.0.0.1:8000/api/internal/domain/tls-allowed
+	}
+}
+
+(atglance_upstream) {
+	# Internal endpoints are for Caddy only, never for visitors.
+	@internal path /api/internal/*
+	respond @internal 404
+	reverse_proxy 127.0.0.1:8000 {
+		header_up X-AtGlance-Proxy builtin
+	}
+}
+
+:80 {
+	import atglance_upstream
+}
+
+:443 {
+	tls {
+		get_certificate http http://127.0.0.1:8000/api/internal/domain/certificate
+		on_demand
+		issuer acme
+		issuer internal
+	}
+	import atglance_upstream
+}

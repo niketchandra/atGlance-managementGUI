@@ -157,6 +157,14 @@ else
 fi
 ok "docker-compose.yml ready"
 
+# Opt-in override for custom domains (not used by the install).
+if curl -fsSL "$REPO_RAW/docker-compose.domain.yml" -o docker-compose.domain.yml.new; then
+    mv docker-compose.domain.yml.new docker-compose.domain.yml
+else
+    rm -f docker-compose.domain.yml.new
+    warn "Could not download docker-compose.domain.yml (only needed for a custom domain later)."
+fi
+
 if [ -f .env ]; then
     ok "Keeping existing .env (passwords unchanged)"
     set_env() {

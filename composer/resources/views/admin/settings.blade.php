@@ -62,22 +62,145 @@
                 <div style="font-size: 14px; color: var(--ag-text); font-weight: 600;">{{ $localStorageBaseUrl }}</div>
             </div>
             <div>
-                <div style="font-size: 13px; color: var(--ag-subtle); margin-bottom: 4px;">Domain Alias</div>
-                <div style="font-size: 14px; color: var(--ag-text); font-weight: 600;">{{ !empty($siteDomainAlias) ? $siteDomainAlias : 'Not configured' }}</div>
+                <div style="font-size: 13px; color: var(--ag-subtle); margin-bottom: 4px;">Access URL</div>
+                <div style="font-size: 14px; color: var(--ag-text); font-weight: 600;">{{ $domainView['plugin_enabled'] && $domainView['access_url'] !== '' ? $domainView['access_url'] : 'Not configured' }}</div>
             </div>
             <div>
-                <div style="font-size: 13px; color: var(--ag-subtle); margin-bottom: 4px;">Alias IP Address</div>
-                <div style="font-size: 14px; color: var(--ag-text); font-weight: 600;">{{ !empty($siteDomainAliasIp) ? $siteDomainAliasIp : 'Not configured' }}</div>
+                <div style="font-size: 13px; color: var(--ag-subtle); margin-bottom: 4px;">Server IP</div>
+                <div style="font-size: 14px; color: var(--ag-text); font-weight: 600;">{{ $domainView['server_address'] !== '' ? $domainView['server_address'] : 'Not configured' }}</div>
             </div>
             <div>
                 <div style="font-size: 13px; color: var(--ag-subtle); margin-bottom: 4px;">HTTPS</div>
-                <div style="font-size: 14px; color: var(--ag-text); font-weight: 600;">{{ ($siteHttpsEnabled ?? false) ? 'Enabled' : 'Disabled' }}</div>
+                <div style="font-size: 14px; color: var(--ag-text); font-weight: 600;">{{ ['off' => 'Off', 'builtin' => 'Automatic certificate', 'custom' => 'Own certificate', 'platform' => 'Handled by platform'][$domainView['https_mode']] }}</div>
             </div>
         </div>
     </div>
 
     <div id="tab-site" class="settings-tab-content ag-card" style="display:{{ $activeTab === 'site' ? 'block' : 'none' }}; padding:24px;">
         <h2 style="font-size: 18px; margin-bottom: 12px;">Site Configuration</h2>
+        @php
+            $dv = $domainView;
+            $dvCanEdit = (int) auth()->user()->rbac_id === 100;
+            $dvLocked = !$dv['plugin_enabled'] || !$dvCanEdit;
+            $dvMode = old('https_mode', $dv['https_mode']);
+            // A selected option that is also disabled is not submitted; fall back to Off.
+            if (in_array($dvMode, ['builtin', 'custom'], true) && !$dv['builtin_seen']) {
+                $dvMode = 'off';
+            }
+        @endphp
+        <div class="ag-card ag-card--flat" style="margin-bottom: 18px;">
+            <h3 style="font-size: 15px; font-weight: 500; margin-bottom: 6px;">Access URL</h3>
+            <p style="font-size: 13px; color: var(--ag-muted); margin-bottom: 10px;">
+                Open the console on your own domain or subdomain, with or without HTTPS.
+                <strong>http://{{ $dv['server_ip'] !== '' ? $dv['server_ip'] : 'server-IP' }}:8000</strong> and
+                <strong>atglance.internal</strong> always keep working, so a wrong setting never locks you out.
+                Each address has its own login session.
+            </p>
+            @if(!$dv['plugin_enabled'])
+                <div class="ag-alert ag-alert--warning" style="margin-bottom: 10px;">
+                    <i class="fas fa-lock"></i>
+                    <span>Enable Custom Domain &amp; HTTPS in the Plugins tab to set a domain. <a href="{{ route('admin.settings', ['tab' => 'plugins']) }}" style="text-decoration: underline;">Open Plugins</a></span>
+                </div>
+            @elseif(!$dvCanEdit)
+                <p style="font-size: 12px; color: var(--ag-muted); margin-bottom: 10px;">Only the super admin can change this.</p>
+            @endif
+
+            <form method="POST" action="{{ route('admin.settings.domain') }}" enctype="multipart/form-data">
+                @csrf
+                <fieldset id="domain-fieldset" {{ $dvLocked ? 'disabled' : '' }} style="border: 0; padding: 0; margin: 0; {{ $dvLocked ? 'opacity: .55;' : '' }}">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 10px;">
+                        <div>
+                            <label class="ag-label" for="dv-domain">Domain</label>
+                            <input class="ag-input" id="dv-domain" type="text" name="domain" value="{{ old('domain', $dv['domain']) }}" placeholder="atglance.internal" autocomplete="off" spellcheck="false">
+                            <div style="font-size: 12px; color: var(--ag-muted); margin-top: 4px;">Any domain or subdomain, e.g. atglance.acme.com. No http:// and no port.</div>
+                            @if($dv['local_warning'])
+                                <div style="font-size: 12px; color: var(--ag-warning); margin-top: 4px;"><code>.local</code> is reserved for mDNS and can resolve slowly on macOS and Linux. Use <code>.internal</code> or <code>.lan</code> instead.</div>
+                            @endif
+                        </div>
+                        <div>
+                            <label class="ag-label" for="dv-ip">Server IP</label>
+                            <input class="ag-input" id="dv-ip" type="text" name="server_ip" value="{{ old('server_ip', $dv['server_address']) }}" placeholder="192.168.1.10">
+                            <div style="font-size: 12px; color: var(--ag-muted); margin-top: 4px;">The address users' machines reach this server on. Used for the DNS record.</div>
+                        </div>
+                    </div>
+
+                    <label class="ag-label" for="dv-mode">HTTPS</label>
+                    <select class="ag-select" id="dv-mode" name="https_mode" style="margin-bottom: 6px;">
+                        <option value="off" {{ $dvMode === 'off' ? 'selected' : '' }}>Off (plain http://)</option>
+                        <option value="builtin" {{ $dvMode === 'builtin' ? 'selected' : '' }} {{ $dv['builtin_seen'] ? '' : 'disabled' }}>Automatic certificate (built-in proxy)</option>
+                        <option value="custom" {{ $dvMode === 'custom' ? 'selected' : '' }} {{ $dv['builtin_seen'] ? '' : 'disabled' }}>Use my own certificate (built-in proxy)</option>
+                        <option value="platform" {{ $dvMode === 'platform' ? 'selected' : '' }}>Handled by my platform (load balancer / ingress)</option>
+                    </select>
+                    @unless($dv['builtin_seen'])
+                        <div style="font-size: 12px; color: var(--ag-muted); margin-bottom: 10px;">The built-in options unlock after the built-in proxy is detected (Plugins tab).</div>
+                    @endunless
+
+                    <div id="dv-custom" style="{{ $dvMode === 'custom' ? '' : 'display:none;' }} margin: 10px 0; padding: 12px; border-radius: 12px; background: var(--ag-card);">
+                        @if($dv['certificate'])
+                            @php $dvCert = $dv['certificate']; @endphp
+                            <div style="font-size: 13px; margin-bottom: 8px;">
+                                <strong>Current certificate:</strong> {{ implode(', ', $dvCert['names']) }} &middot; issuer {{ $dvCert['issuer'] }} &middot; expires {{ $dvCert['not_after'] }}
+                                <div style="font-size: 11px; color: var(--ag-muted); word-break: break-all;">SHA-256 {{ $dvCert['fingerprint'] }}</div>
+                            </div>
+                            @if($dvCert['days_left'] < 0)
+                                <div class="ag-alert ag-alert--error" style="margin-bottom: 8px;">The certificate has expired. Browsers show a warning until you upload a new one.</div>
+                            @elseif($dvCert['days_left'] <= 30)
+                                <div class="ag-alert ag-alert--warning" style="margin-bottom: 8px;">The certificate expires in {{ $dvCert['days_left'] }} days. Upload the renewed certificate.</div>
+                            @endif
+                        @endif
+                        <div style="font-size: 13px; margin-bottom: 6px;">Upload a PEM certificate (with its chain) and private key, <strong>or</strong> a .pfx/.p12 file.</div>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                            <div><label class="ag-label">Certificate (.crt/.pem)</label><input type="file" name="cert_file" accept=".crt,.pem,.cer"></div>
+                            <div><label class="ag-label">Private key (.key/.pem)</label><input type="file" name="key_file" accept=".key,.pem"></div>
+                            <div><label class="ag-label">Key passphrase (if any)</label><input class="ag-input" type="password" name="key_passphrase" autocomplete="off"></div>
+                            <div></div>
+                            <div><label class="ag-label">Or .pfx / .p12</label><input type="file" name="pfx_file" accept=".pfx,.p12"></div>
+                            <div><label class="ag-label">.pfx password</label><input class="ag-input" type="password" name="pfx_password" autocomplete="off"></div>
+                        </div>
+                    </div>
+
+                    <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px;">
+                        <button class="ag-btn" type="submit">Save Access URL</button>
+                        <button class="ag-btn ag-btn--ghost" type="button" id="dv-check">Check DNS</button>
+                    </div>
+                    <p id="dv-check-result" class="hidden" style="font-size: 13px; margin-top: 8px;" role="status"></p>
+                </fieldset>
+            </form>
+
+            @if($dv['certificate'] && $dvCanEdit)
+                <form method="POST" action="{{ route('admin.settings.domain.certificate.remove') }}" style="margin-top: 8px;" onsubmit="return confirm('Remove the uploaded certificate? HTTPS for the domain turns off.');">
+                    @csrf
+                    @method('DELETE')
+                    <button class="ag-btn ag-btn--danger ag-btn--sm" type="submit">Remove certificate</button>
+                </form>
+            @endif
+
+            @if($dv['server_ip'] !== '')
+                <div style="margin-top: 14px; padding: 12px; border-radius: 12px; background: var(--ag-card); font-size: 13px; line-height: 1.6;">
+                    @if($dv['access_url'] !== '')
+                        <div><strong>Access URL:</strong> {{ $dv['access_url'] }}</div>
+                        <div><strong>DNS record</strong> (ask your DNS admin): <code>{{ $dv['dns_record'] }}</code></div>
+                    @endif
+                    <div><strong>Test on one machine</strong>: add <code>{{ $dv['hosts_line'] }}</code> to the hosts file
+                        (Windows <code>C:\Windows\System32\drivers\etc\hosts</code>, macOS/Linux <code>/etc/hosts</code>).</div>
+                    @if($dv['https_mode'] === 'builtin')
+                        <div style="margin-top: 6px;">
+                            <strong>Private names</strong> (like <code>.internal</code>) get a certificate from the built-in CA. Trust it once on each machine:
+                            @if($dv['ca_available'])
+                                <a href="{{ route('admin.settings.domain.ca') }}" style="text-decoration: underline;">Download CA certificate</a>.
+                            @else
+                                it appears here after the first HTTPS visit.
+                            @endif
+                            Windows: double-click &rsaquo; Install &rsaquo; Local Machine &rsaquo; "Trusted Root Certification Authorities".
+                            macOS: open in Keychain Access &rsaquo; System &rsaquo; set to "Always Trust".
+                            Linux: copy to <code>/usr/local/share/ca-certificates/</code> and run <code>sudo update-ca-certificates</code>.
+                            Firefox: Settings &rsaquo; Certificates &rsaquo; Import.
+                        </div>
+                    @endif
+                </div>
+            @endif
+        </div>
+
         <form method="POST" action="{{ route('admin.settings.site', ['tab' => 'site']) }}" enctype="multipart/form-data">
             @csrf
             <h3 style="font-size: 15px; font-weight: 500; margin-bottom: 8px;">Organization</h3>
@@ -105,42 +228,6 @@
             <div style="margin-bottom: 12px;">
                 <label class="ag-label">Site Description</label>
                 <textarea class="ag-textarea" name="site_description" rows="3" style="width: 100%;">{{ old('site_description', $siteDescription) }}</textarea>
-            </div>
-
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 12px;">
-                <div>
-                    <label class="ag-label">Domain Alias</label>
-                    <input class="ag-input" type="text" name="site_domain_alias" value="{{ old('site_domain_alias', $siteDomainAlias ?? '') }}" placeholder="api.example.com" style="width: 100%;">
-                </div>
-                <div>
-                    <label class="ag-label">Application IP (auto-fetched)</label>
-                    <input class="ag-input" type="text" value="{{ old('site_domain_alias_ip', $siteDomainAliasIp ?? '') }}" readonly style="width: 100%; color: var(--ag-subtle);">
-                    <input type="hidden" name="site_domain_alias_ip" value="{{ old('site_domain_alias_ip', $siteDomainAliasIp ?? '') }}">
-                </div>
-            </div>
-            <p style="font-size: 12px; color: var(--ag-muted); margin: -4px 0 12px 0;">Enter only the alias domain. The application IP is detected automatically and used for mapping.</p>
-
-            <div style="margin-bottom: 12px;">
-                <input type="hidden" name="site_https_enabled" value="0">
-                <label style="display: flex; align-items: center; gap: 8px;">
-                    <input type="checkbox" name="site_https_enabled" value="1" {{ old('site_https_enabled', ($siteHttpsEnabled ?? false) ? '1' : '0') === '1' ? 'checked' : '' }}>
-                    <span>Enable HTTPS</span>
-                </label>
-                <div style="font-size: 12px; color: var(--ag-muted); margin-top: 6px;">Use this toggle to mark whether this alias should be served over HTTPS.</div>
-            </div>
-
-            <div style="margin-bottom: 14px; padding: 10px; border-radius: 12px; background: var(--ag-surface); color: var(--ag-subtle); font-size: 13px; line-height: 1.5;">
-                <strong>DNS Instructions for Super Admin</strong>
-                <br>
-                1. Create an <strong>A record</strong> for the alias host (for example, <strong>api</strong>) and point it to the configured IP address.
-                <br>
-                2. If you need root domain mapping, set an <strong>A record</strong> for <strong>@</strong> to the same IP.
-                <br>
-                3. If needed, add a <strong>CNAME record</strong> for <strong>www</strong> that points to the alias host.
-                <br>
-                4. Keep TTL low during rollout (for example, 300 seconds), then increase after verification.
-                <br>
-                5. When HTTPS is enabled, ensure a valid TLS certificate is installed for the alias domain before switching traffic.
             </div>
 
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 12px;">
@@ -351,6 +438,17 @@
             </div>
             <button class="ag-btn" type="submit">Save Email Settings</button>
         </form>
+
+        <div class="ag-card ag-card--flat" style="margin-top: 18px;">
+            <h3 style="font-size: 15px; font-weight: 500; margin-bottom: 6px;">Send test email</h3>
+            <p style="font-size: 13px; color: var(--ag-muted); margin-bottom: 10px;">Sends a test message with the saved settings above, the same way alerts are sent. Save your changes first.</p>
+            <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+                <label class="ag-label" for="mail-test-recipient" style="margin: 0;">Send to</label>
+                <input class="ag-input" id="mail-test-recipient" type="email" value="{{ auth()->user()->email }}" style="flex: 1; min-width: 220px;">
+                <button class="ag-btn ag-btn--ghost" type="button" id="mail-test-send"><i class="fas fa-paper-plane"></i> Send test email</button>
+            </div>
+            <p id="mail-test-result" class="hidden" style="font-size: 13px; margin-top: 8px; word-break: break-word;" role="status"></p>
+        </div>
     </div>
 
     <div id="tab-migration" class="settings-tab-content ag-card" style="display:{{ $activeTab === 'migration' ? 'block' : 'none' }}; padding:24px;">
@@ -430,7 +528,65 @@
 
     <div id="tab-plugins" class="settings-tab-content ag-card" style="display:{{ $activeTab === 'plugins' ? 'block' : 'none' }}; padding:24px;">
         <h2 style="font-size: 18px; margin-bottom: 8px;">Plugins</h2>
-        <p style="color: var(--ag-muted);">Coming Soon</p>
+        <p style="font-size: 13px; color: var(--ag-muted);">Optional features. Each one is off until you enable it.</p>
+        @php
+            $dv = $domainView;
+            $dvCanEdit = (int) auth()->user()->rbac_id === 100;
+            $dvSeen = $dv['proxy_seen'];
+            $dvStatus = isset($dvSeen['builtin'])
+                ? 'Built-in proxy detected (' . strtoupper($dvSeen['builtin']['scheme']) . ')'
+                : (isset($dvSeen['platform']) ? 'Platform proxy detected (' . strtoupper($dvSeen['platform']['scheme']) . ')' : 'Not detected yet. Open the console through the proxy once to confirm.');
+        @endphp
+        <div class="ag-card" style="margin-top: 12px;">
+            <div class="ag-card-header">
+                <span class="ag-card-icon"><i class="fas fa-globe"></i></span>
+                <h3 class="ag-card-title">Custom Domain &amp; HTTPS</h3>
+                <span class="ag-badge {{ $dv['plugin_enabled'] ? 'ag-badge--success' : '' }}" style="margin-left: auto;">{{ $dv['plugin_enabled'] ? 'Enabled' : 'Disabled' }}</span>
+            </div>
+            <p style="font-size: 13px; color: var(--ag-subtle); margin-bottom: 10px;">
+                Open the console on your own domain, e.g. <code>https://atglance.acme.com</code>. Nothing changes on the server until you follow the steps below.
+                <code>http://server-IP:8000</code> keeps working at all times.
+            </p>
+            @if($dvCanEdit)
+                <form method="POST" action="{{ route('admin.settings.domain.plugin') }}" style="margin-bottom: 12px;">
+                    @csrf
+                    <input type="hidden" name="enabled" value="{{ $dv['plugin_enabled'] ? '0' : '1' }}">
+                    <button class="ag-btn {{ $dv['plugin_enabled'] ? 'ag-btn--ghost' : '' }}" type="submit">{{ $dv['plugin_enabled'] ? 'Disable' : 'Enable' }}</button>
+                </form>
+            @else
+                <p style="font-size: 12px; color: var(--ag-muted); margin-bottom: 12px;">Only the super admin can change this.</p>
+            @endif
+
+            @if($dv['plugin_enabled'])
+                <div style="font-size: 13px; margin-bottom: 12px;"><strong>Status:</strong> {{ $dvStatus }}</div>
+                @if(isset($dvSeen['untrusted']))
+                    <div class="ag-alert ag-alert--warning" style="margin-bottom: 12px;">
+                        <span>A proxy at <code>{{ $dvSeen['untrusted']['address'] }}</code> sends X-Forwarded headers, but it is not trusted, so the console ignores them (no HTTPS detection, no redirect).
+                        If it is your load balancer, add its address or subnet to <code>ATGLANCE_TRUSTED_PROXIES</code> in the app environment (for example <code>127.0.0.1,::1,10.0.0.0/8</code>) and restart the app.</span>
+                    </div>
+                @endif
+                @if($dv['https_mode'] === 'custom' && $dv['certificate'] && $dv['certificate']['days_left'] <= 30)
+                    <div class="ag-alert {{ $dv['certificate']['days_left'] < 0 ? 'ag-alert--error' : 'ag-alert--warning' }}" style="margin-bottom: 12px;">
+                        {{ $dv['certificate']['days_left'] < 0 ? 'Your certificate has expired.' : 'Your certificate expires in ' . $dv['certificate']['days_left'] . ' days.' }}
+                        Upload the renewed one on the Site tab.
+                    </div>
+                @endif
+                <div style="font-size: 13px; line-height: 1.7;">
+                    <strong>VM / Docker Compose</strong> (built-in proxy on ports 80 and 443):
+                    <ol style="margin: 4px 0 10px 18px;">
+                        <li>Check ports 80 and 443 are free: <code>sudo ss -ltn '( sport = :80 or sport = :443 )'</code> (no output = free).</li>
+                        <li>In the install folder (default <code>/opt/atglance</code>) run: <code>docker compose -f docker-compose.yml -f docker-compose.domain.yml up -d</code>. If a port is taken, set <code>HTTP_PORT</code> / <code>HTTPS_PORT</code> in <code>.env</code> first.</li>
+                        <li>Open <code>http://server-IP</code> (port 80) once. The status above changes to "Built-in proxy detected".</li>
+                        <li>To undo: <code>docker compose up -d</code> (without the second file).</li>
+                    </ol>
+                    <strong>AWS ECS:</strong> ALB listener on 443 with an ACM certificate, forwarding to container port 8000 (route 8002 separately for the CLI). Then choose "Handled by my platform".<br>
+                    <strong>Azure Container Apps:</strong> ingress target port 8000, plus a custom domain with a managed certificate. Then choose "Handled by my platform".<br>
+                    <strong>Kubernetes:</strong> an Ingress to service port 8000, with cert-manager for TLS. Then choose "Handled by my platform".<br>
+                    On these platforms also set <code>ATGLANCE_TRUSTED_PROXIES</code> in the app environment to the load balancer's subnet (for example <code>127.0.0.1,::1,10.0.0.0/8</code>), so the console trusts its X-Forwarded headers.
+                </div>
+                <a class="ag-btn ag-btn--sm" style="margin-top: 12px;" href="{{ route('admin.settings', ['tab' => 'site']) }}">Set the domain on the Site tab</a>
+            @endif
+        </div>
     </div>
 
     <div id="tab-backup-restore" class="settings-tab-content ag-card" style="display:{{ $activeTab === 'backup-restore' ? 'block' : 'none' }}; padding:24px;">
@@ -1272,6 +1428,79 @@
 
     providerSelect.addEventListener('change', updateProviderHints);
     updateProviderHints();
+})();
+
+// Email Configuration: send a test email with the saved settings.
+(function () {
+    var button = document.getElementById('mail-test-send');
+    var result = document.getElementById('mail-test-result');
+    var form = document.querySelector('form[action="{{ route('admin.settings.mail', ['tab' => 'email']) }}"]');
+    if (!button || !result) { return; }
+    var dirty = false;
+    if (form) {
+        form.addEventListener('input', function () { dirty = true; });
+    }
+
+    function show(ok, message) {
+        result.classList.remove('hidden');
+        result.textContent = message;
+        result.style.color = ok ? 'var(--ag-success)' : 'var(--ag-danger)';
+    }
+
+    button.addEventListener('click', function () {
+        if (dirty) {
+            show(false, 'You have unsaved changes. Save the email settings first, then send the test.');
+            return;
+        }
+        button.disabled = true;
+        show(true, 'Sending...');
+        result.style.color = 'var(--ag-subtle)';
+        fetch(@json(route('admin.settings.mail.test')), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': @json(csrf_token()) },
+            body: JSON.stringify({ recipient: document.getElementById('mail-test-recipient').value.trim() })
+        }).then(function (r) {
+            return r.json().then(function (data) { return { status: r.status, data: data }; });
+        }).then(function (res) {
+            var data = res.data || {};
+            if (res.status === 429) {
+                show(false, 'Too many test emails. Wait a minute and try again.');
+            } else if (data.errors && data.errors.recipient) {
+                show(false, data.errors.recipient[0]);
+            } else {
+                show(!!data.ok, data.message || 'The test email could not be sent.');
+            }
+        }).catch(function () {
+            show(false, 'Could not reach the server. Try again.');
+        }).finally(function () {
+            button.disabled = false;
+        });
+    });
+})();
+
+// Access URL: show the certificate fields for "own certificate", and run the DNS check.
+(function () {
+    var mode = document.getElementById('dv-mode');
+    var custom = document.getElementById('dv-custom');
+    if (mode && custom) {
+        mode.addEventListener('change', function () { custom.style.display = mode.value === 'custom' ? '' : 'none'; });
+    }
+    var check = document.getElementById('dv-check');
+    var result = document.getElementById('dv-check-result');
+    if (check && result) {
+        check.addEventListener('click', function () {
+            result.classList.remove('hidden');
+            result.textContent = 'Checking...';
+            fetch(@json(route('admin.settings.domain.check')), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': @json(csrf_token()) },
+                body: JSON.stringify({ domain: document.getElementById('dv-domain').value, server_ip: document.getElementById('dv-ip').value })
+            }).then(function (r) { return r.json(); }).then(function (data) {
+                result.textContent = data.message + ' (This is the server\'s DNS view; other networks may differ.)';
+                result.style.color = data.ok ? 'var(--ag-success)' : 'var(--ag-warning)';
+            }).catch(function () { result.textContent = 'Could not run the check.'; });
+        });
+    }
 })();
 </script>
 @endsection

@@ -139,7 +139,7 @@
                         >
                     </div>
 
-                    <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <div class="grid grid-cols-1 gap-4">
                         <div>
                             <label for="app_ip" class="block text-sm font-semibold text-slate-800">IP Address</label>
                             <input
@@ -152,32 +152,8 @@
                                 class="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm outline-none transition focus:border-black focus:ring-4 focus:ring-slate-200"
                             >
                         </div>
-                        <div>
-                            <label for="app_domain" class="block text-sm font-semibold text-slate-800">Domain Alias (optional)</label>
-                            <input
-                                id="app_domain"
-                                name="app_domain"
-                                type="text"
-                                value="{{ old('app_domain', '') }}"
-                                placeholder="atglance.org_name.com"
-                                class="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm outline-none transition focus:border-black focus:ring-4 focus:ring-slate-200"
-                            >
-                        </div>
                     </div>
-                    <p class="text-xs text-slate-500">Do not include http:// or https://</p>
-                    <p class="text-xs text-slate-600">Note: The domain can also be configured via the Enterprise Console. Please ensure that a valid and appropriate IP address is provided during the application installation process.</p>
-
-                    <div>
-                        <label for="use_https" class="block text-sm font-semibold text-slate-800">Use HTTPS</label>
-                        <select
-                            id="use_https"
-                            name="use_https"
-                            class="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm outline-none transition focus:border-black focus:ring-4 focus:ring-slate-200"
-                        >
-                            <option value="1" {{ old('use_https', '0') === '1' ? 'selected' : '' }}>Yes</option>
-                            <option value="0" {{ old('use_https', '0') === '0' ? 'selected' : '' }}>No</option>
-                        </select>
-                    </div>
+                    <p class="text-xs text-slate-600">The address people use to reach this server, without http://. You can add your own domain and HTTPS after installation, in Admin Settings &rsaquo; Plugins.</p>
 
                     <div>
                         <label for="superadmin_email" class="block text-sm font-semibold text-slate-800">Super Admin Email</label>

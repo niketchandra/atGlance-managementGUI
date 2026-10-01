@@ -147,6 +147,7 @@ All documents are in the [docs](docs/) folder:
 | Use | [notifications.md](docs/notifications.md) | Notification channels (Email, Teams, Slack, n8n, Telegram, webhooks, SMS) and events |
 | Use | [ai-connect.md](docs/ai-connect.md) | Connecting an AI provider, per-provider setup |
 | Use | [licence.md](docs/licence.md) | Licence key, verification, and what an unlicensed instance blocks |
+| Use | [custom-domain.md](docs/custom-domain.md) | Custom domain and HTTPS after install, the built-in proxy, own certificates |
 | Operate | [scheduled-backups.md](docs/scheduled-backups.md) | Scheduled S3 backups, restore, the scheduler container |
 | Operate | [queue.md](docs/queue.md) | Queue worker, retries and monitoring |
 | Operate | [api-gateway.md](docs/api-gateway.md) | Kong API gateway used by the CLI: routes, rate limits, adding routes |

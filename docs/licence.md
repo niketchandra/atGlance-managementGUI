@@ -40,8 +40,7 @@ No body. Nothing changes on atglance.live.
 | HTTP | `status` | Result in the console |
 |---|---|---|
 | 200 | `available` | Valid; not used by any org yet |
-| 200 | `in_use`, `console.instance_id` = this console | Valid; already activated for this console (reinstall) |
-| 200 | `in_use`, any other console | Refused: "This licence key is already in use by another AtGlance console. Deactivate it on atglance.live, or create a new licence key and use that one." The org name is not shown |
+| 200 | `in_use` (any console, this one included) | Refused: "This licence key is already in use. Deactivate it on atglance.live, or create a new licence key and use that one." The org name is not shown |
 | 403 | `unverified` / `under_review` | Rejected: not usable yet |
 | 401 | - | Rejected: wrong or revoked key |
 
@@ -49,9 +48,15 @@ No body. Nothing changes on atglance.live.
 
 The installer submit and Admin Settings > Licence both call **verify** first
 (`LicenseClient::activateIfAvailable()`). **Activate** is called only when the
-key is `available` or already `in_use` by this console. A key in use by any
-other console or organisation is refused and never sent to activate, so it
-cannot be moved to a new org name from here.
+key is `available`. A key that is already `in_use` is refused and never sent to
+activate, even when this same console activated it before (for example after a
+reinstall, which keeps `instance_id`). The key cannot be moved to a new org
+name from here. To reuse it, deactivate it on atglance.live first, or create a
+new key.
+
+The daily `license:check` still keeps an already stored licence active while
+atglance.live reports it `in_use` by this console. Only new activations are
+refused.
 
 ### Activate (installer submit, Admin Settings > Licence)
 
@@ -76,7 +81,6 @@ return `409 in_use_elsewhere`. Portal backup/restore does not include it.
 | HTTP | `status` | Result in the console |
 |---|---|---|
 | 201 | `in_use` | Activated; licence saved |
-| 200 | `in_use` | Same console activated again (restart, reinstall); licence saved |
 | 409 | `in_use_elsewhere` | Rejected: licence used by another console or org |
 | 422 | - | Rejected: `org_name` missing |
 | 401 | - | Rejected: wrong or revoked key |

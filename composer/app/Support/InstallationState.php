@@ -37,6 +37,31 @@ class InstallationState
         );
     }
 
+    /**
+     * /install/info shows the generated credentials; it is available only
+     * until the first successful login.
+     */
+    public static function isInfoAvailable(): bool
+    {
+        return self::isInstalled() && empty(self::getData()['first_login_at']);
+    }
+
+    /**
+     * Called on every successful login (Login event). The first one closes
+     * /install/info and removes the super admin password from the marker.
+     */
+    public static function markFirstLogin(): void
+    {
+        if (!self::isInfoAvailable()) {
+            return;
+        }
+
+        $data = self::getData();
+        unset($data['superadmin_password']);
+        $data['first_login_at'] = now()->toDateTimeString();
+        self::markInstalled($data);
+    }
+
     private static function markerPath(): string
     {
         return storage_path('app/installer/installed.json');

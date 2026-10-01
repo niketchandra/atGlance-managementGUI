@@ -99,14 +99,22 @@ class LicenseTest extends TestCase
         $this->assertStringNotContainsString('Acme Corp', $result['message']);
     }
 
-    public function test_check_allows_key_already_activated_for_this_console(): void
+    public function test_check_refuses_key_in_use_even_by_this_console(): void
     {
+        // A reinstall keeps the same console ID; an "In Use" key must still be refused.
         $this->fakeVerify($this->inUseBody());
+        $this->fakeActivate($this->inUseBody(), 200);
 
-        $result = app(LicenseClient::class)->checkAvailable(self::KEY);
+        $result = app(LicenseClient::class)->activateIfAvailable(self::KEY, 'Acme Corp');
 
-        $this->assertTrue($result['ok']);
-        $this->assertSame('Licence is valid. It is already activated for this console.', $result['message']);
+        $this->assertFalse($result['ok']);
+        $this->assertSame(LicenseClient::IN_USE_MESSAGE, $result['message']);
+        Http::assertNotSent(fn (HttpRequest $request) => $request->url() === self::ACTIVATE_URL);
+    }
+
+    public function test_in_use_message_does_not_say_another_console(): void
+    {
+        $this->assertStringNotContainsString('another', LicenseClient::IN_USE_MESSAGE);
     }
 
     public function test_check_allows_available_key(): void
@@ -185,7 +193,7 @@ class LicenseTest extends TestCase
         $result = app(LicenseClient::class)->activate(self::KEY, 'Acme Corp');
 
         $this->assertFalse($result['ok']);
-        $this->assertStringContainsString('another AtGlance console', $result['message']);
+        $this->assertSame(LicenseClient::IN_USE_MESSAGE, $result['message']);
     }
 
     public function test_client_explains_unverified_licence(): void

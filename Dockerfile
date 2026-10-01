@@ -20,6 +20,11 @@ RUN set -eux \
     ; apt-get clean \
     ; rm -rf /var/lib/apt/lists/*
 
+# Built-in proxy for custom domains (docker-compose.domain.yml). Not started
+# unless ATGLANCE_PROXY=builtin; default installs only serve :8000.
+COPY --from=caddy:2.11 /usr/bin/caddy /usr/local/bin/caddy
+COPY docker/Caddyfile /etc/caddy/Caddyfile
+
 # Dependencies first so code changes do not re-download vendor/.
 COPY composer/composer.json composer/composer.lock /app/
 RUN set -eux \
@@ -42,7 +47,7 @@ RUN chmod +x /usr/local/bin/atglance-entrypoint
 # block the whole console.
 ENV PHP_CLI_SERVER_WORKERS=4
 
-EXPOSE 8000
+EXPOSE 8000 80 443
 
 HEALTHCHECK --interval=10s --timeout=5s --start-period=30s --retries=12 \
     CMD curl -fsS http://127.0.0.1:8000/up > /dev/null || exit 1
