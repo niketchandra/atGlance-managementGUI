@@ -431,9 +431,9 @@ class LicenseTest extends TestCase
             ->assertSee(License::portalUrl(), false);
     }
 
-    public function test_sidebar_licence_card_asks_admins_to_add_a_missing_licence(): void
+    public function test_sidebar_licence_card_asks_the_super_admin_to_add_a_missing_licence(): void
     {
-        $this->actingAsRole(101);
+        $this->actingAsRole(100);
         $this->get(route('profile'))
             ->assertOk()
             ->assertSee('Not licensed')
@@ -441,15 +441,17 @@ class LicenseTest extends TestCase
             ->assertSee(route('admin.settings', ['tab' => 'licence']), false);
     }
 
-    public function test_regular_users_see_licence_status_without_admin_buttons(): void
+    public function test_admins_and_users_do_not_see_the_sidebar_licence_card(): void
     {
         License::store(self::KEY, ['status' => LicenseClient::VERIFIED_STATUS, 'details' => ['plan' => 'free']]);
 
-        $this->actingAsRole(102);
-        $this->get(route('profile'))
-            ->assertOk()
-            ->assertSee('ag-licence-card', false)
-            ->assertDontSee('Upgrade')
-            ->assertDontSee('Add licence');
+        foreach ([101, 102] as $rbacId) {
+            $this->actingAsRole($rbacId);
+            $this->get(route('profile'))
+                ->assertOk()
+                ->assertDontSee('ag-licence-card', false)
+                ->assertDontSee('Upgrade')
+                ->assertDontSee('Add licence');
+        }
     }
 }

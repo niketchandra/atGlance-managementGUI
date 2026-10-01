@@ -48,6 +48,8 @@ class ActivityFeed
         'system.reactivated' => ['systems', 'fa-server'],
         'system.deregistered' => ['systems', 'fa-power-off'],
         'config.uploaded' => ['systems', 'fa-file-code'],
+        'config.ai_validated' => ['systems', 'fa-robot'],
+        'config.ai_validation_deleted' => ['systems', 'fa-trash-alt'],
     ];
 
     /**

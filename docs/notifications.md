@@ -29,7 +29,7 @@ A channel can be used only when it is allowed and its required settings are comp
 |---|---|---|
 | `system.registered` | Workspace | A host is registered or reactivated in the workspace |
 | `system.deregistered` | Workspace | A host in the workspace is deregistered |
-| `backup.succeeded` | Organization | `backup:config` or `backup:portal` uploads a backup |
+| `backup.succeeded` | Organization | `backup:config` or `backup:database` (or Run now) saves a backup |
 | `backup.failed` | Organization | A scheduled backup fails |
 
 Workspace events go to the groups of the host's workspace. Hosts with no workspace send nothing. Organization events go to organization groups.

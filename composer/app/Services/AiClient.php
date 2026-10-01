@@ -26,7 +26,7 @@ class AiClient
      *
      * @throws RuntimeException with a message that is safe to show (key removed).
      */
-    public function complete(array $connection, string $prompt, int $maxTokens = 1024, ?string $system = null): string
+    public function complete(array $connection, string $prompt, int $maxTokens = 1024, ?string $system = null, int $timeoutSeconds = self::TIMEOUT_SECONDS): string
     {
         $meta = $this->meta($connection);
         if (trim((string) $connection['model']) === '') {
@@ -43,7 +43,7 @@ class AiClient
                 $body['system'] = $system;
             }
 
-            $data = $this->send($connection, 'post', $this->anthropicUrl($connection, '/messages'), $body);
+            $data = $this->send($connection, 'post', $this->anthropicUrl($connection, '/messages'), $body, $timeoutSeconds);
 
             return collect($data['content'] ?? [])
                 ->where('type', 'text')
@@ -60,7 +60,7 @@ class AiClient
             'model' => $connection['model'],
             'max_tokens' => $maxTokens,
             'messages' => $messages,
-        ]);
+        ], $timeoutSeconds);
 
         return (string) ($data['choices'][0]['message']['content'] ?? '');
     }
@@ -147,7 +147,7 @@ class AiClient
         return (str_ends_with($base, '/v1') ? $base : $base . '/v1') . $path;
     }
 
-    private function request(array $connection): PendingRequest
+    private function request(array $connection, int $timeoutSeconds = self::TIMEOUT_SECONDS): PendingRequest
     {
         $meta = $this->meta($connection);
         $key = trim((string) ($connection['api_key'] ?? ''));
@@ -158,7 +158,7 @@ class AiClient
 
         $request = Http::acceptJson()
             ->asJson()
-            ->timeout(self::TIMEOUT_SECONDS)
+            ->timeout($timeoutSeconds)
             ->connectTimeout(self::CONNECT_TIMEOUT_SECONDS);
 
         if ($meta['protocol'] === 'anthropic') {
@@ -176,12 +176,12 @@ class AiClient
         return $request;
     }
 
-    private function send(array $connection, string $method, string $url, array $body = []): array
+    private function send(array $connection, string $method, string $url, array $body = [], int $timeoutSeconds = self::TIMEOUT_SECONDS): array
     {
         try {
             $response = $method === 'get'
-                ? $this->request($connection)->get($url)
-                : $this->request($connection)->post($url, $body);
+                ? $this->request($connection, $timeoutSeconds)->get($url)
+                : $this->request($connection, $timeoutSeconds)->post($url, $body);
         } catch (ConnectionException $e) {
             throw new RuntimeException($this->redact('Could not reach ' . $url . ': ' . $e->getMessage(), $connection));
         }

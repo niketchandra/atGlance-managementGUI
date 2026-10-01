@@ -115,6 +115,7 @@
                     @endforeach
                 </nav>
 
+                @if($agIsSuperAdmin)
                 @php
                     $agLicence = \App\Support\License::summary();
                     $agLicenceActivated = \App\Support\License::date($agLicence['activated_at']);
@@ -135,18 +136,17 @@
                     @else
                         <div class="ag-licence-line">New users and API keys stay locked until a licence is added.</div>
                     @endif
-                    @if($agIsAdmin)
-                        @if($agLicence['active'])
-                            <a href="{{ \App\Support\License::portalUrl() }}" target="_blank" rel="noopener" class="ag-btn ag-btn--sm ag-licence-btn">
-                                <i class="fas fa-arrow-up-right-dots"></i> Upgrade
-                            </a>
-                        @else
-                            <a href="{{ route('admin.settings', ['tab' => 'licence']) }}" class="ag-btn ag-btn--sm ag-licence-btn">
-                                <i class="fas fa-key"></i> Add licence
-                            </a>
-                        @endif
+                    @if($agLicence['active'])
+                        <a href="{{ \App\Support\License::portalUrl() }}" target="_blank" rel="noopener" class="ag-btn ag-btn--sm ag-licence-btn">
+                            <i class="fas fa-arrow-up-right-dots"></i> Upgrade
+                        </a>
+                    @else
+                        <a href="{{ route('admin.settings', ['tab' => 'licence']) }}" class="ag-btn ag-btn--sm ag-licence-btn">
+                            <i class="fas fa-key"></i> Add licence
+                        </a>
                     @endif
                 </div>
+                @endif
 
                 <div class="ag-sidebar-meta">Version {{ $appVersion ?? config('app.version') }}</div>
             </aside>
