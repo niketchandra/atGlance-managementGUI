@@ -2,9 +2,12 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\ConfigAiValidation;
 use App\Models\SystemRegister;
 use App\Models\Workspace;
+use App\Services\ConfigAiValidator;
 use App\Support\AccountAlerts;
+use App\Support\AiSettings;
 use App\Support\ActivityRecorder;
 use App\Support\License;
 use App\Support\UserPreferences;
@@ -191,15 +194,14 @@ class DashboardController extends Controller
         /** @var User $actor */
         $actor = Auth::user();
 
-        // Subquery to get the latest version for each service
+        // Latest version of each service on each system
         $latestVersionsSubquery = DB::table('configuration_files')
-            ->select('service_name', DB::raw('MAX(id) as latest_id'))
-            ->groupBy('service_name');
+            ->select(DB::raw('MAX(id) as latest_id'))
+            ->groupBy('system_register_id', 'service_name');
 
         $query = DB::table('configuration_files as cf')
             ->joinSub($latestVersionsSubquery, 'latest', function ($join) {
-                $join->on('cf.service_name', '=', 'latest.service_name')
-                     ->on('cf.id', '=', 'latest.latest_id');
+                $join->on('cf.id', '=', 'latest.latest_id');
             })
             ->leftJoin('system_register as sr', 'cf.system_register_id', '=', 'sr.id')
             ->select(
@@ -215,7 +217,7 @@ class DashboardController extends Controller
                 'cf.created_at',
                 'sr.system_name',
                 'sr.status as system_status',
-                DB::raw('(SELECT COUNT(*) FROM configuration_files WHERE service_name = cf.service_name) as version_count')
+                DB::raw("(SELECT COUNT(*) FROM configuration_files AS cfv WHERE COALESCE(cfv.service_name, '') = COALESCE(cf.service_name, '') AND COALESCE(cfv.system_register_id, 0) = COALESCE(cf.system_register_id, 0)) as version_count")
             );
 
             $this->applyWorkspaceScopeToConfigurationQuery($query, 'cf', 'sr', $actor);
@@ -264,30 +266,30 @@ class DashboardController extends Controller
 
         // Apply filters
         if ($request->filled('name')) {
-            $query->where('system_name', 'like', '%' . $request->name . '%');
+            $query->where('sr.system_name', 'like', '%' . $request->name . '%');
         }
 
         if ($request->filled('ip')) {
-            $query->where('ip_address', 'like', '%' . $request->ip . '%');
+            $query->where('sr.ip_address', 'like', '%' . $request->ip . '%');
         }
 
         if ($request->filled('tags')) {
-            $query->where('tags', 'like', '%' . $request->tags . '%');
+            $query->where('sr.tags', 'like', '%' . $request->tags . '%');
         }
 
         if ($request->filled('os')) {
-            $query->where('os_type', 'like', '%' . $request->os . '%');
+            $query->where('sr.os_type', 'like', '%' . $request->os . '%');
         }
 
         if ($request->filled('status')) {
-            $query->where('status', $request->status);
+            $query->where('sr.status', $request->status);
         }
 
         if ($request->filled('hash')) {
-            $query->where('validation_hash', 'like', '%' . $request->hash . '%');
+            $query->where('sr.validation_hash', 'like', '%' . $request->hash . '%');
         }
 
-        $items = $query->orderByDesc('created_at')
+        $items = $query->orderByDesc('sr.created_at')
             ->paginate(UserPreferences::get($actor, 'per_page'))
             ->withQueryString();
 
@@ -593,11 +595,13 @@ class DashboardController extends Controller
                     }
 
                     $scoped->orWhere(function ($ownUnassigned) use ($actor) {
-                        $ownUnassigned->where('cf.user_id', (int) $actor->id)
-                            ->where(function ($unassigned) {
-                                $unassigned->whereNull('cf.system_register_id')
-                                    ->orWhere('cf.system_register_id', 0);
-                            });
+                        $ownUnassigned->where(function ($owner) use ($actor) {
+                            $owner->where('cf.user_id', (int) $actor->id)
+                                ->orWhere('sr.user_id', (int) $actor->id);
+                        })->where(function ($unassigned) {
+                            $unassigned->whereNull('sr.workspace_id')
+                                ->orWhere('sr.workspace_id', 0);
+                        });
                     });
                 });
             })
@@ -660,8 +664,177 @@ class DashboardController extends Controller
             }
         }
 
-        // Return view with configuration data
-        return view('view-configuration', compact('config'));
+        $aiEnabled = AiSettings::enabled();
+        $aiProviderLabel = AiSettings::PROVIDERS[AiSettings::provider()]['label'];
+        $aiModel = AiSettings::model();
+
+        $aiHistory = ConfigAiValidation::with('user:id,name')
+            ->where('configuration_file_id', $config->id)
+            ->orderByDesc('id')
+            ->limit(50)
+            ->get();
+
+        // A shared link (?validation=ID) opens that saved result straight away.
+        $aiSelected = null;
+        if (request()->filled('validation')) {
+            $aiSelected = $aiHistory->firstWhere('id', (int) request('validation'))
+                ?? ConfigAiValidation::with('user:id,name')
+                    ->where('configuration_file_id', $config->id)
+                    ->find((int) request('validation'));
+        }
+
+        return view('view-configuration', [
+            'config' => $config,
+            'aiEnabled' => $aiEnabled,
+            'aiProviderLabel' => $aiProviderLabel,
+            'aiModel' => $aiModel,
+            'aiHistory' => $aiHistory,
+            'aiSelected' => $aiSelected ? $aiSelected->toPayload() + [
+                'share_url' => route('configuration-backups.view', ['id' => $config->id, 'validation' => $aiSelected->id]),
+                'can_delete' => $this->canDeleteAiValidation($actor, $aiSelected),
+            ] : null,
+        ]);
+    }
+
+    /**
+     * Review a configuration file with the AI provider set in AI Connect.
+     */
+    public function validateConfigurationWithAi(Request $request, int $id, ConfigAiValidator $validator)
+    {
+        /** @var User $actor */
+        $actor = Auth::user();
+
+        if (!AiSettings::enabled()) {
+            return response()->json(['success' => false, 'message' => 'AI Connect is not enabled. A super admin can turn it on in Admin Settings.'], 403);
+        }
+
+        $config = DB::table('configuration_files')
+            ->leftJoin('raw_data', 'configuration_files.id', '=', 'raw_data.file_id')
+            ->leftJoin('system_register as sr', 'configuration_files.system_register_id', '=', 'sr.id')
+            ->where('configuration_files.id', $id)
+            ->select('configuration_files.*', 'raw_data.file_data as data', 'sr.workspace_id as system_workspace_id', 'sr.user_id as system_user_id')
+            ->first();
+
+        if (!$config) {
+            abort(404, 'Configuration file not found');
+        }
+
+        if (!$this->canAccessConfigurationRecord($actor, $config)) {
+            abort(403);
+        }
+
+        $content = (string) ($config->data ?? '');
+        [$disk, $path] = $this->resolveDiskAndPathForRead($config->storage_disk ?? null, (string) ($config->file_location ?? ''));
+        if ($path !== '' && Storage::disk($disk)->exists($path)) {
+            $content = (string) Storage::disk($disk)->get($path);
+        }
+
+        if (trim($content) === '') {
+            return response()->json(['success' => false, 'message' => 'This configuration file has no content to validate.'], 422);
+        }
+
+        $connection = AiSettings::connection();
+
+        try {
+            $result = $validator->validate($connection, (string) $config->file_name, $config->service_name, $content);
+        } catch (\RuntimeException $e) {
+            ActivityRecorder::record($actor->id, 'config.ai_validated', 'AI validation failed for ' . $config->file_name, ActivityRecorder::FAILURE, $request);
+
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 502);
+        }
+
+        ActivityRecorder::record($actor->id, 'config.ai_validated', 'Validated ' . $config->file_name . ' with AI (' . $result['status'] . ')', ActivityRecorder::SUCCESS, $request);
+
+        $validation = ConfigAiValidation::create([
+            'configuration_file_id' => $config->id,
+            'user_id' => $actor->id,
+            'provider' => AiSettings::PROVIDERS[$connection['provider']]['label'],
+            'model' => (string) $connection['model'],
+            'status' => $result['status'],
+            'summary' => $result['summary'],
+            'result' => $result,
+        ]);
+        $validation->setRelation('user', $actor);
+
+        return response()->json($validation->toPayload() + [
+            'share_url' => route('configuration-backups.view', ['id' => $config->id, 'validation' => $validation->id]),
+            'can_delete' => true,
+        ]);
+    }
+
+    /**
+     * A saved AI validation result, for anyone who can open the configuration file.
+     */
+    public function showConfigurationAiValidation(int $id, int $validationId)
+    {
+        /** @var User $actor */
+        $actor = Auth::user();
+
+        $config = DB::table('configuration_files')
+            ->leftJoin('raw_data', 'configuration_files.id', '=', 'raw_data.file_id')
+            ->leftJoin('system_register as sr', 'configuration_files.system_register_id', '=', 'sr.id')
+            ->where('configuration_files.id', $id)
+            ->select('configuration_files.*', 'raw_data.file_data as data', 'sr.workspace_id as system_workspace_id', 'sr.user_id as system_user_id')
+            ->first();
+
+        if (!$config) {
+            abort(404, 'Configuration file not found');
+        }
+
+        if (!$this->canAccessConfigurationRecord($actor, $config)) {
+            abort(403);
+        }
+
+        $validation = ConfigAiValidation::with('user:id,name')
+            ->where('configuration_file_id', $config->id)
+            ->findOrFail($validationId);
+
+        return response()->json($validation->toPayload() + [
+            'share_url' => route('configuration-backups.view', ['id' => $config->id, 'validation' => $validation->id]),
+            'can_delete' => $this->canDeleteAiValidation($actor, $validation),
+        ]);
+    }
+
+    /**
+     * Delete a saved AI validation result: the person who ran it, or an admin who can open the file.
+     */
+    public function deleteConfigurationAiValidation(Request $request, int $id, int $validationId)
+    {
+        /** @var User $actor */
+        $actor = Auth::user();
+
+        $config = DB::table('configuration_files')
+            ->leftJoin('system_register as sr', 'configuration_files.system_register_id', '=', 'sr.id')
+            ->where('configuration_files.id', $id)
+            ->select('configuration_files.*', 'sr.workspace_id as system_workspace_id', 'sr.user_id as system_user_id')
+            ->first();
+
+        if (!$config) {
+            abort(404, 'Configuration file not found');
+        }
+
+        if (!$this->canAccessConfigurationRecord($actor, $config)) {
+            abort(403);
+        }
+
+        $validation = ConfigAiValidation::query()
+            ->where('configuration_file_id', $config->id)
+            ->findOrFail($validationId);
+
+        if (!$this->canDeleteAiValidation($actor, $validation)) {
+            return response()->json(['success' => false, 'message' => 'Only the person who ran this validation or an admin can delete it.'], 403);
+        }
+
+        $validation->delete();
+        ActivityRecorder::record($actor->id, 'config.ai_validation_deleted', 'Deleted an AI validation of ' . $config->file_name, ActivityRecorder::SUCCESS, $request);
+
+        return response()->json(['success' => true]);
+    }
+
+    private function canDeleteAiValidation(User $actor, ConfigAiValidation $validation): bool
+    {
+        return (int) $validation->user_id === (int) $actor->id
+            || in_array((int) ($actor->rbac_id ?? 0), [100, 101], true);
     }
 
     /**
@@ -1274,13 +1447,20 @@ class DashboardController extends Controller
             return;
         }
 
-        if (empty($workspaceIds)) {
-            $query->whereRaw('1 = 0');
+        // Same rule as canAccessSystemRecord: workspace members, plus the owner of an unassigned system.
+        $query->where(function ($scoped) use ($workspaceIds, $systemAlias, $actor) {
+            if (!empty($workspaceIds)) {
+                $scoped->whereIn($systemAlias . '.workspace_id', $workspaceIds);
+            }
 
-            return;
-        }
-
-        $query->whereIn($systemAlias . '.workspace_id', $workspaceIds);
+            $scoped->orWhere(function ($ownUnassigned) use ($systemAlias, $actor) {
+                $ownUnassigned->where($systemAlias . '.user_id', (int) $actor->id)
+                    ->where(function ($unassigned) use ($systemAlias) {
+                        $unassigned->whereNull($systemAlias . '.workspace_id')
+                            ->orWhere($systemAlias . '.workspace_id', 0);
+                    });
+            });
+        });
     }
 
     private function applyWorkspaceScopeToConfigurationQuery($query, string $configAlias, string $systemAlias, User $actor, ?int $selectedWorkspaceId = null): void
@@ -1326,12 +1506,15 @@ class DashboardController extends Controller
                 $scoped->whereIn($systemAlias . '.workspace_id', $workspaceIds);
             }
 
-            $scoped->orWhere(function ($ownUnassigned) use ($configAlias, $actor) {
-                $ownUnassigned->where($configAlias . '.user_id', (int) $actor->id)
-                    ->where(function ($unassigned) use ($configAlias) {
-                        $unassigned->whereNull($configAlias . '.system_register_id')
-                            ->orWhere($configAlias . '.system_register_id', 0);
-                    });
+            // Same rule as canAccessConfigurationRecord: the owner sees configs of an unassigned system.
+            $scoped->orWhere(function ($ownUnassigned) use ($configAlias, $systemAlias, $actor) {
+                $ownUnassigned->where(function ($owner) use ($configAlias, $systemAlias, $actor) {
+                    $owner->where($configAlias . '.user_id', (int) $actor->id)
+                        ->orWhere($systemAlias . '.user_id', (int) $actor->id);
+                })->where(function ($unassigned) use ($systemAlias) {
+                    $unassigned->whereNull($systemAlias . '.workspace_id')
+                        ->orWhere($systemAlias . '.workspace_id', 0);
+                });
             });
         });
     }

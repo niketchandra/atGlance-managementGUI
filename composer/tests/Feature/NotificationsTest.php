@@ -298,7 +298,7 @@ class NotificationsTest extends TestCase
         Http::assertSentCount(1);
         Http::assertSent(fn (HttpRequest $r) => $r->url() === 'https://hooks.example.test/org'
             && $r['event'] === NotificationEvents::BACKUP_SUCCEEDED
-            && $r['title'] === 'Configuration files backup succeeded');
+            && $r['title'] === 'Configuration & console files backup succeeded');
     }
 
     public function test_send_test_reports_the_result(): void

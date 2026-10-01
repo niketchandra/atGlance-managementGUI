@@ -64,6 +64,9 @@ Route::middleware('app.installed')->group(function () {
         Route::get('/configuration-backups/service/{serviceId}/versions', [DashboardController::class, 'viewServiceVersions'])->name('configuration-backups.service-versions');
         Route::get('/configuration-backups/{id}/view', [DashboardController::class, 'viewConfigurationFile'])->name('configuration-backups.view');
         Route::get('/configuration-backups/{id}/download', [DashboardController::class, 'downloadConfigurationFile'])->name('configuration-backups.download');
+        Route::post('/configuration-backups/{id}/ai-validate', [DashboardController::class, 'validateConfigurationWithAi'])->whereNumber('id')->middleware('throttle:10,1')->name('configuration-backups.ai-validate');
+        Route::get('/configuration-backups/{id}/ai-validations/{validationId}', [DashboardController::class, 'showConfigurationAiValidation'])->whereNumber(['id', 'validationId'])->name('configuration-backups.ai-validations.show');
+        Route::delete('/configuration-backups/{id}/ai-validations/{validationId}', [DashboardController::class, 'deleteConfigurationAiValidation'])->whereNumber(['id', 'validationId'])->name('configuration-backups.ai-validations.delete');
         Route::get('/systems-registered', [DashboardController::class, 'systemsRegistered'])->name('systems-registered');
         Route::get('/systems-registered/{systemId}/edit', [DashboardController::class, 'editRegisteredSystem'])->name('systems-registered.edit');
         Route::put('/systems-registered/{systemId}', [DashboardController::class, 'updateRegisteredSystem'])->name('systems-registered.update');
@@ -108,6 +111,7 @@ Route::middleware('app.installed')->group(function () {
             Route::post('/settings/backup-restore', [AdminDashboardController::class, 'updateBackupRestoreSettings'])->name('admin.settings.backup-restore');
             Route::get('/settings/backups', [BackupRestoreController::class, 'index'])->name('admin.settings.backups');
             Route::post('/settings/restore', [BackupRestoreController::class, 'restore'])->name('admin.settings.restore');
+            Route::post('/settings/backups/run', [BackupRestoreController::class, 'run'])->middleware('throttle:6,1')->name('admin.settings.backups.run');
             Route::post('/settings/notifications', [NotificationSettingsController::class, 'update'])->name('admin.settings.notifications');
             Route::post('/settings/ai', [AiConnectController::class, 'update'])->name('admin.settings.ai');
             Route::post('/settings/licence', [LicenseController::class, 'update'])->name('admin.settings.licence');

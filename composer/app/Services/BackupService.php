@@ -4,137 +4,163 @@ namespace App\Services;
 
 use App\Models\AdminSetting;
 use App\Notifications\NotificationEvents;
+use App\Support\BackupSettings;
 use App\Support\S3Settings;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
+use League\Flysystem\FileAttributes;
 use League\Flysystem\FilesystemException;
+use RecursiveDirectoryIterator;
+use RecursiveIteratorIterator;
 use RuntimeException;
 use Throwable;
 use ZipArchive;
 
 class BackupService
 {
-    public const TYPE_CONFIG = 'config';
+    /** Configuration & console files: a zip of config.json (tables) and files/ (storage). */
+    public const TYPE_CONFIG = BackupSettings::TYPE_CONFIG;
+    /** Database: a gzipped SQL dump of every table. */
+    public const TYPE_DATABASE = BackupSettings::TYPE_DATABASE;
+    /** Older full-portal zip (.env, settings, database.sql). Still restorable; no longer scheduled. */
     public const TYPE_PORTAL = 'portal';
 
     public const STATUS_SUCCESS = 'success';
     public const STATUS_FAILED = 'failed';
     public const STATUS_SKIPPED = 'skipped';
 
+    // Restored in this order, matched on the primary key, so saved AI validations keep pointing at their file.
+    public const CONFIG_TABLES = ['services', 'system_register', 'configuration_files', 'raw_data', 'config_ai_validations'];
+
     /**
-     * Scheduler cron expressions for each frequency the Backup & Restore tab offers.
+     * The console's own files in the configuration & console files backup:
+     * archive folder => directory under storage/. Branding and other public
+     * uploads, and the built-in proxy's certificates and local CA.
      */
-    private const FREQUENCY_EXPRESSIONS = [
-        'hourly' => '0 * * * *',
-        'every_six_hours' => '0 */6 * * *',
-        'every_twelve_hours' => '0 */12 * * *',
-        'daily' => '0 0 * * *',
-        'weekly' => '0 0 * * 0',
-        'monthly' => '0 0 1 * *',
+    public const CONSOLE_FILE_ROOTS = [
+        'public' => 'app/public',
+        'caddy/pki' => 'caddy/pki',
+        'caddy/certificates' => 'caddy/certificates',
     ];
 
-    public const CONFIG_TABLES = ['services', 'system_register', 'configuration_files', 'raw_data'];
-
     /**
-     * Where scheduled backups live in S3, and pre-restore snapshots on the local disk.
+     * Scheduled backups live under backups/{type}/YYYY/MM/ in S3 and on the
+     * local disk; pre-restore snapshots under backups/snapshots/{type}/ locally.
      */
     public const S3_PREFIX = 'backups/';
+    public const LOCAL_PREFIX = 'backups/';
     public const SNAPSHOT_PREFIX = 'backups/snapshots/';
 
     /**
      * Returns the scheduler cron expression for a backup type, or null when
-     * that backup is not enabled or has no valid frequency.
+     * that backup is not scheduled.
      */
     public function scheduleExpression(string $type): ?string
     {
-        if ($this->skipReason($type) !== null) {
+        if (!in_array($type, BackupSettings::TYPES, true) || $this->skipReason($type) !== null) {
             return null;
         }
 
-        $frequency = strtolower(trim((string) AdminSetting::getValue($this->cronSettingKey($type), '')));
-
-        return self::FREQUENCY_EXPRESSIONS[$frequency] ?? null;
+        return BackupSettings::expression(BackupSettings::get($type));
     }
 
     /**
-     * Returns why a backup type must not run right now, or null when it can run.
+     * Returns why a backup must not run right now, or null when it can run.
+     * A manual run ("Run now") ignores the backup's own schedule switch.
      */
-    public function skipReason(string $type): ?string
+    public function skipReason(string $type, bool $manual = false): ?string
     {
-        if (!$this->isEnabledSetting('backup_restore_enabled')) {
+        if (!in_array($type, BackupSettings::TYPES, true)) {
+            return 'Unknown backup type.';
+        }
+
+        if (!BackupSettings::masterEnabled()) {
             return 'Backup & Restore is disabled.';
         }
 
-        $toggleKey = $type === self::TYPE_CONFIG ? 'backup_config_to_s3' : 'backup_portal_to_s3';
-        if (!$this->isEnabledSetting($toggleKey)) {
-            return $type === self::TYPE_CONFIG
-                ? 'Configuration files backup to S3 is disabled.'
-                : 'Portal backup to S3 is disabled.';
+        $settings = BackupSettings::get($type);
+        if (!$manual && !$settings['enabled']) {
+            return BackupSettings::LABELS[$type] . ' is turned off.';
         }
 
-        if (!S3Settings::enabled()) {
+        if (!$settings['to_local'] && !$settings['to_s3']) {
+            return 'No destination is selected. Choose local copies, S3, or both.';
+        }
+
+        if (!$settings['to_local'] && !S3Settings::enabled()) {
             return 'S3 is disabled.';
         }
 
         return null;
     }
 
-    public function run(string $type): array
+    public function run(string $type, bool $manual = false): array
     {
         $startedAt = Carbon::now();
 
-        $skipReason = $this->skipReason($type);
+        $skipReason = $this->skipReason($type, $manual);
         if ($skipReason !== null) {
             return $this->recordRun($type, $startedAt, self::STATUS_SKIPPED, $skipReason);
         }
 
-        $workDir = storage_path('app/backups/tmp/' . $type . '-' . $startedAt->format('YmdHis') . '-' . bin2hex(random_bytes(4)));
+        $settings = BackupSettings::get($type);
+        $workDir = $this->makeWorkDir($type . '-' . $startedAt->format('YmdHis'));
+        $messages = [];
+        $failed = false;
+        $objectKey = null;
 
         try {
-            if (!S3Settings::configureDisk()) {
-                throw new RuntimeException('S3 credentials are incomplete.');
-            }
+            [$localFile, $fileName] = $this->buildArchive($type, $workDir, $startedAt);
+            $key = sprintf('%s%s/%s/%s', self::S3_PREFIX, $type, $startedAt->format('Y/m'), $fileName);
 
-            if (!is_dir($workDir) && !mkdir($workDir, 0755, true) && !is_dir($workDir)) {
-                throw new RuntimeException('Could not create backup working directory.');
-            }
-
-            [$localFile, $fileName] = $type === self::TYPE_CONFIG
-                ? $this->buildConfigArchive($workDir, $startedAt)
-                : $this->buildPortalArchive($workDir, $startedAt);
-
-            $objectKey = sprintf('backups/%s/%s/%s', $type, $startedAt->format('Y/m'), $fileName);
-
-            $stream = fopen($localFile, 'rb');
-            try {
-                // The Flysystem driver throws with the S3 error; the Laravel disk
-                // wrapper ('throw' => false) would only return false.
-                Storage::disk('s3')->getDriver()->writeStream($objectKey, $stream);
-            } catch (FilesystemException $e) {
-                $reason = $e->getPrevious()?->getMessage() ?: $e->getMessage();
-
-                throw new RuntimeException('Upload to S3 failed: ' . $reason, 0, $e);
-            } finally {
-                if (is_resource($stream)) {
-                    fclose($stream);
+            if ($settings['to_s3'] && !S3Settings::enabled()) {
+                $messages[] = 'S3 is disabled, so no copy was uploaded.';
+            } elseif ($settings['to_s3']) {
+                try {
+                    if (!S3Settings::configureDisk()) {
+                        throw new RuntimeException('S3 credentials are incomplete.');
+                    }
+                    $this->writeFile('s3', $key, $localFile);
+                    $pruned = $this->prune('s3', $type, $settings['keep_s3']);
+                    $messages[] = 'Uploaded ' . $key . $this->prunedNote($pruned);
+                    $objectKey = $key;
+                } catch (Throwable $e) {
+                    $failed = true;
+                    $messages[] = $e->getMessage();
                 }
             }
 
-            return $this->recordRun($type, $startedAt, self::STATUS_SUCCESS, 'Uploaded ' . $objectKey, $objectKey);
+            if ($settings['to_local']) {
+                try {
+                    $this->writeFile('local', $key, $localFile);
+                    $pruned = $this->prune('local', $type, $settings['keep_local']);
+                    $messages[] = 'Saved local copy ' . $key . $this->prunedNote($pruned);
+                    $objectKey ??= $key;
+                } catch (Throwable $e) {
+                    $failed = true;
+                    $messages[] = 'Local copy failed: ' . $e->getMessage();
+                }
+            }
         } catch (Throwable $e) {
-            Log::error('Scheduled backup failed', ['type' => $type, 'error' => $e->getMessage()]);
-
-            return $this->recordRun($type, $startedAt, self::STATUS_FAILED, $e->getMessage());
+            $failed = true;
+            $messages[] = $e->getMessage();
         } finally {
             $this->removeDirectory($workDir);
         }
+
+        $message = implode(' ', $messages);
+        if ($failed) {
+            Log::error('Scheduled backup failed', ['type' => $type, 'error' => $message]);
+        }
+
+        return $this->recordRun($type, $startedAt, $failed ? self::STATUS_FAILED : self::STATUS_SUCCESS, $message, $objectKey);
     }
 
     public function lastRun(string $type): array
     {
-        $raw = AdminSetting::getValue($this->lastRunSettingKey($type), '');
+        $raw = AdminSetting::getValue(BackupSettings::lastRunKey($type), '');
         $decoded = is_string($raw) ? json_decode($raw, true) : null;
 
         return is_array($decoded) ? $decoded : [];
@@ -148,27 +174,12 @@ class BackupService
     public function createLocalSnapshot(string $type): string
     {
         $createdAt = Carbon::now();
-        $workDir = storage_path('app/backups/tmp/snapshot-' . $type . '-' . $createdAt->format('YmdHis') . '-' . bin2hex(random_bytes(4)));
+        $workDir = $this->makeWorkDir('snapshot-' . $type . '-' . $createdAt->format('YmdHis'));
 
         try {
-            if (!is_dir($workDir) && !mkdir($workDir, 0755, true) && !is_dir($workDir)) {
-                throw new RuntimeException('Could not create snapshot working directory.');
-            }
-
-            [$localFile, $fileName] = $type === self::TYPE_CONFIG
-                ? $this->buildConfigArchive($workDir, $createdAt)
-                : $this->buildPortalArchive($workDir, $createdAt);
-
+            [$localFile, $fileName] = $this->buildArchive($type, $workDir, $createdAt);
             $path = sprintf('%s%s/pre-restore-%s', self::SNAPSHOT_PREFIX, $type, $fileName);
-
-            $stream = fopen($localFile, 'rb');
-            try {
-                Storage::disk('local')->getDriver()->writeStream($path, $stream);
-            } finally {
-                if (is_resource($stream)) {
-                    fclose($stream);
-                }
-            }
+            $this->writeFile('local', $path, $localFile);
 
             return $path;
         } finally {
@@ -177,50 +188,141 @@ class BackupService
     }
 
     /**
-     * Configuration files backup: every uploaded config file with its content
-     * (raw_data) plus the service and system rows needed to restore it.
+     * File name pattern of a scheduled backup of the given type.
+     */
+    public function fileNamePattern(string $type): string
+    {
+        return match ($type) {
+            self::TYPE_DATABASE => '/^database-backup-\d{8}-\d{6}\.sql\.gz$/',
+            self::TYPE_CONFIG => '/^config-backup-\d{8}-\d{6}\.(zip|json\.gz)$/',
+            self::TYPE_PORTAL => '/^portal-backup-\d{8}-\d{6}\.zip$/',
+            default => '/^$/',
+        };
+    }
+
+    public function primaryKeyFor(string $table): string
+    {
+        return match ($table) {
+            'services' => 'service_id',
+            default => 'id',
+        };
+    }
+
+    private function buildArchive(string $type, string $workDir, Carbon $startedAt): array
+    {
+        return match ($type) {
+            self::TYPE_CONFIG => $this->buildConfigArchive($workDir, $startedAt),
+            self::TYPE_DATABASE => $this->buildDatabaseArchive($workDir, $startedAt),
+            self::TYPE_PORTAL => $this->buildPortalArchive($workDir, $startedAt),
+            default => throw new RuntimeException('Unknown backup type.'),
+        };
+    }
+
+    /**
+     * Configuration & console files: config.json holds every uploaded config
+     * file with its content (raw_data), the service and system rows needed to
+     * restore it, and saved AI validations; files/ holds the console's own
+     * files (CONSOLE_FILE_ROOTS).
      */
     private function buildConfigArchive(string $workDir, Carbon $startedAt): array
     {
-        $fileName = 'config-backup-' . $startedAt->format('Ymd-His') . '.json.gz';
-        $path = $workDir . DIRECTORY_SEPARATOR . $fileName;
+        $this->requireZip();
 
-        $gz = gzopen($path, 'wb6');
-        if ($gz === false) {
+        $jsonPath = $workDir . DIRECTORY_SEPARATOR . 'config.json';
+        $handle = fopen($jsonPath, 'wb');
+        if ($handle === false) {
             throw new RuntimeException('Could not create configuration backup file.');
         }
 
         try {
-            gzwrite($gz, '{"type":"config","created_at":' . json_encode($startedAt->toIso8601String()) . ',"tables":{');
+            fwrite($handle, '{"type":"config","created_at":' . json_encode($startedAt->toIso8601String()) . ',"tables":{');
 
             foreach (self::CONFIG_TABLES as $index => $table) {
-                gzwrite($gz, ($index > 0 ? ',' : '') . json_encode($table) . ':[');
+                fwrite($handle, ($index > 0 ? ',' : '') . json_encode($table) . ':[');
 
                 $first = true;
                 foreach (DB::table($table)->orderBy($this->primaryKeyFor($table))->lazy(500) as $row) {
-                    gzwrite($gz, ($first ? '' : ',') . json_encode($row, JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE));
+                    fwrite($handle, ($first ? '' : ',') . json_encode($row, JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE));
                     $first = false;
                 }
 
-                gzwrite($gz, ']');
+                fwrite($handle, ']');
             }
 
-            gzwrite($gz, '}}');
+            fwrite($handle, '}}');
         } finally {
-            gzclose($gz);
+            fclose($handle);
         }
 
-        return [$path, $fileName];
+        $fileName = 'config-backup-' . $startedAt->format('Ymd-His') . '.zip';
+        $zipPath = $workDir . DIRECTORY_SEPARATOR . $fileName;
+
+        $zip = new ZipArchive();
+        if ($zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
+            throw new RuntimeException('Could not create configuration backup archive.');
+        }
+
+        $zip->addFile($jsonPath, 'config.json');
+
+        foreach (self::CONSOLE_FILE_ROOTS as $archiveFolder => $storageFolder) {
+            $root = storage_path($storageFolder);
+            if (!is_dir($root)) {
+                continue;
+            }
+
+            $files = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root, RecursiveDirectoryIterator::SKIP_DOTS));
+            foreach ($files as $file) {
+                if ($file->isFile() && !$file->isLink()) {
+                    $relative = str_replace('\\', '/', substr($file->getPathname(), strlen($root) + 1));
+                    $zip->addFile($file->getPathname(), 'files/' . $archiveFolder . '/' . $relative);
+                }
+            }
+        }
+
+        if (!$zip->close()) {
+            throw new RuntimeException('Could not write configuration backup archive.');
+        }
+
+        return [$zipPath, $fileName];
     }
 
     /**
-     * Portal backup: .env, admin settings and a full SQL dump of the database.
+     * Database: every table's schema and rows as SQL, gzipped.
+     */
+    private function buildDatabaseArchive(string $workDir, Carbon $startedAt): array
+    {
+        $sqlPath = $workDir . DIRECTORY_SEPARATOR . 'database.sql';
+        $this->dumpDatabase($sqlPath);
+
+        $fileName = 'database-backup-' . $startedAt->format('Ymd-His') . '.sql.gz';
+        $gzPath = $workDir . DIRECTORY_SEPARATOR . $fileName;
+
+        $in = fopen($sqlPath, 'rb');
+        $out = gzopen($gzPath, 'wb6');
+        if ($in === false || $out === false) {
+            throw new RuntimeException('Could not create database backup file.');
+        }
+
+        try {
+            while (!feof($in)) {
+                gzwrite($out, (string) fread($in, 1024 * 1024));
+            }
+        } finally {
+            fclose($in);
+            gzclose($out);
+            @unlink($sqlPath);
+        }
+
+        return [$gzPath, $fileName];
+    }
+
+    /**
+     * Older portal backup: .env, admin settings and a full SQL dump. Only made
+     * as the snapshot taken before restoring a portal backup.
      */
     private function buildPortalArchive(string $workDir, Carbon $startedAt): array
     {
-        if (!class_exists(ZipArchive::class)) {
-            throw new RuntimeException('PHP zip extension is required for portal backups.');
-        }
+        $this->requireZip();
 
         $sqlPath = $workDir . DIRECTORY_SEPARATOR . 'database.sql';
         $this->dumpDatabase($sqlPath);
@@ -265,7 +367,7 @@ class BackupService
         $driver = $connection->getDriverName();
 
         try {
-            fwrite($handle, '-- AtGlance portal backup, ' . Carbon::now()->toIso8601String() . "\n");
+            fwrite($handle, '-- AtGlance database backup, ' . Carbon::now()->toIso8601String() . "\n");
             if ($driver === 'mysql' || $driver === 'mariadb') {
                 fwrite($handle, "SET FOREIGN_KEY_CHECKS=0;\n");
             }
@@ -321,7 +423,7 @@ class BackupService
             return (string) ($row['Create Table'] ?? '');
         }
 
-        throw new RuntimeException("Database driver [{$driver}] is not supported for portal backups.");
+        throw new RuntimeException("Database driver [{$driver}] is not supported for database backups.");
     }
 
     private function quoteIdentifier(string $name, string $driver): string
@@ -331,12 +433,56 @@ class BackupService
             : '"' . str_replace('"', '""', $name) . '"';
     }
 
-    public function primaryKeyFor(string $table): string
+    private function writeFile(string $disk, string $path, string $localFile): void
     {
-        return match ($table) {
-            'services' => 'service_id',
-            default => 'id',
-        };
+        $stream = fopen($localFile, 'rb');
+        try {
+            // The Flysystem driver throws with the real error; the Laravel disk
+            // wrapper ('throw' => false) would only return false.
+            Storage::disk($disk)->getDriver()->writeStream($path, $stream);
+        } catch (FilesystemException $e) {
+            $reason = $e->getPrevious()?->getMessage() ?: $e->getMessage();
+
+            throw new RuntimeException(($disk === 's3' ? 'Upload to S3 failed: ' : 'Could not save the backup: ') . $reason, 0, $e);
+        } finally {
+            if (is_resource($stream)) {
+                fclose($stream);
+            }
+        }
+    }
+
+    /**
+     * Keeps the newest $keep scheduled backups of a type on a disk and deletes
+     * the rest. Only files named like this service's backups are touched.
+     *
+     * @return int how many were deleted
+     */
+    private function prune(string $disk, string $type, int $keep): int
+    {
+        $pattern = $this->fileNamePattern($type);
+        $paths = [];
+
+        foreach (Storage::disk($disk)->getDriver()->listContents(self::S3_PREFIX . $type, true) as $item) {
+            if ($item instanceof FileAttributes && preg_match($pattern, basename($item->path())) === 1) {
+                $paths[] = $item->path();
+            }
+        }
+
+        // The timestamp is in the file name, so name order is age order.
+        usort($paths, fn (string $a, string $b) => strcmp(basename($b), basename($a)));
+
+        $deleted = 0;
+        foreach (array_slice($paths, $keep) as $path) {
+            Storage::disk($disk)->getDriver()->delete($path);
+            $deleted++;
+        }
+
+        return $deleted;
+    }
+
+    private function prunedNote(int $pruned): string
+    {
+        return $pruned > 0 ? sprintf(' (removed %d older %s).', $pruned, $pruned === 1 ? 'copy' : 'copies') : '.';
     }
 
     private function recordRun(string $type, Carbon $startedAt, string $status, string $message, ?string $objectKey = null): array
@@ -349,10 +495,10 @@ class BackupService
             'finished_at' => Carbon::now()->toIso8601String(),
         ];
 
-        AdminSetting::putValue('storage', $this->lastRunSettingKey($type), $run);
+        AdminSetting::putValue('storage', BackupSettings::lastRunKey($type), $run);
 
         if ($status !== self::STATUS_SKIPPED) {
-            $label = $type === self::TYPE_CONFIG ? 'Configuration files backup' : 'Portal backup';
+            $label = BackupSettings::LABELS[$type] ?? 'Backup';
             app(Notifier::class)->notify(
                 $status === self::STATUS_SUCCESS ? NotificationEvents::BACKUP_SUCCEEDED : NotificationEvents::BACKUP_FAILED,
                 null,
@@ -369,19 +515,21 @@ class BackupService
         return $run;
     }
 
-    private function isEnabledSetting(string $key, bool $default = false): bool
+    private function requireZip(): void
     {
-        return filter_var((string) AdminSetting::getValue($key, $default ? 'true' : 'false'), FILTER_VALIDATE_BOOL);
+        if (!class_exists(ZipArchive::class)) {
+            throw new RuntimeException('PHP zip extension is required for backups.');
+        }
     }
 
-    private function cronSettingKey(string $type): string
+    private function makeWorkDir(string $name): string
     {
-        return $type === self::TYPE_CONFIG ? 'backup_config_cron' : 'backup_portal_cron';
-    }
+        $workDir = storage_path('app/backups/tmp/' . $name . '-' . bin2hex(random_bytes(4)));
+        if (!is_dir($workDir) && !mkdir($workDir, 0755, true) && !is_dir($workDir)) {
+            throw new RuntimeException('Could not create backup working directory.');
+        }
 
-    private function lastRunSettingKey(string $type): string
-    {
-        return $type === self::TYPE_CONFIG ? 'backup_config_last_run' : 'backup_portal_last_run';
+        return $workDir;
     }
 
     private function removeDirectory(string $directory): void

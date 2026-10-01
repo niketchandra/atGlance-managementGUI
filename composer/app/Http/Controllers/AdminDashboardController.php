@@ -14,6 +14,7 @@ use App\Models\SystemRegister;
 use App\Models\User;
 use App\Models\Workspace;
 use App\Services\BackupService;
+use App\Support\BackupSettings;
 use App\Support\S3Settings;
 use App\Support\SiteProfile;
 use Illuminate\Http\UploadedFile;
@@ -866,41 +867,33 @@ class AdminDashboardController extends Controller
         $s3StorageBaseUrl = $this->resolveStorageBaseUrl('s3');
 
         $useS3Storage = $this->isFeatureEnabledSetting('s3_enabled', $this->isS3Enabled());
-        $backupRestoreEnabled = $this->isFeatureEnabledSetting('backup_restore_enabled');
-        $backupConfigToS3 = $this->isFeatureEnabledSetting('backup_config_to_s3');
-        $backupPortalToS3 = $this->isFeatureEnabledSetting('backup_portal_to_s3');
-        $backupConfigCron = $this->normalizeCronFrequency((string) AdminSetting::getValue('backup_config_cron', ''));
-        $backupPortalCron = $this->normalizeCronFrequency((string) AdminSetting::getValue('backup_portal_cron', ''));
+        $backupRestoreEnabled = BackupSettings::masterEnabled();
         $migrationEnabled = $this->isFeatureEnabledSetting('migration_enabled', $useS3Storage);
 
-        if (!$backupConfigToS3) {
-            $backupConfigCron = '';
-        }
-
-        if (!$backupPortalToS3) {
-            $backupPortalCron = '';
-        }
-
         $backupService = app(BackupService::class);
+        $backupSections = [];
         $configuredCronSetups = [];
-        if ($backupConfigToS3 && $backupConfigCron !== '') {
-            $configuredCronSetups[] = [
-                'name' => 'Configuration files backup to S3',
-                'frequency' => $this->cronFrequencyLabel($backupConfigCron),
-                'expression' => $this->cronFrequencyExpression($backupConfigCron),
-                'command' => 'backup:config',
-                'last_run' => $backupService->lastRun(BackupService::TYPE_CONFIG),
+        foreach (BackupSettings::TYPES as $backupType) {
+            $settings = BackupSettings::get($backupType);
+            $backupSections[$backupType] = $settings + [
+                'label' => BackupSettings::LABELS[$backupType],
+                'last_run' => $backupService->lastRun($backupType),
             ];
-        }
 
-        if ($backupPortalToS3 && $backupPortalCron !== '') {
-            $configuredCronSetups[] = [
-                'name' => 'Portal backup (.env, settings, DB) to S3',
-                'frequency' => $this->cronFrequencyLabel($backupPortalCron),
-                'expression' => $this->cronFrequencyExpression($backupPortalCron),
-                'command' => 'backup:portal',
-                'last_run' => $backupService->lastRun(BackupService::TYPE_PORTAL),
-            ];
+            $expression = BackupSettings::expression($settings);
+            if ($backupRestoreEnabled && $settings['enabled'] && $expression !== null) {
+                $destinations = array_filter([
+                    $settings['to_local'] ? 'local (keep ' . $settings['keep_local'] . ')' : null,
+                    $settings['to_s3'] ? 'S3 (keep ' . $settings['keep_s3'] . ')' : null,
+                ]);
+                $configuredCronSetups[] = [
+                    'name' => BackupSettings::LABELS[$backupType] . ' to ' . implode(' and ', $destinations),
+                    'frequency' => BackupSettings::frequencyLabel($settings),
+                    'expression' => $expression,
+                    'command' => $backupType === BackupService::TYPE_DATABASE ? 'backup:database' : 'backup:config',
+                    'last_run' => $backupSections[$backupType]['last_run'],
+                ];
+            }
         }
 
         $migrationDirection = (string) session('migration_direction', $useS3Storage ? 'local_to_s3' : 's3_to_local');
@@ -956,10 +949,8 @@ class AdminDashboardController extends Controller
             's3StorageBaseUrl' => $s3StorageBaseUrl,
             'hasS3Secret' => $s3Runtime['secret'] !== '',
             'backupRestoreEnabled' => $backupRestoreEnabled,
-            'backupConfigToS3' => $backupConfigToS3,
-            'backupPortalToS3' => $backupPortalToS3,
-            'backupConfigCron' => $backupConfigCron,
-            'backupPortalCron' => $backupPortalCron,
+            'backupSections' => $backupSections,
+            'backupFrequencies' => BackupSettings::FREQUENCIES,
             'configuredCronSetups' => $configuredCronSetups,
             'migrationEnabled' => $migrationEnabled,
             'migrationDirection' => $migrationDirection,
@@ -1218,62 +1209,71 @@ class AdminDashboardController extends Controller
 
     public function updateBackupRestoreSettings(Request $request): RedirectResponse
     {
-        $validated = $request->validate([
-            'backup_restore_enabled' => ['nullable', 'boolean'],
-            'backup_config_to_s3' => ['nullable', 'boolean'],
-            'backup_portal_to_s3' => ['nullable', 'boolean'],
-            'backup_config_cron' => ['nullable', Rule::in(['hourly', 'every_six_hours', 'every_twelve_hours', 'daily', 'weekly', 'monthly'])],
-            'backup_portal_cron' => ['nullable', Rule::in(['daily', 'weekly', 'monthly'])],
-        ]);
+        $rules = ['backup_restore_enabled' => ['nullable', 'boolean']];
+        foreach (BackupSettings::TYPES as $type) {
+            $rules += [
+                "backup_{$type}_enabled" => ['nullable', 'boolean'],
+                "backup_{$type}_frequency" => ['nullable', Rule::in(array_merge(array_keys(BackupSettings::FREQUENCIES), [BackupSettings::CUSTOM]))],
+                "backup_{$type}_cron_expression" => ['nullable', 'string', 'max:100'],
+                "backup_{$type}_to_s3" => ['nullable', 'boolean'],
+                "backup_{$type}_to_local" => ['nullable', 'boolean'],
+                "backup_{$type}_keep_s3" => ['nullable', 'integer', 'min:1', 'max:' . BackupSettings::MAX_KEEP],
+                "backup_{$type}_keep_local" => ['nullable', 'integer', 'min:1', 'max:' . BackupSettings::MAX_KEEP],
+            ];
+        }
+        $validated = $request->validate($rules);
 
         $backupRestoreEnabled = $request->boolean('backup_restore_enabled');
-        $backupConfigToS3 = $request->boolean('backup_config_to_s3');
-        $backupPortalToS3 = $request->boolean('backup_portal_to_s3');
+        $sections = [];
+        $errors = [];
 
-        if (!$backupRestoreEnabled) {
-            $backupConfigToS3 = false;
-            $backupPortalToS3 = false;
+        foreach (BackupSettings::TYPES as $type) {
+            $label = BackupSettings::LABELS[$type];
+            $values = [
+                'enabled' => $backupRestoreEnabled && $request->boolean("backup_{$type}_enabled"),
+                'frequency' => (string) ($validated["backup_{$type}_frequency"] ?? ''),
+                'cron_expression' => trim((string) ($validated["backup_{$type}_cron_expression"] ?? '')),
+                'to_s3' => $request->boolean("backup_{$type}_to_s3"),
+                'to_local' => $request->boolean("backup_{$type}_to_local"),
+                'keep_s3' => (int) ($validated["backup_{$type}_keep_s3"] ?? BackupSettings::DEFAULT_KEEP),
+                'keep_local' => (int) ($validated["backup_{$type}_keep_local"] ?? BackupSettings::DEFAULT_KEEP),
+            ];
+
+            if ($values['enabled']) {
+                if ($values['frequency'] === '') {
+                    $errors["backup_{$type}_frequency"] = "Select how often to run the {$label}.";
+                } elseif ($values['frequency'] === BackupSettings::CUSTOM && !BackupSettings::isValidCron($values['cron_expression'])) {
+                    $errors["backup_{$type}_cron_expression"] = "Enter a valid 5-field cron expression for the {$label}, for example 30 2 * * *.";
+                }
+
+                if (!$values['to_s3'] && !$values['to_local']) {
+                    $errors["backup_{$type}_to_local"] = "Choose where to keep the {$label}: local copies, S3, or both.";
+                }
+            }
+
+            if ($values['to_s3'] && $backupRestoreEnabled && !$this->isS3Enabled()) {
+                $errors["backup_{$type}_to_s3"] = 'Enable S3 on the S3 tab first, or keep local copies only.';
+            }
+
+            $sections[$type] = $values;
         }
 
-        $backupConfigCron = $backupConfigToS3
-            ? $this->normalizeCronFrequency((string) ($validated['backup_config_cron'] ?? ''))
-            : '';
-        $backupPortalCron = $backupPortalToS3
-            ? $this->normalizeCronFrequency((string) ($validated['backup_portal_cron'] ?? ''))
-            : '';
-
-        if ($backupConfigToS3 && $backupConfigCron === '') {
-            return back()
-                ->withErrors(['backup_config_cron' => 'Select cron frequency for configuration files backup.'])
-                ->withInput();
-        }
-
-        if ($backupPortalToS3 && $backupPortalCron === '') {
-            return back()
-                ->withErrors(['backup_portal_cron' => 'Select cron frequency for portal backup.'])
-                ->withInput();
-        }
-
-        if (($backupConfigToS3 || $backupPortalToS3) && !$this->isS3Enabled()) {
-            return back()
-                ->withErrors(['backup_restore_enabled' => 'Enable S3 configuration first to schedule S3 backups.'])
-                ->withInput();
+        if ($errors !== []) {
+            return back()->withErrors($errors)->withInput();
         }
 
         AdminSetting::putValue('storage', 'backup_restore_enabled', $backupRestoreEnabled ? 'true' : 'false');
-        AdminSetting::putValue('storage', 'backup_config_to_s3', $backupConfigToS3 ? 'true' : 'false');
-        AdminSetting::putValue('storage', 'backup_portal_to_s3', $backupPortalToS3 ? 'true' : 'false');
-        AdminSetting::putValue('storage', 'backup_config_cron', $backupConfigCron);
-        AdminSetting::putValue('storage', 'backup_portal_cron', $backupPortalCron);
-        AdminSetting::putValue('storage', 'configuration_file_base_location', $backupConfigToS3 ? 's3' : 'local');
+        foreach ($sections as $type => $values) {
+            BackupSettings::save($type, $values);
+        }
+
+        // Where newly uploaded configuration files are stored follows the files backup's S3 choice, as before.
+        $configToS3 = $sections[BackupSettings::TYPE_CONFIG]['enabled'] && $sections[BackupSettings::TYPE_CONFIG]['to_s3'];
+        AdminSetting::putValue('storage', 'configuration_file_base_location', $configToS3 ? 's3' : 'local');
 
         $this->setEnvironmentValues([
-            'CONFIGURATION_FILES_BASE_DISK' => $backupConfigToS3 ? 's3' : 'local',
+            'CONFIGURATION_FILES_BASE_DISK' => $configToS3 ? 's3' : 'local',
             'BACKUP_RESTORE_ENABLED' => $backupRestoreEnabled ? 'true' : 'false',
-            'BACKUP_CONFIG_TO_S3' => $backupConfigToS3 ? 'true' : 'false',
-            'BACKUP_PORTAL_TO_S3' => $backupPortalToS3 ? 'true' : 'false',
-            'BACKUP_CONFIG_CRON' => $backupConfigCron,
-            'BACKUP_PORTAL_CRON' => $backupPortalCron,
         ]);
 
         return redirect()
@@ -1765,39 +1765,6 @@ class AdminDashboardController extends Controller
         $raw = (string) AdminSetting::getValue($key, $default ? 'true' : 'false');
 
         return filter_var($raw, FILTER_VALIDATE_BOOL);
-    }
-
-    private function normalizeCronFrequency(string $frequency): string
-    {
-        $normalized = strtolower(trim($frequency));
-
-        return in_array($normalized, ['hourly', 'every_six_hours', 'every_twelve_hours', 'daily', 'weekly', 'monthly'], true) ? $normalized : '';
-    }
-
-    private function cronFrequencyLabel(string $frequency): string
-    {
-        return match ($this->normalizeCronFrequency($frequency)) {
-            'hourly' => 'Every hour',
-            'every_six_hours' => 'Every six hours',
-            'every_twelve_hours' => 'Every 12 hours',
-            'daily' => 'Every day',
-            'weekly' => 'Every week',
-            'monthly' => 'Every month',
-            default => 'Not configured',
-        };
-    }
-
-    private function cronFrequencyExpression(string $frequency): string
-    {
-        return match ($this->normalizeCronFrequency($frequency)) {
-            'hourly' => '0 0 * * * *',
-            'every_six_hours' => '0 0 */6 * * *',
-            'every_twelve_hours' => '0 0 */12 * * *',
-            'daily' => '0 0 0 * * *',
-            'weekly' => '0 0 0 * * 0',
-            'monthly' => '0 0 0 1 * *',
-            default => '* * * * * *',
-        };
     }
 
     private function resolveStorageDisk(): string

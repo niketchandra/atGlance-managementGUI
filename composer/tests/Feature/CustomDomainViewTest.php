@@ -62,6 +62,45 @@ class CustomDomainViewTest extends TestCase
             ->assertSee('Azure Container Apps');
     }
 
+    public function test_info_tab_shows_the_default_logo_until_an_organization_logo_is_set(): void
+    {
+        $this->actingAsRole(100);
+
+        $this->get(route('admin.settings', ['tab' => 'info']))
+            ->assertOk()
+            ->assertSee('id="info-org-logo"', false)
+            ->assertSee('src="' . asset('branding/atglance-logo.png') . '"', false);
+
+        \App\Models\AdminSetting::putValue('site', 'site_logo_url', 'https://cdn.example.test/acme.png');
+
+        $this->get(route('admin.settings', ['tab' => 'info']))
+            ->assertSee('src="https://cdn.example.test/acme.png"', false);
+    }
+
+    public function test_plugins_are_a_searchable_list_of_bars(): void
+    {
+        $this->actingAsRole(100);
+
+        $this->get(route('admin.settings', ['tab' => 'plugins']))
+            ->assertOk()
+            ->assertSee('id="plugin-search"', false)
+            ->assertSee('data-plugin="custom-domain"', false)
+            ->assertSee('aria-controls="plugin-details-custom-domain"', false)
+            ->assertSee('Disabled')
+            ->assertSee('>Enable<', false)
+            // Details stay folded until Info is clicked; the Site tab link appears only once enabled.
+            ->assertSee('id="plugin-details-custom-domain" style="display: none;"', false)
+            ->assertDontSee('Set the domain on the Site tab');
+
+        DomainSettings::setPluginEnabled(true);
+
+        $this->get(route('admin.settings', ['tab' => 'plugins', 'plugin' => 'custom-domain']))
+            ->assertOk()
+            ->assertSee('id="plugin-details-custom-domain" style="display: block;"', false)
+            ->assertSee('Set the domain on the Site tab')
+            ->assertSee('>Disable<', false);
+    }
+
     public function test_plugins_card_shows_detected_builtin_proxy(): void
     {
         $this->actingAsRole(100);

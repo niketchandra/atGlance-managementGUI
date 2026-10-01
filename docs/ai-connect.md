@@ -146,6 +146,40 @@ Use this for any server with `POST /chat/completions`, such as vLLM, LocalAI, a 
 2. Enter the model name.
 3. Enter a key only if the server needs one.
 
+## Validate a configuration file with AI
+
+When AI Connect is enabled, the configuration view page (`/configuration-backups/{id}/view`) shows a **Validate with AI** button. Anyone who can open that file can use it.
+
+| Method | Path | Name |
+|---|---|---|
+| POST | `/configuration-backups/{id}/ai-validate` | `configuration-backups.ai-validate` (10 requests per minute) |
+
+What the console does (`App\Services\ConfigAiValidator`):
+1. Reads the file (storage disk, else `raw_data`) and cuts it at 30,000 characters.
+2. Masks the value of lines whose key looks secret (`password`, `secret`, `token`, `api_key`, `private_key`, `credential`). Values such as `yes`, `no` and numbers stay, so `PasswordAuthentication no` is still reviewed.
+3. Sends the file with line numbers and a system prompt that audits it against CIS Benchmarks, DISA STIG, NIST SP 800-53 / 800-123, Mozilla Server Side TLS and the vendor documentation. The prompt asks for JSON: `status` (`ok`, `warning`, `error`), `summary`, `findings` (severity, line, standard, issue, details, impact, suggestion, fix, steps to apply and verify), `description` (overview and the important settings explained) and `threats` (known threats to this type of service, with impact, mitigation and whether the file already mitigates them). Standards are named without control numbers, because models invent them. It allows 8192 output tokens and a 180-second timeout.
+4. Reads the JSON even inside a code fence, repairs a missing closing brace, and splits steps the model numbered itself. The page shows the issues as cards, then "About this configuration" and "Potential threats". A reply that is not JSON is shown as text with status `unknown`.
+5. Records `config.ai_validated` in the user's activity.
+
+Responses: `403` when AI Connect is off or the user cannot open the file, `422` for an empty file, `502` with the provider error when the call fails.
+
+### History and sharing
+
+Every successful run is saved in `config_ai_validations` (model `App\Models\ConfigAiValidation`): file, user, provider label, model, status, summary and the full parsed result as JSON. Failed runs are not saved.
+
+| Method | Path | Name |
+|---|---|---|
+| GET | `/configuration-backups/{id}/ai-validations/{validationId}` | `configuration-backups.ai-validations.show` |
+| DELETE | `/configuration-backups/{id}/ai-validations/{validationId}` | `configuration-backups.ai-validations.delete` |
+
+- The configuration page shows an **AI validation history** panel on the right (below the file on narrow screens) with the 50 newest runs. Opening one shows the saved result; it does not call the AI again.
+- Saved results stay readable when AI Connect is turned off; only the Validate with AI button goes away.
+- **Share** copies `/configuration-backups/{id}/view?validation={validationId}`. The page opens with that result. The link needs a login, and the same access rules as the file apply, so it only works for people who can already open the file. There is no public link, because results describe weaknesses in a live system.
+- **Delete**: the trash icon on a history entry deletes it after a confirmation. The person who ran it, or an admin or super admin who can open the file, may delete it; others get `403`. Deleting records `config.ai_validation_deleted` in the activity log.
+- **Backups**: `config_ai_validations` is in `BackupService::CONFIG_TABLES`, so the configuration & console files backup (S3, local copies and the pre-restore snapshot) includes saved results and a restore brings them back with their IDs. The portal backup already dumps every table.
+
+The page says which provider and model receive the file. AI output can be wrong; check it before changing a live service. Small models are the least reliable: in testing, `gpt-oss:20b` recommended `KillMode=control-group` for Debian's `ssh.service`, which would end every open SSH session on restart.
+
 ## Out of scope
 
 - **Amazon Bedrock and Google Vertex AI.** They need AWS SigV4 or Google OAuth. For now, use OpenRouter, or run a LiteLLM proxy and connect it as a Custom provider.
@@ -161,3 +195,5 @@ Use this for any server with `POST /chat/completions`, such as vLLM, LocalAI, a 
 - Anthropic and OpenAI-compatible request shapes (OpenClaw, Azure)
 - redacted errors
 - Ollama model listing
+
+`tests/Feature/ConfigAiValidationTest.php` (17 tests) covers the Validate with AI button, secret masking, JSON parsing and repair, provider errors, access checks, and the saved history, share link and delete.

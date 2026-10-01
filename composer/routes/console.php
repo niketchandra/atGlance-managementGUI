@@ -29,10 +29,14 @@ $runBackup = function (string $type) {
 };
 
 Artisan::command('backup:config', $runBackup(BackupService::TYPE_CONFIG))
-    ->purpose('Back up configuration files to S3');
+    ->purpose('Back up configuration files and console files (local copies and/or S3)');
 
-Artisan::command('backup:portal', $runBackup(BackupService::TYPE_PORTAL))
-    ->purpose('Back up the portal (.env, admin settings, database dump) to S3');
+Artisan::command('backup:database', $runBackup(BackupService::TYPE_DATABASE))
+    ->purpose('Back up the database as a gzipped SQL dump (local copies and/or S3)');
+
+// Older name, kept so existing host crontabs keep working.
+Artisan::command('backup:portal', $runBackup(BackupService::TYPE_DATABASE))
+    ->purpose('Same as backup:database');
 
 Artisan::command('activity:prune {--days= : Keep this many days (default ACTIVITY_RETENTION_DAYS, 180)}', function () {
     $days = (int) ($this->option('days') ?: config('app.activity_retention_days', 180));
@@ -77,7 +81,7 @@ if (InstallationState::isInstalled()) {
     try {
         $backups = app(BackupService::class);
 
-        foreach (['backup:config' => BackupService::TYPE_CONFIG, 'backup:portal' => BackupService::TYPE_PORTAL] as $command => $type) {
+        foreach (['backup:config' => BackupService::TYPE_CONFIG, 'backup:database' => BackupService::TYPE_DATABASE] as $command => $type) {
             $expression = $backups->scheduleExpression($type);
 
             if ($expression !== null) {

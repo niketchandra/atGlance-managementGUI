@@ -136,8 +136,10 @@ The values are read per request by `App\Support\SiteProfile` and shared with eve
 
 ## Custom Domain & HTTPS
 
-- **Plugins tab** (`/admin/settings?tab=plugins`): the **Custom Domain & HTTPS** card.
-  - An Enable switch (super admin only).
+- **Plugins tab** (`/admin/settings?tab=plugins`): a scrolling list with a search box at the top. Each plugin is one bar with its icon, name, a one-line summary, an Enabled/Disabled badge, its action button, **Info** and **Enable/Disable** (super admin only). A dot next to the name means the details need attention.
+  - **Info** opens the plugin's details below its bar. `?plugin=<key>` opens one directly, for example `?tab=plugins&plugin=custom-domain`.
+  - The list comes from `App\Support\PluginRegistry`. To add a plugin, add an entry there (key, name, icon, summary, search keywords, enabled, toggle route, action) and a details partial in `resources/views/admin/plugins/`.
+- **Custom Domain & HTTPS plugin**: the action button is "Set the domain on the Site tab" once it is enabled. Its details (`admin/plugins/custom-domain.blade.php`) show:
   - Setup steps for VM (the built-in proxy), ECS, Azure Container Apps and Kubernetes.
   - The detected proxy status.
 - **Site Configuration tab**: the **Access URL** section, with domain, server IP, the HTTPS option, certificate upload, Check DNS, and the DNS and hosts-file lines to copy.

@@ -18,8 +18,10 @@ Each address has its own login session.
 
 ## 1. Enable the plugin
 
-Go to Admin Settings > Plugins > **Custom Domain & HTTPS** and click **Enable**
-(super admin only). Nothing changes on the server yet.
+Go to Admin Settings > Plugins, find **Custom Domain & HTTPS** in the list (or
+search for "domain"), and click **Enable** (super admin only). Nothing changes on
+the server yet. Click **Info** on the plugin to see the setup steps and the
+proxy status.
 
 ## 2. Put a proxy in front
 
