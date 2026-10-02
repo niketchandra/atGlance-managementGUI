@@ -5,7 +5,9 @@
 #
 # Options (pass after "bash -s --", or as environment variables):
 #   --dir DIR          install directory              (ATGLANCE_DIR, default /opt/atglance)
-#   --version TAG      image tag                      (ATGLANCE_VERSION, default latest)
+#   --version TAG      image tag for BOTH images      (ATGLANCE_VERSION, default latest)
+#                      atglance/ce-atglance-app:TAG and atglance/ce-atglance-gateway:TAG
+#                      e.g. --version 1.2.1 deploys that release instead of latest
 #   --registry PREFIX  image registry/namespace       (ATGLANCE_REGISTRY, default atglance = Docker Hub)
 #   --port PORT        web console port               (APP_PORT, default 8000)
 #
@@ -37,7 +39,7 @@ while [ $# -gt 0 ]; do
         --registry) ATGLANCE_REGISTRY="$2"; shift 2 ;;
         --port) APP_PORT="$2"; shift 2 ;;
         --with-gateway) shift ;;  # accepted for older docs; the gateway always runs
-        -h|--help) sed -n '2,14p' "$0" 2>/dev/null || true; exit 0 ;;
+        -h|--help) sed -n '2,16p' "$0" 2>/dev/null || true; exit 0 ;;
         *) echo "Unknown option: $1" >&2; exit 1 ;;
     esac
 done
@@ -192,6 +194,9 @@ fi
 # ---------------------------------------------------------------------------
 step "Deploying AtGlance CE ($ATGLANCE_VERSION)"
 
+ok "Images: $ATGLANCE_REGISTRY/ce-atglance-app:$ATGLANCE_VERSION, $ATGLANCE_REGISTRY/ce-atglance-gateway:$ATGLANCE_VERSION"
+docker pull "$ATGLANCE_REGISTRY/ce-atglance-app:$ATGLANCE_VERSION"
+docker pull "$ATGLANCE_REGISTRY/ce-atglance-gateway:$ATGLANCE_VERSION"
 docker compose pull
 docker compose up -d --remove-orphans
 
