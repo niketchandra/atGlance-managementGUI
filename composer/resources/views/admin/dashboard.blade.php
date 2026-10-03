@@ -26,7 +26,7 @@
         <p style="opacity: 0.9;">Manage users, platform configuration, and global settings.</p>
     </div>
 
-    <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px;">
+    <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 16px; margin-bottom: 24px;">
         <div class="ag-card" style="padding: 18px;">
             <div style="font-size: 12px; color: var(--ag-muted); text-transform: uppercase;">Users</div>
             <div class="ag-stat" style="margin-top: 8px;">{{ $totalUsers }}</div>
@@ -43,6 +43,7 @@
             <div style="font-size: 12px; color: var(--ag-muted); text-transform: uppercase;">Configuration Files</div>
             <div class="ag-stat" style="margin-top: 8px;">{{ $totalConfigFiles }}</div>
         </div>
+        @include('partials.vulnerability-kpi', ['cardClass' => 'ag-card'])
     </div>
 
     <div style="display: flex; gap: 12px; margin-bottom: 24px;">
@@ -55,5 +56,7 @@
         <a href="{{ route('enterprise.console') }}" class="admin-action-btn">Enterprise Console</a>
         @endif
     </div>
+
+    @include('partials.performance-chart')
 </div>
 @endsection

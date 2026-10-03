@@ -31,11 +31,6 @@
         gap: 15px;
     }
 
-    .recent-activity-table-wrap {
-        width: 100%;
-        overflow-x: auto;
-    }
-
     @media (max-width: 992px) {
         .kpi-grid {
             grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -62,7 +57,7 @@
     <!-- Dashboard Welcome Card -->
     <div class="ag-banner" style="padding: 40px; margin-bottom: 30px;">
         <h1 style="font-size: 30px; margin-bottom: 10px;">Welcome back, {{ auth()->user()->name }}! 👋</h1>
-        <p style="font-size: 16px; opacity: 0.9;">Here's what's happening with your API Gateway today</p>
+        <p style="font-size: 16px; opacity: 0.9;">Here's the latest on your systems, configuration backups and vulnerabilities</p>
     </div>
 
     <!-- Top KPI Boxes -->
@@ -112,90 +107,31 @@
             </div>
         </a>
 
-        <a href="{{ route('vulnerabilities-identified') }}" class="kpi-card">
-            <div style="color: var(--ag-muted); font-size: 13px; text-transform: uppercase; margin-bottom: 10px;">Vulnerabilities Identified</div>
-            <div style="font-size: 28px; font-weight: bold; color: var(--ag-text);">{{ $totalPotentialVulnerabilities }}</div>
-            <div style="font-size: 12px; margin-top: 8px; color: {{ $vulnerabilitiesChange['direction'] === 'down' ? '#1fa874' : ($vulnerabilitiesChange['direction'] === 'up' ? '#e45757' : '#8a9099') }};">
-                @if($vulnerabilitiesChange['direction'] === 'up')
-                    <i class="fas fa-arrow-up"></i>
-                @elseif($vulnerabilitiesChange['direction'] === 'down')
-                    <i class="fas fa-arrow-down"></i>
-                @else
-                    <i class="fas fa-minus"></i>
-                @endif
-                {{ $vulnerabilitiesChange['percent'] }}% {{ $vulnerabilitiesChange['direction'] === 'flat' ? 'no change' : $vulnerabilitiesChange['direction'] }} from last week
-            </div>
-        </a>
+        @include('partials.vulnerability-kpi')
     </div>
 
-    <!-- Quick Actions -->
+    {{-- Quick Actions: hidden for now; remove the @if to show it again. --}}
+    @if (false)
     <div class="ag-card" style="padding: 30px; margin-bottom: 30px;">
-        <h2 style="font-size: 18px; font-weight: 500; margin-bottom: 20px;"><i class="fas fa-lightning-bolt"></i> Quick Actions</h2>
+        <h2 style="font-size: 18px; font-weight: 500; margin-bottom: 20px;"><i class="fas fa-bolt"></i> Quick Actions</h2>
         <div class="quick-actions-grid">
-            <button class="ag-btn quick-action-btn">
-                <i class="fas fa-plus-circle"></i> New API
-            </button>
-            <button class="ag-btn quick-action-btn">
-                <i class="fas fa-chart-line"></i> View Analytics
-            </button>
-            <button class="ag-btn quick-action-btn">
-                <i class="fas fa-key"></i> Manage Keys
-            </button>
-            <button class="ag-btn quick-action-btn">
-                <i class="fas fa-file-download"></i> Export Report
-            </button>
+            <a href="{{ route('configuration-backups') }}" class="ag-btn quick-action-btn" style="text-decoration: none; text-align: center;">
+                <i class="fas fa-file-code"></i> Configuration Backups
+            </a>
+            <a href="{{ route('systems-registered') }}" class="ag-btn quick-action-btn" style="text-decoration: none; text-align: center;">
+                <i class="fas fa-server"></i> Registered Systems
+            </a>
+            <a href="{{ route('vulnerabilities-identified') }}" class="ag-btn quick-action-btn" style="text-decoration: none; text-align: center;">
+                <i class="fas fa-shield-alt"></i> Vulnerabilities
+            </a>
+            <a href="{{ route('settings') }}#api" class="ag-btn quick-action-btn" style="text-decoration: none; text-align: center;">
+                <i class="fas fa-key"></i> Manage API Keys
+            </a>
         </div>
     </div>
 
-    <!-- Recent Activity -->
-    <div class="ag-card" style="padding: 30px; margin-bottom: 30px;">
-        <h2 style="font-size: 18px; font-weight: 500; margin-bottom: 20px;"><i class="fas fa-history"></i> Recent Activity</h2>
-        <div class="recent-activity-table-wrap">
-        <table class="ag-table" style="width: 100%; min-width: 720px;">
-            <thead>
-                <tr style="background: var(--ag-surface); border-bottom: 1px solid var(--ag-line);">
-                    <th style="padding: 15px; text-align: left;">Timestamp</th>
-                    <th style="padding: 15px; text-align: left;">Event</th>
-                    <th style="padding: 15px; text-align: left;">Status</th>
-                    <th style="padding: 15px; text-align: left;">Details</th>
-                </tr>
-            </thead>
-            <tbody>
-                <tr style="border-bottom: 1px solid var(--ag-line);">
-                    <td style="padding: 15px;">2026-03-01 14:32:10</td>
-                    <td style="padding: 15px;"><i class="fas fa-plug" style="color: var(--ag-text);"></i> API Deployed</td>
-                    <td style="padding: 15px;"><span style="background: #d4edda; color: #155724; padding: 4px 8px; border-radius: 4px; font-size: 12px;">Success</span></td>
-                    <td style="padding: 15px; font-size: 13px;">User API v2.0 deployed</td>
-                </tr>
-                <tr style="border-bottom: 1px solid var(--ag-line);">
-                    <td style="padding: 15px;">2026-03-01 13:15:45</td>
-                    <td style="padding: 15px;"><i class="fas fa-key" style="color: var(--ag-text);"></i> Key Rotated</td>
-                    <td style="padding: 15px;"><span style="background: #cfe9fc; color: #004085; padding: 4px 8px; border-radius: 4px; font-size: 12px;">Info</span></td>
-                    <td style="padding: 15px; font-size: 13px;">API key rotated for security</td>
-                </tr>
-                <tr style="border-bottom: 1px solid var(--ag-line);">
-                    <td style="padding: 15px;">2026-03-01 12:00:22</td>
-                    <td style="padding: 15px;"><i class="fas fa-cog" style="color: var(--ag-subtle);"></i> Settings Updated</td>
-                    <td style="padding: 15px;"><span style="background: #cfe9fc; color: #004085; padding: 4px 8px; border-radius: 4px; font-size: 12px;">Info</span></td>
-                    <td style="padding: 15px; font-size: 13px;">Rate limits updated</td>
-                </tr>
-                <tr>
-                    <td style="padding: 15px;">2026-03-01 11:30:50</td>
-                    <td style="padding: 15px;"><i class="fas fa-bell" style="color: var(--ag-subtle);"></i> Alert Triggered</td>
-                    <td style="padding: 15px;"><span style="background: #fff3cd; color: #856404; padding: 4px 8px; border-radius: 4px; font-size: 12px;">Warning</span></td>
-                    <td style="padding: 15px; font-size: 13px;">High response time detected</td>
-                </tr>
-            </tbody>
-        </table>
-        </div>
-    </div>
+    @endif
 
-    <!-- Performance Chart Placeholder -->
-    <div class="ag-card" style="padding: 30px;">
-        <h2 style="font-size: 18px; font-weight: 500; margin-bottom: 20px;"><i class="fas fa-chart-line"></i> Performance (Last 7 Days)</h2>
-        <div style="height: 250px; background: #ededed; border-radius: 12px; display: flex; align-items: center; justify-content: center; color: var(--ag-subtle); font-size: 16px;">
-            <i class="fas fa-chart-area"></i> Chart will be displayed here
-        </div>
-    </div>
+    @include('partials.performance-chart')
 </div>
 @endsection

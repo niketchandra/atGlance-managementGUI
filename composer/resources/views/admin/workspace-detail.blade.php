@@ -68,9 +68,9 @@
         @if($canManageAdmins)
         <div class="ag-card" style="padding: 18px;">
             <h2 style="font-size: 18px; color: var(--ag-text); margin-bottom: 8px;">Add Admin to Workspace</h2>
-            <p style="font-size: 13px; color: var(--ag-muted); margin-bottom: 14px;">Assign an existing admin to this workspace.</p>
+            <p style="font-size: 13px; color: var(--ag-muted); margin-bottom: 14px;">Make any user or admin a workspace admin. A current member of this workspace is promoted.</p>
 
-            <form method="POST" action="{{ route('workspace.admins.add', $workspace->id) }}">
+            <form method="POST" action="{{ route($workspaceAddAdminRouteName, $workspace->id) }}">
                 @csrf
                 
                 <div style="margin-bottom: 14px;">
@@ -80,7 +80,7 @@
 
                     <div id="adminSelectedTag" style="display: none; margin-bottom: 8px; font-size: 12px; color: var(--ag-text); background: var(--ag-surface); border-radius: 999px; padding: 6px 10px; width: fit-content;"></div>
                     <div id="adminResults" style="border-radius: 12px; max-height: 180px; overflow: auto; background: var(--ag-card); display: none;"></div>
-                    <p style="margin-top: 6px; font-size: 12px; color: var(--ag-muted);">Start typing to search admins quickly by name or email.</p>
+                    <p style="margin-top: 6px; font-size: 12px; color: var(--ag-muted);">Start typing to search users quickly by name or email.</p>
                 </div>
 
                 <button class="ag-btn" type="submit">Add Admin</button>
@@ -136,7 +136,7 @@
                                     <td style="padding: 10px; font-size: 13px;"><span style="display: inline-flex; align-items: center; gap: 8px;"><x-user-avatar :user="$admin" size="26" />{{ $admin->name }}</span></td>
                                     <td style="padding: 10px; font-size: 13px;">{{ $admin->email }}</td>
                                     <td style="padding: 10px;">
-                                        @if($canManageAdmins)
+                                        @if($canManageAdmins && (int) $admin->id !== (int) auth()->id())
                                             <form method="POST" action="{{ route($workspaceRemoveUserRouteName, [$workspace->id, $admin->id]) }}" style="display: inline;">
                                                 @csrf
                                                 @method('DELETE')
