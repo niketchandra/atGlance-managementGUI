@@ -25,7 +25,8 @@ container-service deploy), `docs/api-reference.md` (full endpoint reference),
 `docs/api-gateway.md` (gateway config), `docs/api-keys.md` (PAT flow),
 `docs/web-console.md` (web UI layout/pages), `docs/scheduled-backups.md` (scheduled
 database and configuration/console-file backups to local copies and S3, retention, restore, and the scheduler container), `docs/notifications.md` (notification
-channels, workspace groups and events), `docs/ai-connect.md` (AI provider
+channels, workspace groups and events), `docs/workspace-settings.md` (workspace
+settings tabs: tags, automatic AI checks, workspace backups, workspace notifications), `docs/ai-connect.md` (AI provider
 connection and per-provider setup), `docs/licence.md` (licence verification and
 what an unlicensed instance blocks), `docs/custom-domain.md` (custom domain,
 HTTPS and the opt-in built-in Caddy proxy), `docs/tested-scenarios.md` (tested failure

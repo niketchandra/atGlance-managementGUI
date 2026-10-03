@@ -97,6 +97,7 @@
                             <th style="text-align: left; padding: 12px;">Workspace ID</th>
                             <th style="text-align: left; padding: 12px;">Name</th>
                             <th style="text-align: left; padding: 12px;">Description</th>
+                            <th style="text-align: left; padding: 12px;">Tags</th>
                             <th style="text-align: left; padding: 12px;">Admins</th>
                             <th style="text-align: left; padding: 12px;">Users</th>
                             <th style="text-align: left; padding: 12px;">Status</th>
@@ -109,6 +110,13 @@
                                 <td style="padding: 12px; font-size: 13px;">{{ $workspace->id }}</td>
                                 <td style="padding: 12px; font-size: 13px; font-weight: 500;">{{ $workspace->name }}</td>
                                 <td style="padding: 12px; font-size: 13px;">{{ Str::limit($workspace->description, 30) ?? '-' }}</td>
+                                <td style="padding: 12px; font-size: 12px;">
+                                    @forelse(\App\Support\WorkspaceSettings::tagLabels(\App\Support\WorkspaceSettings::get((int) $workspace->id)['tags']) as $workspaceTag)
+                                        <span style="display: inline-block; background: var(--ag-surface); color: var(--ag-text); padding: 2px 8px; border-radius: 999px; font-weight: 600; margin: 1px;">{{ $workspaceTag }}</span>
+                                    @empty
+                                        <span style="color: var(--ag-muted);">-</span>
+                                    @endforelse
+                                </td>
                                 <td style="padding: 12px; font-size: 13px;"><span style="background: #e4f6ff; color: #1f7fb8; padding: 4px 8px; border-radius: 4px;">{{ $workspace->admins()->count() }}</span></td>
                                 <td style="padding: 12px; font-size: 13px;"><span style="background: #dce7f5; color: #424c68; padding: 4px 8px; border-radius: 4px;">{{ $workspace->regularUsers()->count() }}</span></td>
                                 <td style="padding: 12px; font-size: 13px;"><span style="background:{{ $workspace->status === 'active' ? '#e3faf3' : '#fdecec' }}; color:{{ $workspace->status === 'active' ? '#137a54' : '#b33b3b' }}; padding:4px 8px; border-radius:4px;">{{ ucfirst($workspace->status) }}</span></td>

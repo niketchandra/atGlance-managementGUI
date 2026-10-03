@@ -149,6 +149,12 @@ The values are read per request by `App\Support\SiteProfile` and shared with eve
 
 See [custom-domain.md](custom-domain.md).
 
+## Workspace settings
+
+The workspace page (`/admin/workspaces/{id}`) has tabs: General, Members, System Tags,
+Vulnerability Checks, Backups and Notifications. Settings > Notifications lets each
+member choose their workspace emails. See `docs/workspace-settings.md`.
+
 ## Controllers
 
 ### `AuthController` (Web)

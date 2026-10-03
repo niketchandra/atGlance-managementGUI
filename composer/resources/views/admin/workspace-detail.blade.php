@@ -25,178 +25,78 @@
         </div>
     @endif
 
-    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-bottom: 18px;">
-        @if($canEditWorkspaceMetadata)
-        <div class="ag-card" style="padding: 18px;">
-            <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 8px;">
-                <h2 style="font-size: 18px; color: var(--ag-text); margin: 0;">Edit Workspace</h2>
-                <form method="POST" action="{{ route($workspaceDeleteRouteName, $workspace->id) }}" style="margin: 0;">
-                    @csrf
-                    @method('DELETE')
-                    <button class="ag-btn ag-btn--danger" type="submit" onclick="return confirm('Delete this workspace? This action cannot be undone.');">Delete Workspace</button>
-                </form>
-            </div>
-            <p style="font-size: 13px; color: var(--ag-muted); margin-bottom: 14px;">Update workspace name, description, and status.</p>
+    @php
+        $activeTab = request('tab', 'general');
+        $workspaceTabs = [
+            'general' => ['General', 'fa-circle-info'],
+            'members' => ['Members', 'fa-users'],
+            'tags' => ['Workspace Tags', 'fa-tags'],
+            'vulnerability-checks' => ['Vulnerability Checks', 'fa-shield-alt'],
+            'backups' => ['Backups', 'fa-clock-rotate-left'],
+            'notifications' => ['Notifications', 'fa-bell'],
+        ];
+    @endphp
 
-            <form method="POST" action="{{ route($workspaceUpdateRouteName, $workspace->id) }}">
-                @csrf
-                @method('PUT')
-                
-                <div style="margin-bottom: 12px;">
-                    <label class="ag-label">Workspace Name</label>
-                    <input class="ag-input" type="text" name="name" value="{{ old('name', $workspace->name) }}" required style="width: 100%;">
-                </div>
+    <div class="ag-side-layout">
+    <nav class="ag-tabs ag-tabs--vertical" aria-label="Workspace sections">
+        @foreach($workspaceTabs as $tabKey => [$tabLabel, $tabIcon])
+            <button type="button" class="ag-tab workspace-tab-btn {{ $activeTab === $tabKey ? 'active' : '' }}" data-tab="{{ $tabKey }}"><i class="fas {{ $tabIcon }}"></i> {{ $tabLabel }}</button>
+        @endforeach
+    </nav>
+    <div class="ag-side-content">
 
-                <div style="margin-bottom: 12px;">
-                    <label class="ag-label">Description</label>
-                    <textarea class="ag-textarea" name="description" rows="3" style="width: 100%;">{{ old('description', $workspace->description) }}</textarea>
-                </div>
-
-                <div style="margin-bottom: 14px;">
-                    <label class="ag-label">Status</label>
-                    <select class="ag-select" name="status" required style="width: 100%;">
-                        <option value="active" {{ old('status', $workspace->status) === 'active' ? 'selected' : '' }}>Active</option>
-                        <option value="inactive" {{ old('status', $workspace->status) === 'inactive' ? 'selected' : '' }}>Inactive</option>
-                    </select>
-                </div>
-
-                <button class="ag-btn" type="submit">Save Changes</button>
-            </form>
-        </div>
-        @endif
-
-        @if($canManageAdmins)
-        <div class="ag-card" style="padding: 18px;">
-            <h2 style="font-size: 18px; color: var(--ag-text); margin-bottom: 8px;">Add Admin to Workspace</h2>
-            <p style="font-size: 13px; color: var(--ag-muted); margin-bottom: 14px;">Make any user or admin a workspace admin. A current member of this workspace is promoted.</p>
-
-            <form method="POST" action="{{ route($workspaceAddAdminRouteName, $workspace->id) }}">
-                @csrf
-                
-                <div style="margin-bottom: 14px;">
-                    <label class="ag-label" for="adminSearchInput">Search Admin</label>
-                    <input class="ag-input" id="adminSearchInput" type="text" autocomplete="off" placeholder="Type name or email" style="width: 100%; margin-bottom: 8px;">
-                    <input id="adminIdInput" type="hidden" name="admin_id" required>
-
-                    <div id="adminSelectedTag" style="display: none; margin-bottom: 8px; font-size: 12px; color: var(--ag-text); background: var(--ag-surface); border-radius: 999px; padding: 6px 10px; width: fit-content;"></div>
-                    <div id="adminResults" style="border-radius: 12px; max-height: 180px; overflow: auto; background: var(--ag-card); display: none;"></div>
-                    <p style="margin-top: 6px; font-size: 12px; color: var(--ag-muted);">Start typing to search users quickly by name or email.</p>
-                </div>
-
-                <button class="ag-btn" type="submit">Add Admin</button>
-            </form>
-        </div>
-        @endif
-
-        <div class="ag-card" style="padding: 18px;">
-            <h2 style="font-size: 18px; color: var(--ag-text); margin-bottom: 8px;">Add User to Workspace</h2>
-            <p style="font-size: 13px; color: var(--ag-muted); margin-bottom: 14px;">Assign a regular user to this workspace.</p>
-
-            <form method="POST" action="{{ route($workspaceAddUserRouteName, $workspace->id) }}">
-                @csrf
-
-                <div style="margin-bottom: 14px;">
-                    <label class="ag-label" for="userSearchInput">Search User</label>
-                    <input class="ag-input" id="userSearchInput" type="text" autocomplete="off" placeholder="Type name or email" style="width: 100%; margin-bottom: 8px;">
-                    <input id="userIdInput" type="hidden" name="user_id" required>
-
-                    <div id="userSelectedTag" style="display: none; margin-bottom: 8px; font-size: 12px; color: var(--ag-text); background: var(--ag-surface); border-radius: 999px; padding: 6px 10px; width: fit-content;"></div>
-                    <div id="userResults" style="border-radius: 12px; max-height: 180px; overflow: auto; background: var(--ag-card); display: none;"></div>
-                    <p style="margin-top: 6px; font-size: 12px; color: var(--ag-muted);">Start typing to search users quickly by name or email.</p>
-                </div>
-
-                <button class="ag-btn" type="submit">Add User</button>
-            </form>
-        </div>
+    <div id="tab-general" class="workspace-tab-content" style="display:{{ $activeTab === 'general' ? 'block' : 'none' }};">
+        @include('admin.workspace.tab-general')
     </div>
 
-    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 18px;">
-        <!-- Workspace Admins -->
-        <div class="ag-card" style="padding: 18px;">
-            <h2 style="font-size: 18px; color: var(--ag-text); margin-bottom: 8px;">Workspace Admins</h2>
-            <p style="font-size: 13px; color: var(--ag-muted); margin-bottom: 14px;">Admins assigned to this workspace.</p>
+    <div id="tab-members" class="workspace-tab-content" style="display:{{ $activeTab === 'members' ? 'block' : 'none' }};">
+        @include('admin.workspace.tab-members')
+    </div>
 
-            @if($admins->isEmpty())
-                <div style="padding: 12px; background: var(--ag-surface); border-radius: 12px; color: var(--ag-muted); text-align: center; font-size: 13px;">
-                    No admins assigned yet.
-                </div>
-            @else
-                <div style="overflow-x: auto;">
-                    <table class="ag-table" style="width: 100%;">
-                        <thead>
-                            <tr style="background: var(--ag-surface); border-bottom: 1px solid var(--ag-line);">
-                                <th style="text-align: left; padding: 10px;">Name</th>
-                                <th style="text-align: left; padding: 10px;">Email</th>
-                                <th style="text-align: left; padding: 10px;">Action</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @foreach($admins as $admin)
-                                <tr style="border-bottom: 1px solid var(--ag-line);">
-                                    <td style="padding: 10px; font-size: 13px;"><span style="display: inline-flex; align-items: center; gap: 8px;"><x-user-avatar :user="$admin" size="26" />{{ $admin->name }}</span></td>
-                                    <td style="padding: 10px; font-size: 13px;">{{ $admin->email }}</td>
-                                    <td style="padding: 10px;">
-                                        @if($canManageAdmins && (int) $admin->id !== (int) auth()->id())
-                                            <form method="POST" action="{{ route($workspaceRemoveUserRouteName, [$workspace->id, $admin->id]) }}" style="display: inline;">
-                                                @csrf
-                                                @method('DELETE')
-                                                <button class="ag-btn ag-btn--danger" type="submit" onclick="return confirm('Remove this admin from workspace?')">Remove</button>
-                                            </form>
-                                        @else
-                                            <span style="font-size: 12px; color: var(--ag-muted);">Read only</span>
-                                        @endif
-                                    </td>
-                                </tr>
-                            @endforeach
-                        </tbody>
-                    </table>
-                </div>
-            @endif
-        </div>
+    <div id="tab-tags" class="workspace-tab-content" style="display:{{ $activeTab === 'tags' ? 'block' : 'none' }};">
+        @include('admin.workspace.tab-tags')
+    </div>
 
-        <!-- Workspace Users -->
-        <div class="ag-card" style="padding: 18px;">
-            <h2 style="font-size: 18px; color: var(--ag-text); margin-bottom: 8px;">Workspace Users</h2>
-            <p style="font-size: 13px; color: var(--ag-muted); margin-bottom: 14px;">Regular users assigned to this workspace.</p>
+    <div id="tab-vulnerability-checks" class="workspace-tab-content" style="display:{{ $activeTab === 'vulnerability-checks' ? 'block' : 'none' }};">
+        @include('admin.workspace.tab-ai')
+    </div>
 
-            @if($regularUsers->isEmpty())
-                <div style="padding: 12px; background: var(--ag-surface); border-radius: 12px; color: var(--ag-muted); text-align: center; font-size: 13px;">
-                    No users assigned yet.
-                </div>
-            @else
-                <div style="overflow-x: auto;">
-                    <table class="ag-table" style="width: 100%;">
-                        <thead>
-                            <tr style="background: var(--ag-surface); border-bottom: 1px solid var(--ag-line);">
-                                <th style="text-align: left; padding: 10px;">Name</th>
-                                <th style="text-align: left; padding: 10px;">Email</th>
-                                <th style="text-align: left; padding: 10px;">Action</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @foreach($regularUsers as $user)
-                                <tr style="border-bottom: 1px solid var(--ag-line);">
-                                    <td style="padding: 10px; font-size: 13px;"><span style="display: inline-flex; align-items: center; gap: 8px;"><x-user-avatar :user="$user" size="26" />{{ $user->name }}</span></td>
-                                    <td style="padding: 10px; font-size: 13px;">{{ $user->email }}</td>
-                                    <td style="padding: 10px;">
-                                        <form method="POST" action="{{ route($workspaceRemoveUserRouteName, [$workspace->id, $user->id]) }}" style="display: inline;">
-                                            @csrf
-                                            @method('DELETE')
-                                            <button class="ag-btn ag-btn--danger" type="submit" onclick="return confirm('Remove this user from workspace?')">Remove</button>
-                                        </form>
-                                    </td>
-                                </tr>
-                            @endforeach
-                        </tbody>
-                    </table>
-                </div>
-            @endif
-        </div>
+    <div id="tab-backups" class="workspace-tab-content" style="display:{{ $activeTab === 'backups' ? 'block' : 'none' }};">
+        @include('admin.workspace.tab-backups')
+    </div>
+
+    <div id="tab-notifications" class="workspace-tab-content" style="display:{{ $activeTab === 'notifications' ? 'block' : 'none' }};">
+        @include('admin.workspace.tab-notifications')
+    </div>
+
+    </div>
     </div>
 </div>
 
+<style>
+    .ws-config-fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+    .ws-config-fieldset--locked { opacity: 0.6; }
+    .ws-config-fieldset--locked a { pointer-events: none; }
+</style>
+
 <script>
     document.addEventListener('DOMContentLoaded', function () {
+        const workspaceTabButtons = document.querySelectorAll('.workspace-tab-btn');
+        workspaceTabButtons.forEach(function (button) {
+            button.addEventListener('click', function () {
+                const tabName = button.dataset.tab;
+                document.querySelectorAll('.workspace-tab-content').forEach(function (panel) {
+                    panel.style.display = panel.id === 'tab-' + tabName ? 'block' : 'none';
+                });
+                workspaceTabButtons.forEach(function (other) {
+                    other.classList.toggle('active', other === button);
+                });
+                const url = new URL(window.location.href);
+                url.searchParams.set('tab', tabName);
+                window.history.replaceState({}, '', url.toString());
+            });
+        });
+
         function wireTypeahead(config) {
             const {
                 inputId,

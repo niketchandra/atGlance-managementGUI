@@ -49,6 +49,16 @@
     <div class="ag-card" style="padding: 18px;">
         <p style="font-size: 13px; color: var(--ag-muted); margin-bottom: 14px;">You can manage only the workspaces where you are assigned as workspace admin.</p>
 
+        @if($allWorkspaceTags->isNotEmpty())
+            <div style="display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 14px; font-size: 12px;">
+                <span style="color: var(--ag-muted);">Filter by tag:</span>
+                <a href="{{ route('admin.workspaces') }}" class="ag-btn {{ $tagFilter === '' ? '' : 'ag-btn--ghost' }}" style="text-decoration: none; padding: 3px 10px; font-size: 12px; border-radius: 999px;">All</a>
+                @foreach($allWorkspaceTags as $filterTag)
+                    <a href="{{ route('admin.workspaces', ['tag' => $filterTag]) }}" class="ag-btn {{ mb_strtolower($tagFilter) === mb_strtolower($filterTag) ? '' : 'ag-btn--ghost' }}" style="text-decoration: none; padding: 3px 10px; font-size: 12px; border-radius: 999px;">{{ $filterTag }}</a>
+                @endforeach
+            </div>
+        @endif
+
         @if($workspaces->isEmpty())
             <div style="padding: 20px; background: var(--ag-surface); border-radius: 12px; text-align: center; color: var(--ag-muted); font-size: 13px;">
                 No workspace is currently assigned to you as workspace admin.
@@ -60,6 +70,7 @@
                         <th style="text-align: left; padding: 12px;">Workspace ID</th>
                         <th style="text-align: left; padding: 12px;">Name</th>
                         <th style="text-align: left; padding: 12px;">Description</th>
+                        <th style="text-align: left; padding: 12px;">Tags</th>
                         <th style="text-align: left; padding: 12px;">Status</th>
                         <th style="text-align: left; padding: 12px;">Action</th>
                     </tr>
@@ -70,6 +81,13 @@
                             <td style="padding: 12px; font-size: 13px;">{{ $workspace->id }}</td>
                             <td style="padding: 12px; font-size: 13px; font-weight: 500;">{{ $workspace->name }}</td>
                             <td style="padding: 12px; font-size: 13px;">{{ Str::limit($workspace->description, 50) ?? '-' }}</td>
+                            <td style="padding: 12px; font-size: 12px;">
+                                @forelse($workspaceTags[$workspace->id] ?? [] as $workspaceTag)
+                                    <span style="display: inline-block; background: var(--ag-surface); color: var(--ag-text); padding: 2px 8px; border-radius: 999px; font-weight: 600; margin: 1px;">{{ $workspaceTag }}</span>
+                                @empty
+                                    <span style="color: var(--ag-muted);">-</span>
+                                @endforelse
+                            </td>
                             <td style="padding: 12px; font-size: 13px;">
                                 <span style="background:{{ $workspace->status === 'active' ? '#e3faf3' : '#fdecec' }}; color:{{ $workspace->status === 'active' ? '#137a54' : '#b33b3b' }}; padding:4px 8px; border-radius:4px;">
                                     {{ ucfirst($workspace->status) }}

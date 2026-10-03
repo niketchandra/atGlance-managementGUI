@@ -103,12 +103,15 @@ class ConsoleListsTest extends TestCase
         $this->makeConfig($owner, 900001, 'ssh', 'v2');
         $this->makeConfig($owner, 900002, 'ssh', 'v1');
 
-        $this->actingAs($owner)->get(route('configuration-backups'))
+        $response = $this->actingAs($owner)->get(route('configuration-backups'))
             ->assertOk()
-            ->assertSee('System #900001')
-            ->assertSee('System #900002')
-            ->assertSee('View Versions (2)')
-            ->assertSee('View Versions (1)');
+            ->assertSee('pi-alpha')
+            ->assertSee('pi-beta');
+
+        // One row per service and system, with its version count.
+        $counts = collect($response->viewData('items')->items())
+            ->mapWithKeys(fn ($item) => [$item->system_register_id => (int) $item->version_count]);
+        $this->assertSame([900001 => 2, 900002 => 1], $counts->sortKeys()->all());
     }
 
     public function test_configuration_backups_filters_work(): void
@@ -121,13 +124,13 @@ class ConsoleListsTest extends TestCase
 
         $this->actingAs($owner)->get(route('configuration-backups', ['service_name' => 'cron']))
             ->assertOk()
-            ->assertSee('System #900002')
-            ->assertDontSee('System #900001');
+            ->assertSee('pi-beta')
+            ->assertDontSee('pi-alpha');
 
         $this->actingAs($owner)->get(route('configuration-backups', ['system_id' => 900001]))
             ->assertOk()
-            ->assertSee('System #900001')
-            ->assertDontSee('System #900002');
+            ->assertSee('pi-alpha')
+            ->assertDontSee('pi-beta');
     }
 
     public function test_settings_page_has_no_billing_tab(): void

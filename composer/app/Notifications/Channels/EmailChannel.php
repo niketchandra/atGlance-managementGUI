@@ -24,4 +24,21 @@ class EmailChannel implements NotificationChannel
             $mail->to($group->targetList())->subject($subject);
         });
     }
+
+    /**
+     * Workspace members who chose this event. Bcc, so members do not see each other's address.
+     *
+     * @param array<int, string> $addresses
+     */
+    public function sendToMembers(array $addresses, Message $message): void
+    {
+        NotificationSettings::applyMailConfig();
+
+        $subject = '[' . SiteProfile::current()->name() . '] ' . $message->title;
+        $from = (string) config('mail.from.address');
+
+        Mail::mailer('smtp')->raw($message->text(), function (MailMessage $mail) use ($addresses, $subject, $from) {
+            $mail->to($from !== '' ? $from : $addresses[0])->bcc($addresses)->subject($subject);
+        });
+    }
 }

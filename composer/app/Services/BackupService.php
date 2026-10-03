@@ -3,9 +3,11 @@
 namespace App\Services;
 
 use App\Models\AdminSetting;
+use App\Models\WorkspaceBackupRun;
 use App\Notifications\NotificationEvents;
 use App\Support\BackupSettings;
 use App\Support\S3Settings;
+use App\Support\WorkspaceSettings;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -52,6 +54,7 @@ class BackupService
     public const S3_PREFIX = 'backups/';
     public const LOCAL_PREFIX = 'backups/';
     public const SNAPSHOT_PREFIX = 'backups/snapshots/';
+    public const WORKSPACE_FILE_PATTERN = '/^workspace-backup-\d{8}-\d{6}\.zip$/';
 
     /**
      * Returns the scheduler cron expression for a backup type, or null when
@@ -513,6 +516,205 @@ class BackupService
         }
 
         return $run;
+    }
+
+    /**
+     * Backup of one workspace's stored configuration files (set on the workspace's
+     * Backups tab): config.json with the workspace's systems, services, config
+     * files, their content and AI reviews, plus workspace.json and notes.txt.
+     * Saved under backups/workspace-{id}/YYYY/MM/ locally and/or in S3.
+     */
+    public function runWorkspace(int $workspaceId, ?int $userId = null): WorkspaceBackupRun
+    {
+        $startedAt = Carbon::now();
+        $workspace = DB::table('workspaces')->where('id', $workspaceId)->first(['id', 'name']);
+        $settings = WorkspaceSettings::get($workspaceId);
+        $notes = trim((string) $settings['backup_notes']);
+
+        $messages = [];
+        $failed = false;
+        $objectKey = null;
+        $disk = null;
+        $workDir = $this->makeWorkDir('workspace-' . $workspaceId . '-' . $startedAt->format('YmdHis'));
+
+        try {
+            if ($workspace === null) {
+                throw new RuntimeException('Workspace not found.');
+            }
+            if (!$settings['backup_to_local'] && !$settings['backup_to_s3']) {
+                throw new RuntimeException('No destination is selected (local copy or S3).');
+            }
+
+            [$localFile, $fileName] = $this->buildWorkspaceArchive($workspace, $notes, $workDir, $startedAt);
+            $prefix = self::workspacePrefix($workspaceId);
+            $key = sprintf('%s%s/%s', $prefix, $startedAt->format('Y/m'), $fileName);
+
+            if ($settings['backup_to_s3'] && !S3Settings::enabled()) {
+                $messages[] = 'S3 is disabled, so no copy was uploaded.';
+            } elseif ($settings['backup_to_s3']) {
+                try {
+                    if (!S3Settings::configureDisk()) {
+                        throw new RuntimeException('S3 credentials are incomplete.');
+                    }
+                    $this->writeFile('s3', $key, $localFile);
+                    $pruned = $this->prunePrefix('s3', $prefix, self::WORKSPACE_FILE_PATTERN, (int) $settings['backup_keep_s3']);
+                    $messages[] = 'Uploaded ' . $key . $this->prunedNote($pruned);
+                    [$objectKey, $disk] = [$key, 's3'];
+                } catch (Throwable $e) {
+                    $failed = true;
+                    $messages[] = $e->getMessage();
+                }
+            }
+
+            if ($settings['backup_to_local']) {
+                try {
+                    $this->writeFile('local', $key, $localFile);
+                    $pruned = $this->prunePrefix('local', $prefix, self::WORKSPACE_FILE_PATTERN, (int) $settings['backup_keep_local']);
+                    $messages[] = 'Saved local copy ' . $key . $this->prunedNote($pruned);
+                    // Download from the local copy when there is one.
+                    [$objectKey, $disk] = [$key, 'local'];
+                } catch (Throwable $e) {
+                    $failed = true;
+                    $messages[] = 'Local copy failed: ' . $e->getMessage();
+                }
+            }
+        } catch (Throwable $e) {
+            $failed = true;
+            $messages[] = $e->getMessage();
+        } finally {
+            $this->removeDirectory($workDir);
+        }
+
+        $message = implode(' ', $messages);
+        if ($failed) {
+            Log::error('Workspace backup failed', ['workspace_id' => $workspaceId, 'error' => $message]);
+        }
+
+        $run = WorkspaceBackupRun::create([
+            'workspace_id' => $workspaceId,
+            'status' => $failed ? self::STATUS_FAILED : self::STATUS_SUCCESS,
+            'message' => $message,
+            'object_key' => $objectKey,
+            'disk' => $disk,
+            'notes' => $notes !== '' ? $notes : null,
+            'triggered_by' => $userId,
+            'started_at' => $startedAt,
+            'finished_at' => Carbon::now(),
+        ]);
+
+        app(Notifier::class)->notify(
+            $failed ? NotificationEvents::WORKSPACE_BACKUP_FAILED : NotificationEvents::WORKSPACE_BACKUP_SUCCEEDED,
+            $workspaceId,
+            'Workspace backup ' . ($failed ? 'failed' : 'succeeded') . ': ' . ($workspace->name ?? '#' . $workspaceId),
+            array_filter([
+                'Workspace' => $workspace->name ?? (string) $workspaceId,
+                'Result' => $message,
+                'Notes' => $notes,
+                'Finished' => $run->finished_at?->toIso8601String(),
+            ]),
+            ['run_id' => $run->id, 'status' => $run->status, 'object_key' => $objectKey],
+        );
+
+        return $run;
+    }
+
+    public static function workspacePrefix(int $workspaceId): string
+    {
+        return self::S3_PREFIX . 'workspace-' . $workspaceId . '/';
+    }
+
+    private function buildWorkspaceArchive(object $workspace, string $notes, string $workDir, Carbon $startedAt): array
+    {
+        $this->requireZip();
+
+        $systemIds = DB::table('system_register')->where('workspace_id', $workspace->id)->pluck('id');
+        $configIds = DB::table('configuration_files')->whereIn('system_register_id', $systemIds)->pluck('id');
+
+        $tables = [
+            'system_register' => DB::table('system_register')->whereIn('id', $systemIds),
+            'services' => DB::table('services')->whereIn('system_id', $systemIds),
+            'configuration_files' => DB::table('configuration_files')->whereIn('id', $configIds),
+            'raw_data' => DB::table('raw_data')->whereIn('file_id', $configIds),
+            'config_ai_validations' => DB::table('config_ai_validations')->whereIn('configuration_file_id', $configIds),
+        ];
+
+        $jsonPath = $workDir . DIRECTORY_SEPARATOR . 'config.json';
+        $handle = fopen($jsonPath, 'wb');
+        if ($handle === false) {
+            throw new RuntimeException('Could not create workspace backup file.');
+        }
+
+        try {
+            fwrite($handle, '{"type":"workspace","workspace_id":' . (int) $workspace->id . ',"created_at":' . json_encode($startedAt->toIso8601String()) . ',"tables":{');
+
+            $index = 0;
+            foreach ($tables as $table => $query) {
+                fwrite($handle, ($index++ > 0 ? ',' : '') . json_encode($table) . ':[');
+
+                $first = true;
+                foreach ($query->orderBy($this->primaryKeyFor($table))->lazy(500) as $row) {
+                    fwrite($handle, ($first ? '' : ',') . json_encode($row, JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE));
+                    $first = false;
+                }
+
+                fwrite($handle, ']');
+            }
+
+            fwrite($handle, '}}');
+        } finally {
+            fclose($handle);
+        }
+
+        $fileName = 'workspace-backup-' . $startedAt->format('Ymd-His') . '.zip';
+        $zipPath = $workDir . DIRECTORY_SEPARATOR . $fileName;
+
+        $zip = new ZipArchive();
+        if ($zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
+            throw new RuntimeException('Could not create workspace backup archive.');
+        }
+
+        $zip->addFile($jsonPath, 'config.json');
+        $zip->addFromString('workspace.json', json_encode([
+            'id' => (int) $workspace->id,
+            'name' => $workspace->name,
+            'notes' => $notes,
+            'created_at' => $startedAt->toIso8601String(),
+            'counts' => ['systems' => $systemIds->count(), 'configuration_files' => $configIds->count()],
+        ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+        if ($notes !== '') {
+            $zip->addFromString('notes.txt', $notes . "\n");
+        }
+
+        if (!$zip->close()) {
+            throw new RuntimeException('Could not write workspace backup archive.');
+        }
+
+        return [$zipPath, $fileName];
+    }
+
+    /**
+     * Keeps the newest $keep files matching $pattern under $prefix and deletes the rest.
+     */
+    private function prunePrefix(string $disk, string $prefix, string $pattern, int $keep): int
+    {
+        $keep = max(1, min($keep, BackupSettings::MAX_KEEP));
+        $paths = [];
+
+        foreach (Storage::disk($disk)->getDriver()->listContents(rtrim($prefix, '/'), true) as $item) {
+            if ($item instanceof FileAttributes && preg_match($pattern, basename($item->path())) === 1) {
+                $paths[] = $item->path();
+            }
+        }
+
+        usort($paths, fn (string $a, string $b) => strcmp(basename($b), basename($a)));
+
+        $deleted = 0;
+        foreach (array_slice($paths, $keep) as $path) {
+            Storage::disk($disk)->getDriver()->delete($path);
+            $deleted++;
+        }
+
+        return $deleted;
     }
 
     private function requireZip(): void

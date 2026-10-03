@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\NotificationGroup;
+use App\Models\WorkspaceNotificationPreference;
 use App\Notifications\Channels\EmailChannel;
 use App\Notifications\Channels\N8nChannel;
 use App\Notifications\Channels\NotificationChannel;
@@ -15,6 +16,7 @@ use App\Notifications\Message;
 use App\Notifications\NotificationEvents;
 use App\Support\NotificationSettings;
 use App\Support\SiteProfile;
+use App\Support\WorkspaceSettings;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use RuntimeException;
@@ -49,20 +51,58 @@ class Notifier
                 return;
             }
 
+            $isWorkspaceEvent = $scope === NotificationEvents::SCOPE_WORKSPACE;
+            if ($isWorkspaceEvent && ((int) $workspaceId <= 0 || !WorkspaceSettings::sendsEvent((int) $workspaceId, $event))) {
+                return;
+            }
+
             $query = NotificationGroup::query()->where('enabled', true);
-            $scope === NotificationEvents::SCOPE_ORGANIZATION
-                ? $query->whereNull('workspace_id')
-                : $query->where('workspace_id', $workspaceId);
+            $isWorkspaceEvent
+                ? $query->where('workspace_id', $workspaceId)
+                : $query->whereNull('workspace_id');
 
             $message = new Message($event, $title, ['Organization' => SiteProfile::current()->name()] + $facts, $data + ['workspace_id' => $workspaceId]);
 
+            $emailedByGroups = [];
             foreach ($query->get() as $group) {
                 if ($group->subscribesTo($event) && NotificationSettings::isAllowed($group->channel)) {
                     $this->deliver($group, $message);
+                    if ($group->channel === 'email') {
+                        $emailedByGroups = array_merge($emailedByGroups, array_map('strtolower', $group->targetList()));
+                    }
                 }
+            }
+
+            if ($isWorkspaceEvent) {
+                $this->emailMembers((int) $workspaceId, $event, $message, $emailedByGroups);
             }
         } catch (Throwable $e) {
             Log::error('Notification dispatch failed', ['event' => $event, 'error' => $e->getMessage()]);
+        }
+    }
+
+    /**
+     * Emails workspace members who want this event: their own preference when they
+     * saved one, else the workspace default list. Addresses an email group already
+     * reached are skipped. One message, members in Bcc.
+     *
+     * @param array<int, string> $alreadyEmailed lower-cased addresses
+     */
+    private function emailMembers(int $workspaceId, string $event, Message $message, array $alreadyEmailed): void
+    {
+        if (!NotificationSettings::isAllowed('email')) {
+            return;
+        }
+
+        $recipients = array_values(array_diff(WorkspaceNotificationPreference::recipientsFor($workspaceId, $event), $alreadyEmailed));
+        if ($recipients === []) {
+            return;
+        }
+
+        try {
+            app(EmailChannel::class)->sendToMembers($recipients, $message);
+        } catch (Throwable $e) {
+            Log::warning('Workspace member email failed', ['workspace_id' => $workspaceId, 'event' => $event, 'error' => $e->getMessage()]);
         }
     }
 

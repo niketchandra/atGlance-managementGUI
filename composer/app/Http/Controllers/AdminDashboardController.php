@@ -586,8 +586,20 @@ class AdminDashboardController extends Controller
             ->orderBy('workspaces.name')
             ->get(['workspaces.id', 'workspaces.name', 'workspaces.description', 'workspaces.status']);
 
+        $workspaceTags = $workspaces->mapWithKeys(fn ($workspace) => [
+            $workspace->id => \App\Support\WorkspaceSettings::tagLabels(\App\Support\WorkspaceSettings::get((int) $workspace->id)['tags']),
+        ]);
+        $tagFilter = trim((string) request('tag', ''));
+        if ($tagFilter !== '') {
+            $workspaces = $workspaces->filter(fn ($workspace) => collect($workspaceTags[$workspace->id])
+                ->contains(fn (string $tag) => mb_strtolower($tag) === mb_strtolower($tagFilter)))->values();
+        }
+
         return view('admin.manage-workspaces', [
             'workspaces' => $workspaces,
+            'workspaceTags' => $workspaceTags,
+            'allWorkspaceTags' => $workspaceTags->flatten()->unique(fn ($tag) => mb_strtolower($tag))->sort()->values(),
+            'tagFilter' => $tagFilter,
             'canCreateWorkspace' => in_array((int) ($actor->rbac_id ?? 0), [100, 101], true),
         ]);
     }
@@ -665,8 +677,21 @@ class AdminDashboardController extends Controller
             'allRegularUsers' => $allRegularUsers,
             'isSuperAdmin' => $isSuperAdmin,
             'canEditWorkspaceMetadata' => $isSuperAdmin,
-            'canManageAdmins' => true,
+            'canManageAdmins' => $workspace->allows($actor, 'admins'),
             'workspaceAddAdminRouteName' => $workspaceAddAdminRouteName,
+            'permissions' => $workspace->permissionsFor($actor),
+            'canSetPermissions' => $this->canSetPermissions($actor, $workspace),
+            'adminPermissions' => $admins->mapWithKeys(fn (User $admin) => [
+                $admin->id => Workspace::resolvePermissions(json_decode((string) ($admin->pivot->permissions ?? ''), true)),
+            ]),
+            'aiRun' => \App\Models\WorkspaceAiRun::where('workspace_id', $workspace->id)->latest('id')->first(),
+            'removableMemberIds' => $workspace->users()->get()
+                ->filter(fn (User $member) => $this->canRemoveMember($actor, $member, $workspace))
+                ->pluck('id')->map(fn ($id) => (int) $id)->all(),
+            'settings' => \App\Support\WorkspaceSettings::get($workspace->id),
+            'notificationGroups' => \App\Models\NotificationGroup::where('workspace_id', $workspace->id)->orderBy('name')->get(),
+            'memberPreferences' => \App\Models\WorkspaceNotificationPreference::where('workspace_id', $workspace->id)->get()->keyBy('user_id'),
+            'backupRuns' => \App\Models\WorkspaceBackupRun::where('workspace_id', $workspace->id)->latest('id')->limit(20)->get(),
             'workspaceShowRouteName' => $workspaceShowRouteName,
             'workspaceUpdateRouteName' => $workspaceUpdateRouteName,
             'workspaceDeleteRouteName' => $workspaceDeleteRouteName,
@@ -717,12 +742,14 @@ class AdminDashboardController extends Controller
     {
         $actor = Auth::user();
         $workspace = Workspace::findOrFail($workspaceId);
-        if (!$this->canManageWorkspaceUsers($actor, $workspace)) {
+        if (!$workspace->allows($actor, 'admins')) {
             abort(403);
         }
 
         $validated = $request->validate([
             'admin_id' => ['required', 'integer', 'exists:users,id'],
+            'permissions' => ['nullable', 'array'],
+            'permissions.*' => [Rule::in(array_keys(Workspace::PERMISSIONS))],
         ]);
 
         $admin = User::where('id', $validated['admin_id'])
@@ -734,6 +761,17 @@ class AdminDashboardController extends Controller
             ->firstOrFail();
 
         $workspace->addUser($admin->id, true);
+        // Access for a User-role workspace admin is chosen by an Admin-role workspace admin (or the super admin).
+        if ($this->canSetPermissions($actor, $workspace) && (int) ($admin->rbac_id ?? 0) === 102) {
+            $workspace->setPermissions($admin->id, array_fill_keys($validated['permissions'] ?? [], true)
+                + array_map(fn () => false, Workspace::PERMISSIONS));
+        }
+        app(\App\Services\Notifier::class)->notify(
+            \App\Notifications\NotificationEvents::WORKSPACE_MEMBER_ADDED,
+            $workspace->id,
+            'Member added: ' . $workspace->name,
+            ['Workspace' => $workspace->name, 'Member' => $admin->name . ' (' . $admin->email . ')', 'Role' => 'Workspace admin', 'By' => (string) $actor->name],
+        );
 
         return redirect()
             ->route($this->isSuperAdmin($actor) ? 'workspace.detail' : 'admin.workspaces.show', $workspaceId)
@@ -744,7 +782,7 @@ class AdminDashboardController extends Controller
     {
         $actor = Auth::user();
         $workspace = Workspace::findOrFail($workspaceId);
-        if (!$this->canManageWorkspaceUsers($actor, $workspace)) {
+        if (!$workspace->allows($actor, 'members')) {
             abort(403);
         }
 
@@ -766,6 +804,12 @@ class AdminDashboardController extends Controller
         }
 
         $workspace->addUser($targetUser->id, false);
+        app(\App\Services\Notifier::class)->notify(
+            \App\Notifications\NotificationEvents::WORKSPACE_MEMBER_ADDED,
+            $workspace->id,
+            'Member added: ' . $workspace->name,
+            ['Workspace' => $workspace->name, 'Member' => $targetUser->name . ' (' . $targetUser->email . ')', 'Role' => 'User', 'By' => (string) $actor->name],
+        );
 
         $showRoute = $this->isSuperAdmin($actor) ? 'workspace.detail' : 'admin.workspaces.show';
 
@@ -783,14 +827,19 @@ class AdminDashboardController extends Controller
         }
 
         $targetUser = User::findOrFail($userId);
-        if (!$this->isSuperAdmin($actor)
-            && ((int) ($targetUser->rbac_id ?? 0) === 100 || (int) $targetUser->id === (int) $actor->id)) {
+        if (!$this->canRemoveMember($actor, $targetUser, $workspace)) {
             return redirect()->back()->withErrors([
-                'authorization' => 'You cannot remove yourself or the super admin from a workspace.',
+                'authorization' => 'You cannot remove this member. Workspace admins with the User role cannot remove admins who have the Admin role, and nobody can remove themselves or the super admin.',
             ]);
         }
 
         $workspace->removeUser($userId);
+        app(\App\Services\Notifier::class)->notify(
+            \App\Notifications\NotificationEvents::WORKSPACE_MEMBER_REMOVED,
+            $workspace->id,
+            'Member removed: ' . $workspace->name,
+            ['Workspace' => $workspace->name, 'Member' => $targetUser->name . ' (' . $targetUser->email . ')', 'Role' => 'Removed', 'By' => (string) $actor->name],
+        );
 
         $showRoute = $this->isSuperAdmin($actor) ? 'workspace.detail' : 'admin.workspaces.show';
 
@@ -819,6 +868,70 @@ class AdminDashboardController extends Controller
             ->pluck('workspaces.id')
             ->map(fn ($id) => (int) $id)
             ->all();
+    }
+
+    /**
+     * Who may remove $target from $workspace (the actor already manages it):
+     * - nobody removes themselves or the super admin;
+     * - a workspace admin with the User role cannot remove a workspace admin who has the Admin role.
+     */
+    private function canRemoveMember(User $actor, User $target, Workspace $workspace): bool
+    {
+        if ($this->isSuperAdmin($actor)) {
+            return (int) $target->id !== (int) $actor->id;
+        }
+
+        if ((int) $target->id === (int) $actor->id || (int) ($target->rbac_id ?? 0) === 100) {
+            return false;
+        }
+
+        $targetIsAdmin = $this->isWorkspaceManager($target, $workspace);
+        if (!$workspace->allows($actor, $targetIsAdmin ? 'admins' : 'members')) {
+            return false;
+        }
+
+        if (!$this->isAdminOnly($actor) && $targetIsAdmin && (int) ($target->rbac_id ?? 0) === 101) {
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Only workspace admins with the Admin role, and the super admin, decide what a
+     * User-role workspace admin may change.
+     */
+    private function canSetPermissions(User $actor, Workspace $workspace): bool
+    {
+        return in_array((int) ($actor->rbac_id ?? 0), [100, 101], true) && $workspace->canBeManagedBy($actor);
+    }
+
+    public function updateMemberPermissions(Request $request, int $workspaceId, int $userId): RedirectResponse
+    {
+        $actor = Auth::user();
+        $workspace = Workspace::findOrFail($workspaceId);
+        if (!$this->canSetPermissions($actor, $workspace)) {
+            abort(403);
+        }
+
+        $target = User::findOrFail($userId);
+        if (!$this->isWorkspaceManager($target, $workspace) || (int) ($target->rbac_id ?? 0) !== 102) {
+            return redirect()->back()->withErrors([
+                'permissions' => 'Access can only be set for workspace admins with the User role.',
+            ]);
+        }
+
+        $validated = $request->validate([
+            'permissions' => ['nullable', 'array'],
+            'permissions.*' => [Rule::in(array_keys(Workspace::PERMISSIONS))],
+        ]);
+
+        $workspace->setPermissions($target->id, array_fill_keys($validated['permissions'] ?? [], true)
+            + array_map(fn () => false, Workspace::PERMISSIONS));
+
+        return redirect()
+            ->route($this->isSuperAdmin($actor) ? 'workspace.detail' : 'admin.workspaces.show', ['workspaceId' => $workspaceId, 'tab' => 'members'])
+            ->with('success', 'Access updated for ' . $target->name . '.');
     }
 
     /**

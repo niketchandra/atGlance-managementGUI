@@ -2,8 +2,10 @@
 
 use App\Services\BackupService;
 use App\Services\LicenseClient;
+use App\Services\WorkspaceAiSweep;
 use App\Support\InstallationState;
 use App\Support\License;
+use App\Support\WorkspaceSettings;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
@@ -90,5 +92,42 @@ if (InstallationState::isInstalled()) {
         }
     } catch (Throwable $e) {
         Log::warning('Backup schedules not registered', ['error' => $e->getMessage()]);
+    }
+}
+
+Artisan::command('ai:validate-workspace {workspace : Workspace id}', function (WorkspaceAiSweep $sweep) {
+    $run = $sweep->run((int) $this->argument('workspace'));
+    $this->info($run['message']);
+
+    return 0;
+})->purpose('Queue AI reviews of the latest config versions in one workspace');
+
+Artisan::command('backup:workspace {workspace : Workspace id}', function (BackupService $backups) {
+    $run = $backups->runWorkspace((int) $this->argument('workspace'));
+    $run->status === BackupService::STATUS_SUCCESS ? $this->info($run->message) : $this->error($run->message);
+
+    return $run->status === BackupService::STATUS_SUCCESS ? 0 : 1;
+})->purpose("Back up one workspace's stored configuration files");
+
+// Per-workspace schedules from the workspace settings page (Vulnerability Checks and Backups tabs).
+if (InstallationState::isInstalled()) {
+    try {
+        foreach (WorkspaceSettings::workspacesWith('ai_sweep_enabled') as $workspaceId => $settings) {
+            $expression = WorkspaceSettings::expression($settings, 'ai_sweep');
+
+            if ($expression !== null) {
+                Schedule::command('ai:validate-workspace ' . $workspaceId)->cron($expression)->withoutOverlapping(120);
+            }
+        }
+
+        foreach (WorkspaceSettings::workspacesWith('backup_enabled') as $workspaceId => $settings) {
+            $expression = WorkspaceSettings::expression($settings, 'backup');
+
+            if ($expression !== null) {
+                Schedule::command('backup:workspace ' . $workspaceId)->cron($expression)->withoutOverlapping(120);
+            }
+        }
+    } catch (Throwable $e) {
+        Log::warning('Workspace schedules not registered', ['error' => $e->getMessage()]);
     }
 }

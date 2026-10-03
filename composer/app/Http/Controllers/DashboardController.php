@@ -5,12 +5,15 @@ namespace App\Http\Controllers;
 use App\Models\ConfigAiValidation;
 use App\Models\SystemRegister;
 use App\Models\Workspace;
-use App\Services\ConfigAiValidator;
+use App\Services\ConfigAiReviewer;
 use App\Support\AccountAlerts;
 use App\Support\AiSettings;
 use App\Support\ActivityRecorder;
 use App\Support\License;
 use App\Support\UserPreferences;
+use App\Support\WorkspaceSettings;
+use App\Models\WorkspaceNotificationPreference;
+use App\Notifications\NotificationEvents;
 use App\Support\WebSessions;
 use App\Support\S3Settings;
 use Illuminate\Http\RedirectResponse;
@@ -281,7 +284,18 @@ class DashboardController extends Controller
 
         $systemStats = $this->systemCardStats($items->pluck('id')->all());
 
-        return view('systems-registered', compact('items', 'systemStats'));
+        // Tag filter suggestions: the system tag lists of the selected workspace, or of every visible one.
+        $catalogueWorkspaceIds = $selectedWorkspaceId !== null && $selectedWorkspaceId > 0
+            ? [$selectedWorkspaceId]
+            : $this->workspaceIdsForVisibility($actor);
+        $tagCatalogue = collect($catalogueWorkspaceIds)
+            ->flatMap(fn (int $id) => WorkspaceSettings::tagLabels(WorkspaceSettings::get($id)['tags']))
+            ->unique(fn (string $tag) => mb_strtolower($tag))
+            ->sort()
+            ->values()
+            ->all();
+
+        return view('systems-registered', compact('items', 'systemStats', 'tagCatalogue'));
     }
 
     public function editRegisteredSystem(int $systemId)
@@ -312,6 +326,9 @@ class DashboardController extends Controller
             'system' => $system,
             'workspaces' => $workspaces,
             'isAdmin' => $isAdmin,
+            'tagCatalogue' => (int) ($system->workspace_id ?? 0) > 0
+                ? WorkspaceSettings::tagLabels(WorkspaceSettings::get((int) $system->workspace_id)['tags'])
+                : [],
         ]);
     }
 
@@ -819,7 +836,7 @@ class DashboardController extends Controller
     /**
      * Review a configuration file with the AI provider set in AI Connect.
      */
-    public function validateConfigurationWithAi(Request $request, int $id, ConfigAiValidator $validator)
+    public function validateConfigurationWithAi(Request $request, int $id, ConfigAiReviewer $reviewer)
     {
         /** @var User $actor */
         $actor = Auth::user();
@@ -829,10 +846,9 @@ class DashboardController extends Controller
         }
 
         $config = DB::table('configuration_files')
-            ->leftJoin('raw_data', 'configuration_files.id', '=', 'raw_data.file_id')
             ->leftJoin('system_register as sr', 'configuration_files.system_register_id', '=', 'sr.id')
             ->where('configuration_files.id', $id)
-            ->select('configuration_files.*', 'raw_data.file_data as data', 'sr.workspace_id as system_workspace_id', 'sr.user_id as system_user_id')
+            ->select('configuration_files.*', 'sr.workspace_id as system_workspace_id', 'sr.user_id as system_user_id')
             ->first();
 
         if (!$config) {
@@ -843,37 +859,14 @@ class DashboardController extends Controller
             abort(403);
         }
 
-        $content = (string) ($config->data ?? '');
-        [$disk, $path] = $this->resolveDiskAndPathForRead($config->storage_disk ?? null, (string) ($config->file_location ?? ''));
-        if ($path !== '' && Storage::disk($disk)->exists($path)) {
-            $content = (string) Storage::disk($disk)->get($path);
-        }
-
-        if (trim($content) === '') {
-            return response()->json(['success' => false, 'message' => 'This configuration file has no content to validate.'], 422);
-        }
-
-        $connection = AiSettings::connection();
-
         try {
-            $result = $validator->validate($connection, (string) $config->file_name, $config->service_name, $content);
+            $validation = $reviewer->review((int) $config->id, (int) $actor->id);
+        } catch (\InvalidArgumentException $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
         } catch (\RuntimeException $e) {
-            ActivityRecorder::record($actor->id, 'config.ai_validated', 'AI validation failed for ' . $config->file_name, ActivityRecorder::FAILURE, $request);
-
             return response()->json(['success' => false, 'message' => $e->getMessage()], 502);
         }
 
-        ActivityRecorder::record($actor->id, 'config.ai_validated', 'Validated ' . $config->file_name . ' with AI (' . $result['status'] . ')', ActivityRecorder::SUCCESS, $request);
-
-        $validation = ConfigAiValidation::create([
-            'configuration_file_id' => $config->id,
-            'user_id' => $actor->id,
-            'provider' => AiSettings::PROVIDERS[$connection['provider']]['label'],
-            'model' => (string) $connection['model'],
-            'status' => $result['status'],
-            'summary' => $result['summary'],
-            'result' => $result,
-        ]);
         $validation->setRelation('user', $actor);
 
         return response()->json($validation->toPayload() + [
@@ -1025,7 +1018,62 @@ class DashboardController extends Controller
         $webSessions = WebSessions::forUser(Auth::user(), request()->session()->getId());
         $sessionsListed = WebSessions::isAvailable();
 
-        return view('settings', compact('apiKeys', 'webSessions', 'sessionsListed'));
+        $notificationWorkspaces = $this->notificationWorkspacesFor(Auth::user());
+
+        return view('settings', compact('apiKeys', 'webSessions', 'sessionsListed', 'notificationWorkspaces'));
+    }
+
+    /**
+     * Settings > Notifications: each workspace the user belongs to, the events it sends,
+     * and what the user chose (or the workspace default when they have not chosen).
+     */
+    private function notificationWorkspacesFor(User $user)
+    {
+        $labels = NotificationEvents::forScope(NotificationEvents::SCOPE_WORKSPACE);
+        $preferences = WorkspaceNotificationPreference::where('user_id', $user->id)->get()->keyBy('workspace_id');
+
+        return $user->workspaces()->where('workspaces.status', 'active')->orderBy('workspaces.name')->get(['workspaces.id', 'workspaces.name'])
+            ->map(function ($workspace) use ($labels, $preferences) {
+                $settings = WorkspaceSettings::get((int) $workspace->id);
+                $sent = $settings['events'] === null ? array_keys($labels) : (array) $settings['events'];
+                $preference = $preferences->get($workspace->id);
+
+                return (object) [
+                    'id' => (int) $workspace->id,
+                    'name' => $workspace->name,
+                    'events' => array_intersect_key($labels, array_flip($sent)),
+                    'chosen' => $preference ? (array) $preference->events : (array) $settings['member_email_default_events'],
+                    'email_enabled' => $preference ? (bool) $preference->email_enabled : true,
+                    'customised' => $preference !== null,
+                ];
+            });
+    }
+
+    public function updateNotificationPreferences(Request $request): RedirectResponse
+    {
+        /** @var User $actor */
+        $actor = Auth::user();
+
+        $validated = $request->validate([
+            'workspace_id' => ['required', 'integer'],
+            'events' => ['nullable', 'array'],
+            'events.*' => ['string', 'max:64'],
+        ]);
+
+        $workspace = $this->notificationWorkspacesFor($actor)->firstWhere('id', (int) $validated['workspace_id']);
+        if ($workspace === null) {
+            abort(403);
+        }
+
+        WorkspaceNotificationPreference::updateOrCreate(
+            ['workspace_id' => $workspace->id, 'user_id' => $actor->id],
+            [
+                'events' => array_values(array_intersect($validated['events'] ?? [], array_keys($workspace->events))),
+                'email_enabled' => $request->boolean('email_enabled'),
+            ]
+        );
+
+        return redirect()->to(route('settings') . '#notifications')->with('success', 'Notification preferences saved for ' . $workspace->name . '.');
     }
 
     /**

@@ -115,10 +115,12 @@ class NotificationsController extends Controller
                 + $workspaces->mapWithKeys(fn (Workspace $workspace) => [(string) $workspace->id => $workspace->name])->all();
         }
 
+        // Workspace admins whose access includes Notifications (always, for the Admin role).
         return $user->workspaces()
             ->wherePivot('is_admin', true)
             ->orderBy('workspaces.name')
-            ->get(['workspaces.id', 'workspaces.name'])
+            ->get(['workspaces.id', 'workspaces.name', 'workspaces.org_id'])
+            ->filter(fn (Workspace $workspace) => $workspace->allows($user, 'notifications'))
             ->mapWithKeys(fn (Workspace $workspace) => [(string) $workspace->id => $workspace->name])
             ->all();
     }
