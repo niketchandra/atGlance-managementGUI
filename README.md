@@ -47,10 +47,56 @@ curl -fsSL https://raw.githubusercontent.com/niketchandra/atGlance-managementGUI
 ```
 
 1. The installer checks the server (root, OS, CPU, disk, memory, ports) and installs Docker and Docker Compose if needed.
-2. It creates `/opt/atglance` with random database passwords, pulls the images and starts the containers.
+2. It creates `/opt/atglance` with random database passwords, pulls the latest `atglance/ce-atglance-app` and `atglance/ce-atglance-gateway` images and starts the containers.
 3. Open the printed URL, `http://<server-ip>:8000`, and complete the setup wizard.
 
-Open ports 8000 (web console) and 8002 (API gateway for the `atglance` CLI) in the firewall. Pin a version with `| sudo bash -s -- --version 1.2.1`. To upgrade, run the installer again. It keeps your data and passwords.
+Open ports 8000 (web console) and 8002 (API gateway for the `atglance` CLI) in the firewall. By default both images are pulled at `latest`. To deploy a specific version of both, pass `--version`: `| sudo bash -s -- --version 1.2.1`. To upgrade, run the installer again. It keeps your data and passwords.
+
+#### Windows (PowerShell)
+
+On Windows 10/11 or Windows Server, use `install.ps1`. It needs [Docker Desktop](https://www.docker.com/products/docker-desktop/) running in **Linux containers** mode (the default). If Docker is missing, the script tries `winget install Docker.DockerDesktop`, then asks you to start Docker Desktop and run it again.
+
+1. Open **PowerShell as administrator** (Start menu, search PowerShell, right-click, **Run as administrator**).
+2. Download and run the installer:
+
+   ```powershell
+   irm https://raw.githubusercontent.com/niketchandra/atGlance-managementGUI/main/install.ps1 | iex
+   ```
+
+   Or, from a clone of this repository:
+
+   ```powershell
+   .\install.ps1
+   ```
+
+3. Open the printed URL, `http://<host-ip>:8000`, and complete the setup wizard.
+
+The installer creates `C:\ProgramData\AtGlance` with random database passwords, pulls the latest `atglance/ce-atglance-app` and `atglance/ce-atglance-gateway` images and starts the containers. Open ports 8000 and 8002 in Windows Firewall. To upgrade, run the installer again. It keeps your data and passwords.
+
+**If PowerShell blocks the script** ("running scripts is disabled on this system"), the execution policy is too strict. Use one of these:
+
+- Run it once without changing any policy (recommended):
+
+  ```powershell
+  powershell -ExecutionPolicy Bypass -File .\install.ps1
+  ```
+
+- Allow it for the current PowerShell window only. The policy reverts when you close the window:
+
+  ```powershell
+  Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+  .\install.ps1
+  ```
+
+- Allow local scripts for your user permanently:
+
+  ```powershell
+  Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
+  ```
+
+- If you downloaded the file in a browser and Windows still blocks it, unblock it first: `Unblock-File .\install.ps1`.
+
+Options (`-Dir`, `-Version`, `-Registry`, `-Port`) can be passed to `install.ps1`. Both images are pulled at `latest` by default. To deploy a specific version of both, pass `-Version`, for example `.\install.ps1 -Version 1.2.1`. When piping to `iex`, set the environment variables instead, for example `$env:ATGLANCE_VERSION = "1.2.1"` before the `irm` command.
 
 ### Part B: Deploy on ECS or another container service
 

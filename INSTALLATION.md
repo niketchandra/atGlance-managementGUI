@@ -27,6 +27,8 @@ Images are published for `linux/amd64` and `linux/arm64`. Tags: `latest` and rel
 
 ## Part A: Deploy on a VM
 
+Linux server: follow Steps 1 to 3 below. Windows machine: jump to [Deploy on Windows (PowerShell)](#deploy-on-windows-powershell).
+
 ### Requirements
 
 | | Minimum |
@@ -115,6 +117,99 @@ sudo docker compose up -d
 | Uninstall and delete all data | `docker compose down -v`. **This deletes the database and all stored files.** |
 
 Data lives in three Docker volumes: `atglance_db-data` (MySQL), `atglance_app-storage` (app `.env`, `APP_KEY` and stored files) and `atglance_redis-data`.
+
+### Deploy on Windows (PowerShell)
+
+Use `install.ps1` on Windows 10/11 or Windows Server. It does the same steps as `install.sh`, with Docker Desktop in place of the Linux Docker engine.
+
+#### Requirements
+
+| | Minimum |
+|---|---|
+| OS | Windows 10/11 (64-bit) or Windows Server 2019+ |
+| CPU | 2 vCPU, amd64 or arm64 |
+| Memory | 2 GB free for Docker (1 GB works for small installs) |
+| Disk | 5 GB free, more for stored configuration files |
+| Software | [Docker Desktop](https://www.docker.com/products/docker-desktop/) running in **Linux containers** mode (the default) |
+| Access | An elevated PowerShell (Run as administrator), outbound internet to Docker Hub and GitHub |
+| Ports | 8000 (web console) open to users and servers; 8002 (gateway) open to servers |
+
+If Docker is missing, the script tries `winget install Docker.DockerDesktop`, then asks you to start Docker Desktop and run it again.
+
+#### Step 1: Run the installer
+
+Open PowerShell as administrator (Start menu, search PowerShell, right-click, **Run as administrator**), then run:
+
+```powershell
+irm https://raw.githubusercontent.com/niketchandra/atGlance-managementGUI/main/install.ps1 | iex
+```
+
+Or, from a clone of this repository:
+
+```powershell
+.\install.ps1
+```
+
+The installer:
+
+1. Checks the machine: administrator rights, CPU architecture, free disk, memory and free ports.
+2. Checks that Docker Desktop is running in Linux containers mode and that Docker Compose is available.
+3. Creates `C:\ProgramData\AtGlance` with `docker-compose.yml` and `.env`. The `.env` file gets random database passwords and is limited to Administrators and SYSTEM.
+4. Pulls `atglance/ce-atglance-app` and `atglance/ce-atglance-gateway` (`latest` unless you pass a version), starts the containers and waits until the app and gateway are healthy.
+5. Prints the URL of the setup wizard.
+
+#### If PowerShell blocks the script
+
+If you see "running scripts is disabled on this system", the execution policy is too strict. Use one of these:
+
+| Option | Command | Scope |
+|---|---|---|
+| Run once with a bypass (recommended) | `powershell -ExecutionPolicy Bypass -File .\install.ps1` | That one run only |
+| Allow it in this window | `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass` then `.\install.ps1` | Reverts when the window closes |
+| Allow local scripts for your user | `Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned` | Permanent for your user |
+| File downloaded in a browser is still blocked | `Unblock-File .\install.ps1` | That file |
+
+`Get-ExecutionPolicy -List` shows the current policy for each scope. A Group Policy set by your organization overrides these commands. In that case ask your administrator, or use the bypass option.
+
+#### Options
+
+Pass options to the script, or set the environment variable when you pipe it to `iex` (parameters cannot be passed that way):
+
+```powershell
+.\install.ps1 -Version 1.2.1 -Dir D:\atglance
+```
+
+```powershell
+$env:ATGLANCE_VERSION = "1.2.1"
+irm https://raw.githubusercontent.com/niketchandra/atGlance-managementGUI/main/install.ps1 | iex
+```
+
+| Option | Environment variable | Default | What it does |
+|---|---|---|---|
+| `-Port` | `APP_PORT` | `8000` | Port for the web console. Keep 8000: the CLI expects it. |
+| `-Version` | `ATGLANCE_VERSION` | `latest` | Image tag for both the app and gateway images |
+| `-Dir` | `ATGLANCE_DIR` | `C:\ProgramData\AtGlance` | Install directory |
+| `-Registry` | `ATGLANCE_REGISTRY` | `atglance` | Image registry or namespace |
+
+#### Check, firewall, upgrade, manage
+
+```powershell
+cd C:\ProgramData\AtGlance
+docker compose ps
+```
+
+You see the same six containers as on Linux. Allow inbound TCP 8000 and 8002 in Windows Firewall. For a custom domain and HTTPS, see [Custom domain and HTTPS](docs/custom-domain.md).
+
+| Task | Command |
+|---|---|
+| Upgrade | Run the installer again. It keeps `.env`, passwords and data. |
+| Upgrade to a fixed version | `.\install.ps1 -Version 1.2.2` |
+| Logs | `docker compose logs -f app` (or `worker`, `scheduler`) |
+| Restart | `docker compose restart` |
+| Stop | `docker compose down` (data is kept in volumes) |
+| Uninstall and delete all data | `docker compose down -v`. **This deletes the database and all stored files.** |
+
+Continue with [After the install](#after-the-install).
 
 ---
 
