@@ -201,8 +201,18 @@ class AppServiceProvider extends ServiceProvider
                         ]);
                     }
 
+                    // Super admin and admins get "All" (id null) as default: consolidated data
+                    // across every workspace they can see.
+                    $isSuperAdmin = in_array((int) ($user->rbac_id ?? 0), [100, 101], true);
+
+                    if ($isSuperAdmin) {
+                        $workspaceSelectorOptions = collect([(object) ['id' => null, 'name' => 'All']])
+                            ->concat($workspaceSelectorOptions);
+                    }
+
                     $allowedWorkspaceIds = $workspaceSelectorOptions
                         ->pluck('id')
+                        ->filter(fn ($id) => $id !== null)
                         ->map(fn ($id) => (int) $id)
                         ->all();
 
@@ -210,7 +220,12 @@ class AppServiceProvider extends ServiceProvider
                         ? (int) session('selected_workspace_id')
                         : null;
 
-                    if (!empty($allowedWorkspaceIds)) {
+                    if ($isSuperAdmin) {
+                        if ($selectedWorkspaceId !== null && !in_array($selectedWorkspaceId, $allowedWorkspaceIds, true)) {
+                            $selectedWorkspaceId = null;
+                            session()->forget('selected_workspace_id');
+                        }
+                    } elseif (!empty($allowedWorkspaceIds)) {
                         if (!in_array($selectedWorkspaceId, $allowedWorkspaceIds, true)) {
                             $preferredWorkspaceIds = array_values(array_filter(
                                 $allowedWorkspaceIds,

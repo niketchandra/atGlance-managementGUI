@@ -98,10 +98,7 @@ Route::middleware('app.installed')->group(function () {
             Route::get('/users/{user}', [AdminDashboardController::class, 'userDashboard'])->name('admin.users.show');
             Route::get('/users/{user}/profile', [AdminDashboardController::class, 'userProfile'])->name('admin.users.profile');
             Route::put('/users/{user}', [AdminDashboardController::class, 'updateUser'])->name('admin.users.update');
-            Route::get('/workspaces', [AdminDashboardController::class, 'adminWorkspaces'])->name('admin.workspaces');
-            Route::get('/workspaces/{workspaceId}', [AdminDashboardController::class, 'viewWorkspace'])->name('admin.workspaces.show');
-            Route::post('/workspaces/{workspaceId}/users', [AdminDashboardController::class, 'addUserToWorkspace'])->name('admin.workspaces.users.add');
-            Route::delete('/workspaces/{workspaceId}/users/{userId}', [AdminDashboardController::class, 'removeUserFromWorkspace'])->name('admin.workspaces.users.remove');
+            Route::post('/workspaces', [AdminDashboardController::class, 'createAdminWorkspace'])->name('admin.workspaces.store');
             Route::get('/users/{user}/systems/{systemId}/services', [AdminDashboardController::class, 'userSystemServices'])->name('admin.users.systems.services');
             Route::get('/users/{user}/services/{serviceId}/versions', [AdminDashboardController::class, 'userServiceVersions'])->name('admin.users.services.versions');
             Route::get('/settings', [AdminDashboardController::class, 'settings'])->name('admin.settings');
@@ -133,6 +130,16 @@ Route::middleware('app.installed')->group(function () {
             Route::post('/settings/mail', [AdminDashboardController::class, 'updateMailSettings'])->name('admin.settings.mail');
             Route::post('/settings/mail/test', [MailTestController::class, 'send'])->middleware('throttle:5,1')->name('admin.settings.mail.test');
             Route::post('/settings/sso', [AdminDashboardController::class, 'updateSsoSettings'])->name('admin.settings.sso');
+        });
+
+        // Workspace admin is a per-workspace role, so any signed-in user may reach these;
+        // the controller checks workspace_user.is_admin for the workspace.
+        Route::prefix('admin')->group(function () {
+            Route::get('/workspaces', [AdminDashboardController::class, 'adminWorkspaces'])->name('admin.workspaces');
+            Route::get('/workspaces/{workspaceId}', [AdminDashboardController::class, 'viewWorkspace'])->name('admin.workspaces.show');
+            Route::post('/workspaces/{workspaceId}/admins', [AdminDashboardController::class, 'addAdminToWorkspace'])->name('admin.workspaces.admins.add');
+            Route::post('/workspaces/{workspaceId}/users', [AdminDashboardController::class, 'addUserToWorkspace'])->name('admin.workspaces.users.add');
+            Route::delete('/workspaces/{workspaceId}/users/{userId}', [AdminDashboardController::class, 'removeUserFromWorkspace'])->name('admin.workspaces.users.remove');
         });
 
         Route::middleware('super.admin.role')->group(function () {

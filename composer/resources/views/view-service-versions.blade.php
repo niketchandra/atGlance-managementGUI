@@ -37,96 +37,70 @@
             <p style="color: var(--ag-muted); font-size: 16px;">No versions found for this service</p>
         </div>
     @else
-        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(350px, 1fr)); gap: 24px;">
-            @foreach($versions as $version)
-                @php
-                    $isActive = strtolower($version->status) === 'active';
-                @endphp
-                <div class="ag-card ag-item-card" style="padding: 0; overflow: hidden; transition: transform 0.2s ease, box-shadow 0.2s ease;">
-                    
-                    <!-- Version Header -->
-                    <div class="ag-banner" style="border-radius: 0; padding: 20px;">
-                        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
-                            <div style="display: flex; align-items: center; gap: 10px;">
-                                <div style="background: rgba(255,255,255,0.25); border-radius: 16px; width: 45px; height: 45px; display: flex; align-items: center; justify-content: center;">
-                                    <i class="fas fa-file-code" style="font-size: 20px; color: white;"></i>
-                                </div>
-                                <div>
-                                    <div style="font-size: 10px; color: rgba(255,255,255,0.8); font-weight: 500;">VERSION</div>
-                                    <div style="font-size: 20px; color: white; font-weight: bold;">{{ $version->display_version ?? $version->version ?? 'N/A' }}</div>
-                                </div>
-                            </div>
-                            <div style="background: rgba(17, 24, 39, 0.85); border: 1px solid rgba(255,255,255,0.3); padding: 6px 14px; border-radius: 20px; font-size: 11px; color: white; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">
-                                {{ ucfirst($version->status) }}
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Version Body -->
-                    <div style="padding: 20px;">
-                        <!-- File Name -->
-                        <div style="margin-bottom: 16px;">
-                            <div style="font-size: 11px; color: var(--ag-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px;">
-                                <i class="fas fa-file" style="margin-right: 4px;"></i> File Name
-                            </div>
-                            <div style="font-size: 14px; color: var(--ag-text); font-weight: 600; word-break: break-all;">
-                                {{ $version->file_name ?? 'N/A' }}
-                            </div>
-                        </div>
-
-                        <!-- Config ID -->
-                        <div style="margin-bottom: 16px;">
-                            <div style="font-size: 11px; color: var(--ag-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px;">
-                                <i class="fas fa-hashtag" style="margin-right: 4px;"></i> Config ID
-                            </div>
-                            <div style="font-size: 14px; color: var(--ag-subtle); font-weight: 500;">
-                                #{{ $version->id }}
-                            </div>
-                        </div>
-
-                        <!-- Validation Hash -->
-                        @if($version->validation_hash)
-                            <div class="ag-card" style="margin-bottom: 16px; padding: 10px;">
-                                <div style="font-size: 11px; color: var(--ag-teal); font-weight: 600; margin-bottom: 6px;">Validation Hash</div>
-                                <a href="javascript:void(0)" id="version-hash-link-{{ $version->id }}" onclick="toggleHash('version-hash-content-{{ $version->id }}', this)" style="font-size: 12px; color: var(--ag-teal); text-decoration: underline; cursor: pointer; font-weight: 600;">
-                                    Show hash
-                                </a>
-                                <div class="ag-card" id="version-hash-content-{{ $version->id }}" style="display: none; margin-top: 8px; padding: 8px; font-size: 10px; color: var(--ag-text); word-break: break-all; line-height: 1.5; position: relative; padding-right: 70px;">
-                                    <span id="version-hash-value-{{ $version->id }}">{{ $version->validation_hash }}</span>
-                                    <button class="ag-btn" onclick="copyHashById('version-hash-value-{{ $version->id }}', this)" style="position: absolute; top: 6px; right: 6px; transition: background 0.2s;">
-                                        <i class="fas fa-copy"></i> Copy
-                                    </button>
-                                </div>
-                            </div>
-                        @endif
-
-                        <!-- Created & Updated -->
-                        <div style="margin-bottom: 18px;">
-                            <div style="font-size: 11px; color: var(--ag-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px;">
-                                <i class="fas fa-clock" style="margin-right: 4px;"></i> Timeline
-                            </div>
-                            <div style="font-size: 12px; color: var(--ag-muted); line-height: 1.6;">
-                                <div><strong>Created:</strong> {{ \App\Support\UserPreferences::datetime($version->created_at) }}</div>
-                                @if($version->updated_at && $version->updated_at != $version->created_at)
-                                    <div><strong>Updated:</strong> {{ \App\Support\UserPreferences::datetime($version->updated_at) }}</div>
+        @php
+            // Versions are newest first. The newest version of each file on each system is the active one;
+            // older uploads are kept as history.
+            $seenFiles = [];
+        @endphp
+        <div class="ag-card" style="padding: 0; overflow-x: auto;">
+            <table style="width: 100%; border-collapse: collapse; font-size: 14px; min-width: 760px;">
+                <thead>
+                    <tr style="text-align: left; color: var(--ag-muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid var(--ag-line);">
+                        <th style="padding: 14px 20px;">Version</th>
+                        <th style="padding: 14px 12px;">Status</th>
+                        <th style="padding: 14px 12px;">File</th>
+                        <th style="padding: 14px 12px;">System</th>
+                        <th style="padding: 14px 12px;">Uploaded</th>
+                        <th style="padding: 14px 12px;">Hash</th>
+                        <th style="padding: 14px 20px; text-align: right;">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach($versions as $version)
+                        @php
+                            $fileKey = ($version->system_register_id ?? 0) . '|' . $version->file_name;
+                            $isActive = !isset($seenFiles[$fileKey]);
+                            $seenFiles[$fileKey] = true;
+                        @endphp
+                        <tr style="border-bottom: 1px solid var(--ag-line); {{ $isActive ? 'background: rgba(31, 168, 116, 0.06);' : '' }}">
+                            <td style="padding: 14px 20px; white-space: nowrap;">
+                                <i class="fas fa-code-branch" style="color: {{ $isActive ? '#1fa874' : 'var(--ag-subtle)' }}; margin-right: 6px;"></i>
+                                <strong style="color: var(--ag-text);">{{ $version->display_version ?? $version->version ?? 'N/A' }}</strong>
+                                <div style="font-size: 11px; color: var(--ag-subtle); margin-top: 2px;">#{{ $version->id }}</div>
+                            </td>
+                            <td style="padding: 14px 12px;">
+                                @if($isActive)
+                                    <span style="background: #1fa874; color: #fff; padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 600;">Active</span>
+                                @else
+                                    <span style="background: var(--ag-surface); color: var(--ag-muted); padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 600;">Previous</span>
                                 @endif
-                            </div>
-                        </div>
-
-                        <!-- Action Buttons -->
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding-top: 16px; border-top: 1px solid var(--ag-line);">
-                            <button class="ag-btn ag-btn--accent" onclick="window.location.href='{{ route('configuration-backups.view', ['id' => $version->id]) }}'" 
-                                    style="transition: all 0.2s ease; display: flex; align-items: center; justify-content: center; gap: 6px;">
-                                <i class="fas fa-eye"></i> View
-                            </button>
-                            <button class="ag-btn ag-btn--ghost" onclick="window.location.href='{{ route('configuration-backups.download', ['id' => $version->id]) }}'" 
-                                    style="transition: all 0.2s ease; display: flex; align-items: center; justify-content: center; gap: 6px;">
-                                <i class="fas fa-download"></i> Download
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            @endforeach
+                            </td>
+                            <td style="padding: 14px 12px; color: var(--ag-text); word-break: break-all;">{{ $version->file_name ?? 'N/A' }}</td>
+                            <td style="padding: 14px 12px; color: var(--ag-muted);">{{ $version->system_name ?? '-' }}</td>
+                            <td style="padding: 14px 12px; color: var(--ag-muted); white-space: nowrap;">{{ \App\Support\UserPreferences::datetime($version->created_at) }}</td>
+                            <td style="padding: 14px 12px; white-space: nowrap;">
+                                @if($version->validation_hash)
+                                    <code id="version-hash-value-{{ $version->id }}" title="{{ $version->validation_hash }}" style="font-size: 12px; color: var(--ag-muted);">{{ \Illuminate\Support\Str::limit($version->validation_hash, 10, '…') }}</code>
+                                    <span style="display: none;" id="version-hash-full-{{ $version->id }}">{{ $version->validation_hash }}</span>
+                                    <button type="button" class="ag-btn ag-btn--ghost" onclick="copyHashById('version-hash-full-{{ $version->id }}', this)" style="padding: 2px 8px; font-size: 11px; margin-left: 4px;" title="Copy hash">
+                                        <i class="fas fa-copy"></i>
+                                    </button>
+                                @else
+                                    <span style="color: var(--ag-subtle);">-</span>
+                                @endif
+                            </td>
+                            <td style="padding: 14px 20px; text-align: right; white-space: nowrap;">
+                                <a class="ag-btn ag-btn--accent" href="{{ route('configuration-backups.view', ['id' => $version->id]) }}" style="text-decoration: none; padding: 6px 12px; font-size: 12px;">
+                                    <i class="fas fa-eye"></i> View
+                                </a>
+                                <a class="ag-btn ag-btn--ghost" href="{{ route('configuration-backups.download', ['id' => $version->id]) }}" style="text-decoration: none; padding: 6px 12px; font-size: 12px;">
+                                    <i class="fas fa-download"></i> Download
+                                </a>
+                            </td>
+                        </tr>
+                    @endforeach
+                </tbody>
+            </table>
         </div>
     @endif
 </div>

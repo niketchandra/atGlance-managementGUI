@@ -135,34 +135,18 @@ class DashboardController extends Controller
             ->whereBetween('s.created_at', [$previousWeekStart, $previousWeekEnd])
             ->count('s.service_id');
 
-        $isSuperAdmin = (int) ($actor->rbac_id ?? 0) === 100;
-        $alertsBaseQuery = DB::table('activity_logs')
-            ->where('status_code', '>=', 400);
-
-        if (!$isSuperAdmin) {
-            $alertsBaseQuery->where('user_id', (int) $actor->id);
-        }
-
-        $totalPotentialVulnerabilities = (clone $alertsBaseQuery)->count('id');
-        $currentWeekPotentialVulnerabilities = (clone $alertsBaseQuery)
-            ->whereBetween('created_at', [$currentWeekStart, $now])
-            ->count('id');
-        $previousWeekPotentialVulnerabilities = (clone $alertsBaseQuery)
-            ->whereBetween('created_at', [$previousWeekStart, $previousWeekEnd])
-            ->count('id');
-
         $servicesChange = $this->calculateWeeklyChange($currentWeekServicesMonitored, $previousWeekServicesMonitored);
-        $vulnerabilitiesChange = $this->calculateWeeklyChange($currentWeekPotentialVulnerabilities, $previousWeekPotentialVulnerabilities);
+        $vulnerabilityStats = $this->vulnerabilityStats($actor, $selectedWorkspaceId);
 
         return view('dashboard', [
             'totalConfigBackups' => $totalConfigBackups,
             'totalSystemsRegistered' => $totalSystemsRegistered,
             'totalServicesMonitored' => $totalServicesMonitored,
-            'totalPotentialVulnerabilities' => $totalPotentialVulnerabilities,
+            'vulnerabilityStats' => $vulnerabilityStats,
+            'validationTrend' => $this->validationTrend($actor, $selectedWorkspaceId),
             'configChange' => $configChange,
             'systemsChange' => $systemsChange,
             'servicesChange' => $servicesChange,
-            'vulnerabilitiesChange' => $vulnerabilitiesChange,
         ]);
     }
 
@@ -246,7 +230,9 @@ class DashboardController extends Controller
             ->paginate(UserPreferences::get($actor, 'per_page'))
             ->withQueryString();
 
-        return view('configuration-backups', compact('items'));
+        $aiStatus = $this->latestAiStatus('cf.id', $items->pluck('id')->all());
+
+        return view('configuration-backups', compact('items', 'aiStatus'));
     }
 
     public function systemsRegistered(Request $request)
@@ -293,7 +279,9 @@ class DashboardController extends Controller
             ->paginate(UserPreferences::get($actor, 'per_page'))
             ->withQueryString();
 
-        return view('systems-registered', compact('items'));
+        $systemStats = $this->systemCardStats($items->pluck('id')->all());
+
+        return view('systems-registered', compact('items', 'systemStats'));
     }
 
     public function editRegisteredSystem(int $systemId)
@@ -509,7 +497,9 @@ class DashboardController extends Controller
 
         $services = $query->orderByDesc('s.created_at')->get();
 
-        return view('system-services', compact('system', 'services'));
+        $aiStatus = $this->latestAiStatus('cf.service_id', $services->pluck('service_id')->all());
+
+        return view('system-services', compact('system', 'services', 'aiStatus'));
     }
 
     public function liveServiceMonitoring()
@@ -517,9 +507,139 @@ class DashboardController extends Controller
         return view('live-service-monitoring');
     }
 
-    public function vulnerabilitiesIdentified()
+    public function vulnerabilitiesIdentified(Request $request)
     {
-        return view('vulnerabilities-identified');
+        /** @var User $actor */
+        $actor = Auth::user();
+
+        $selectedWorkspaceId = $request->session()->has('selected_workspace_id')
+            ? (int) $request->session()->get('selected_workspace_id')
+            : null;
+
+        $severity = in_array($request->query('severity'), ['warning', 'error'], true)
+            ? $request->query('severity')
+            : null;
+
+        $findings = $this->vulnerableConfigurationsQuery($actor, $selectedWorkspaceId)
+            ->when($severity, fn ($query) => $query->where('v.status', $severity))
+            ->select(
+                'cf.id',
+                'cf.service_id',
+                'cf.service_name',
+                'cf.file_name',
+                'cf.version',
+                'sr.system_name',
+                'v.id as validation_id',
+                'v.status as severity',
+                'v.summary',
+                'v.provider',
+                'v.model',
+                'v.created_at as validated_at'
+            )
+            ->orderByRaw("CASE WHEN v.status = 'error' THEN 0 ELSE 1 END")
+            ->orderByDesc('v.created_at')
+            ->paginate(25)
+            ->withQueryString();
+
+        return view('vulnerabilities-identified', [
+            'findings' => $findings,
+            'severity' => $severity,
+            'vulnerabilityStats' => $this->vulnerabilityStats($actor, $selectedWorkspaceId),
+        ]);
+    }
+
+    /**
+     * Configuration files the actor can see whose latest AI validation
+     * reported warning (medium) or error (high), joined as `v`.
+     */
+    private function vulnerableConfigurationsQuery(User $actor, ?int $selectedWorkspaceId)
+    {
+        $latestValidations = DB::table('config_ai_validations')
+            ->selectRaw('MAX(id) as id')
+            ->groupBy('configuration_file_id');
+
+        $query = DB::table('configuration_files as cf')
+            ->leftJoin('system_register as sr', 'cf.system_register_id', '=', 'sr.id')
+            ->join('config_ai_validations as v', 'v.configuration_file_id', '=', 'cf.id')
+            ->joinSub($latestValidations, 'lv', 'lv.id', '=', 'v.id')
+            ->whereIn('v.status', ['warning', 'error']);
+
+        $this->applyWorkspaceScopeToConfigurationQuery($query, 'cf', 'sr', $actor, $selectedWorkspaceId);
+
+        return $query;
+    }
+
+    /**
+     * Config state at the end of each of the last 7 days: how many configs had
+     * a latest AI validation of error, warning or ok ("no issues") by then.
+     * Days without checks carry the previous state forward instead of dropping to 0.
+     */
+    public function validationTrend(User $actor, ?int $selectedWorkspaceId): array
+    {
+        $query = DB::table('config_ai_validations as v')
+            ->join('configuration_files as cf', 'v.configuration_file_id', '=', 'cf.id')
+            ->leftJoin('system_register as sr', 'cf.system_register_id', '=', 'sr.id');
+        $this->applyWorkspaceScopeToConfigurationQuery($query, 'cf', 'sr', $actor, $selectedWorkspaceId);
+
+        $validations = $query->orderBy('v.created_at')->orderBy('v.id')
+            ->get(['v.configuration_file_id', 'v.status', 'v.created_at']);
+
+        $days = [];
+        $latestByConfig = [];
+        $next = 0;
+        $start = now()->subDays(6)->startOfDay();
+
+        for ($i = 0; $i < 7; $i++) {
+            $day = $start->copy()->addDays($i);
+            $dayEnd = $day->copy()->endOfDay()->toDateTimeString();
+
+            while ($next < $validations->count() && $validations[$next]->created_at <= $dayEnd) {
+                $latestByConfig[$validations[$next]->configuration_file_id] = $validations[$next]->status;
+                $next++;
+            }
+
+            $counts = array_count_values($latestByConfig);
+            $days[] = [
+                'label' => $day->format('D j'),
+                'error' => $counts['error'] ?? 0,
+                'warning' => $counts['warning'] ?? 0,
+                'ok' => $counts['ok'] ?? 0,
+            ];
+        }
+
+        $lastCheck = $validations->last()?->created_at;
+
+        return [
+            'days' => $days,
+            'last_check' => $lastCheck ? UserPreferences::datetime($lastCheck) : null,
+        ];
+    }
+
+    /**
+     * Warning and error counts plus week-over-week change, keyed by severity.
+     * Shared with the admin dashboard.
+     */
+    public function vulnerabilityStats(User $actor, ?int $selectedWorkspaceId = null): array
+    {
+        $now = now();
+        $currentWeekStart = $now->copy()->startOfWeek();
+        $previousWeekStart = $currentWeekStart->copy()->subWeek();
+        $previousWeekEnd = $currentWeekStart->copy()->subSecond();
+
+        $stats = [];
+        foreach (['error', 'warning'] as $severity) {
+            $base = $this->vulnerableConfigurationsQuery($actor, $selectedWorkspaceId)->where('v.status', $severity);
+
+            $current = (clone $base)->whereBetween('v.created_at', [$currentWeekStart, $now])->count('cf.id');
+            $previous = (clone $base)->whereBetween('v.created_at', [$previousWeekStart, $previousWeekEnd])->count('cf.id');
+
+            $stats[$severity] = [
+                'total' => (clone $base)->count('cf.id'),
+                'change' => $this->calculateWeeklyChange($current, $previous),
+            ];
+        }
+
+        return $stats;
     }
 
     /**
@@ -1517,6 +1637,73 @@ class DashboardController extends Controller
                 });
             });
         });
+    }
+
+    /**
+     * Per-system counts for the Systems Registered cards: services, config
+     * backups, and configs whose latest AI validation is error or warning.
+     */
+    private function systemCardStats(array $systemIds): array
+    {
+        if (empty($systemIds)) {
+            return [];
+        }
+
+        $services = DB::table('services')->whereIn('system_id', $systemIds)
+            ->groupBy('system_id')->pluck(DB::raw('COUNT(*)'), 'system_id');
+
+        $configs = DB::table('configuration_files')->whereIn('system_register_id', $systemIds)
+            ->groupBy('system_register_id')->pluck(DB::raw('COUNT(*)'), 'system_register_id');
+
+        $latestValidations = DB::table('config_ai_validations')
+            ->selectRaw('MAX(id) as id')
+            ->groupBy('configuration_file_id');
+
+        $findings = DB::table('configuration_files as cf')
+            ->join('config_ai_validations as v', 'v.configuration_file_id', '=', 'cf.id')
+            ->joinSub($latestValidations, 'lv', 'lv.id', '=', 'v.id')
+            ->whereIn('cf.system_register_id', $systemIds)
+            ->whereIn('v.status', ['error', 'warning'])
+            ->groupBy('cf.system_register_id', 'v.status')
+            ->get(['cf.system_register_id', 'v.status', DB::raw('COUNT(*) as total')]);
+
+        $stats = [];
+        foreach ($systemIds as $id) {
+            $stats[$id] = [
+                'services' => (int) ($services[$id] ?? 0),
+                'configs' => (int) ($configs[$id] ?? 0),
+                'error' => 0,
+                'warning' => 0,
+            ];
+        }
+
+        foreach ($findings as $row) {
+            $stats[$row->system_register_id][$row->status] = (int) $row->total;
+        }
+
+        return $stats;
+    }
+
+    /**
+     * Status (error, warning, ok, unknown) of the newest AI validation, keyed by
+     * $column (cf.id for one config file, cf.service_id for a whole service).
+     */
+    private function latestAiStatus(string $column, array $keys): array
+    {
+        if (empty($keys)) {
+            return [];
+        }
+
+        $latest = DB::table('config_ai_validations as v')
+            ->join('configuration_files as cf', 'v.configuration_file_id', '=', 'cf.id')
+            ->whereIn($column, $keys)
+            ->groupBy($column)
+            ->selectRaw($column . ' as k, MAX(v.id) as id');
+
+        return DB::table('config_ai_validations as v')
+            ->joinSub($latest, 'lv', 'lv.id', '=', 'v.id')
+            ->pluck('v.status', 'lv.k')
+            ->all();
     }
 
     private function canAccessSystemRecord(User $actor, object $system): bool

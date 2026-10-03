@@ -38,6 +38,26 @@ class AdminDashboardController extends Controller
             ? $this->visibleWorkspaceIdsForAdmin($actor)
             : [];
 
+        // Workspace picked in the top bar; null means "All" (the super admin default).
+        $selectedWorkspaceId = request()->session()->has('selected_workspace_id')
+            ? (int) request()->session()->get('selected_workspace_id')
+            : null;
+        // Super admin and admins both get "All" (null); a picked workspace narrows every card.
+        $isSuperAdmin = in_array((int) ($actor->rbac_id ?? 0), [100, 101], true);
+        $superAdminWorkspace = function ($query, string $column) use ($isSuperAdmin, $selectedWorkspaceId) {
+            if (!$isSuperAdmin || $selectedWorkspaceId === null) {
+                return;
+            }
+
+            if ($selectedWorkspaceId === 0) {
+                $query->where(fn ($unassigned) => $unassigned->whereNull($column)->orWhere($column, 0));
+
+                return;
+            }
+
+            $query->where($column, $selectedWorkspaceId);
+        };
+
         $totalUsers = User::query()
             ->where(function ($query) {
                 $query->whereNull('rbac_id')
@@ -60,6 +80,7 @@ class AdminDashboardController extends Controller
             ->count();
 
         $totalSystems = SystemRegister::query()
+            ->when($isSuperAdmin && $selectedWorkspaceId !== null, fn ($query) => $superAdminWorkspace($query, 'workspace_id'))
             ->when($this->isAdminOnly($actor), function ($query) use ($visibleWorkspaceIds) {
                 if (empty($visibleWorkspaceIds)) {
                     $query->whereRaw('1 = 0');
@@ -73,6 +94,7 @@ class AdminDashboardController extends Controller
 
         $totalServices = Service::query()
             ->join('system_register as sr', 'sr.id', '=', 'services.system_id')
+            ->when($isSuperAdmin && $selectedWorkspaceId !== null, fn ($query) => $superAdminWorkspace($query, 'sr.workspace_id'))
             ->when($this->isAdminOnly($actor), function ($query) use ($visibleWorkspaceIds) {
                 if (empty($visibleWorkspaceIds)) {
                     $query->whereRaw('1 = 0');
@@ -87,6 +109,7 @@ class AdminDashboardController extends Controller
 
         $totalConfigFiles = ConfigurationFile::query()
             ->leftJoin('system_register as sr', 'sr.id', '=', 'configuration_files.system_register_id')
+            ->when($isSuperAdmin && $selectedWorkspaceId !== null, fn ($query) => $superAdminWorkspace($query, 'sr.workspace_id'))
             ->when($this->isAdminOnly($actor), function ($query) use ($visibleWorkspaceIds, $actor) {
                 $query->where(function ($scoped) use ($visibleWorkspaceIds, $actor) {
                     if (!empty($visibleWorkspaceIds)) {
@@ -104,7 +127,13 @@ class AdminDashboardController extends Controller
             })
             ->count('configuration_files.id');
 
+        $dashboard = app(DashboardController::class);
+        $vulnerabilityStats = $dashboard->vulnerabilityStats($actor, $selectedWorkspaceId);
+        $validationTrend = $dashboard->validationTrend($actor, $selectedWorkspaceId);
+
         return view('admin.dashboard', compact(
+            'vulnerabilityStats',
+            'validationTrend',
             'totalUsers',
             'totalSystems',
             'totalServices',
@@ -130,23 +159,34 @@ class AdminDashboardController extends Controller
                 DB::raw('COUNT(DISTINCT system_register.id) as system_count'),
                 DB::raw('COUNT(DISTINCT services.service_id) as service_count'),
                 DB::raw('COUNT(DISTINCT configuration_files.id) as configuration_count')
-            )
-            ->where(function ($query) {
-                $query->whereNull('users.rbac_id')
-                    ->orWhereNotIn('users.rbac_id', [100, 101]);
-            });
+            );
 
         if ($this->isAdminOnly($actor)) {
-            if (empty($visibleWorkspaceIds)) {
+            // The role inside a workspace comes from workspace_user.is_admin, so a manager of
+            // another workspace is listed here when they are a plain member of one we manage.
+            $managedWorkspaceIds = $this->managedWorkspaceIds($actor);
+            $usersQuery->where('users.id', '!=', (int) $actor->id)
+                ->where(function ($query) {
+                    $query->whereNull('users.rbac_id')
+                        ->orWhere('users.rbac_id', '!=', 100);
+                });
+
+            if (empty($managedWorkspaceIds)) {
                 $usersQuery->whereRaw('1 = 0');
             } else {
-                $usersQuery->whereExists(function ($query) use ($visibleWorkspaceIds) {
+                $usersQuery->whereExists(function ($query) use ($managedWorkspaceIds) {
                     $query->select(DB::raw(1))
                         ->from('workspace_user as wu')
                         ->whereColumn('wu.user_id', 'users.id')
-                        ->whereIn('wu.workspace_id', $visibleWorkspaceIds);
+                        ->whereIn('wu.workspace_id', $managedWorkspaceIds)
+                        ->where('wu.is_admin', false);
                 });
             }
+        } else {
+            $usersQuery->where(function ($query) {
+                $query->whereNull('users.rbac_id')
+                    ->orWhereNotIn('users.rbac_id', [100, 101]);
+            });
         }
 
         $users = $usersQuery
@@ -548,7 +588,32 @@ class AdminDashboardController extends Controller
 
         return view('admin.manage-workspaces', [
             'workspaces' => $workspaces,
+            'canCreateWorkspace' => in_array((int) ($actor->rbac_id ?? 0), [100, 101], true),
         ]);
+    }
+
+    /**
+     * An admin (rbac 101) creates a workspace in their organization and becomes its workspace admin.
+     */
+    public function createAdminWorkspace(Request $request): RedirectResponse
+    {
+        $actor = Auth::user();
+        $validated = $request->validate([
+            'name' => ['required', 'string', 'max:255', 'unique:workspaces,name'],
+            'description' => ['nullable', 'string', 'max:512'],
+        ]);
+
+        $workspace = Workspace::create([
+            'org_id' => (int) ($actor->org_id ?? 200),
+            'name' => $validated['name'],
+            'description' => $validated['description'] ?? null,
+            'status' => 'active',
+        ]);
+        $workspace->addUser($actor->id, true);
+
+        return redirect()
+            ->route('admin.workspaces.show', $workspace->id)
+            ->with('success', 'Workspace created. You are its workspace admin.');
     }
 
     public function viewWorkspace(int $workspaceId): View
@@ -562,17 +627,24 @@ class AdminDashboardController extends Controller
         $isSuperAdmin = $this->isSuperAdmin($actor);
         $admins = $workspace->admins()->get();
         $regularUsers = $workspace->regularUsers()->get();
-        $allAdmins = User::query()
-            ->where('rbac_id', 101)
-            ->where('org_id', (int) ($workspace->org_id ?? 200))
-            ->orderBy('name')
-            ->get();
         $assignedUserIds = $workspace->users()->pluck('users.id')->all();
+        // Workspace admin is a per-workspace role (workspace_user.is_admin): any user or admin
+        // of the organization can hold it. Plain members here can be promoted.
+        $allAdmins = User::query()
+            ->where('org_id', (int) ($workspace->org_id ?? 200))
+            ->where(function ($query) {
+                $query->whereNull('rbac_id')
+                    ->orWhereIn('rbac_id', [101, 102]);
+            })
+            ->whereNotIn('id', $admins->pluck('id')->all())
+            ->orderBy('name')
+            ->get(['id', 'name', 'email']);
+        // Admin-role users (101) can be plain members here while managing another workspace.
         $allRegularUsers = User::query()
             ->where('org_id', (int) ($workspace->org_id ?? 200))
             ->where(function ($query) {
                 $query->whereNull('rbac_id')
-                    ->orWhere('rbac_id', 102);
+                    ->orWhereIn('rbac_id', [101, 102]);
             })
             ->whereNotIn('id', $assignedUserIds)
             ->orderBy('name')
@@ -581,6 +653,7 @@ class AdminDashboardController extends Controller
         $workspaceShowRouteName = $isSuperAdmin ? 'workspace.detail' : 'admin.workspaces.show';
         $workspaceAddUserRouteName = $isSuperAdmin ? 'workspace.users.add' : 'admin.workspaces.users.add';
         $workspaceRemoveUserRouteName = $isSuperAdmin ? 'workspace.users.remove' : 'admin.workspaces.users.remove';
+        $workspaceAddAdminRouteName = $isSuperAdmin ? 'workspace.admins.add' : 'admin.workspaces.admins.add';
         $workspaceUpdateRouteName = $isSuperAdmin ? 'workspace.update' : null;
         $workspaceDeleteRouteName = $isSuperAdmin ? 'workspace.destroy' : null;
 
@@ -592,7 +665,8 @@ class AdminDashboardController extends Controller
             'allRegularUsers' => $allRegularUsers,
             'isSuperAdmin' => $isSuperAdmin,
             'canEditWorkspaceMetadata' => $isSuperAdmin,
-            'canManageAdmins' => $isSuperAdmin,
+            'canManageAdmins' => true,
+            'workspaceAddAdminRouteName' => $workspaceAddAdminRouteName,
             'workspaceShowRouteName' => $workspaceShowRouteName,
             'workspaceUpdateRouteName' => $workspaceUpdateRouteName,
             'workspaceDeleteRouteName' => $workspaceDeleteRouteName,
@@ -642,24 +716,27 @@ class AdminDashboardController extends Controller
     public function addAdminToWorkspace(Request $request, int $workspaceId): RedirectResponse
     {
         $actor = Auth::user();
-        if (!$this->isSuperAdmin($actor)) {
+        $workspace = Workspace::findOrFail($workspaceId);
+        if (!$this->canManageWorkspaceUsers($actor, $workspace)) {
             abort(403);
         }
-
-        $workspace = Workspace::findOrFail($workspaceId);
 
         $validated = $request->validate([
             'admin_id' => ['required', 'integer', 'exists:users,id'],
         ]);
 
         $admin = User::where('id', $validated['admin_id'])
-            ->where('rbac_id', 101)
+            ->where('org_id', (int) ($workspace->org_id ?? 200))
+            ->where(function ($query) {
+                $query->whereNull('rbac_id')
+                    ->orWhere('rbac_id', '!=', 100);
+            })
             ->firstOrFail();
 
         $workspace->addUser($admin->id, true);
 
         return redirect()
-            ->route('workspace.detail', $workspaceId)
+            ->route($this->isSuperAdmin($actor) ? 'workspace.detail' : 'admin.workspaces.show', $workspaceId)
             ->with('success', 'Admin added to workspace.');
     }
 
@@ -682,9 +759,9 @@ class AdminDashboardController extends Controller
             ]);
         }
 
-        if ($this->isAdminOnly($actor) && in_array((int) ($targetUser->rbac_id ?? 0), [100, 101], true)) {
+        if ($this->isWorkspaceManager($targetUser, $workspace)) {
             return redirect()->back()->withErrors([
-                'user_id' => 'Admins can only add regular users to workspace.',
+                'user_id' => 'This user is already a manager of this workspace.',
             ]);
         }
 
@@ -706,9 +783,10 @@ class AdminDashboardController extends Controller
         }
 
         $targetUser = User::findOrFail($userId);
-        if ($this->isAdminOnly($actor) && in_array((int) ($targetUser->rbac_id ?? 0), [100, 101], true)) {
+        if (!$this->isSuperAdmin($actor)
+            && ((int) ($targetUser->rbac_id ?? 0) === 100 || (int) $targetUser->id === (int) $actor->id)) {
             return redirect()->back()->withErrors([
-                'authorization' => 'Admins cannot remove admin members from a workspace.',
+                'authorization' => 'You cannot remove yourself or the super admin from a workspace.',
             ]);
         }
 
@@ -741,6 +819,28 @@ class AdminDashboardController extends Controller
             ->pluck('workspaces.id')
             ->map(fn ($id) => (int) $id)
             ->all();
+    }
+
+    /**
+     * Workspaces where the user is a manager (workspace_user.is_admin), as opposed to a plain member.
+     */
+    private function managedWorkspaceIds(User $user): array
+    {
+        return DB::table('workspace_user')
+            ->where('user_id', $user->id)
+            ->where('is_admin', true)
+            ->pluck('workspace_id')
+            ->map(fn ($id) => (int) $id)
+            ->all();
+    }
+
+    private function isWorkspaceManager(User $user, Workspace $workspace): bool
+    {
+        return DB::table('workspace_user')
+            ->where('workspace_id', $workspace->id)
+            ->where('user_id', $user->id)
+            ->where('is_admin', true)
+            ->exists();
     }
 
     private function canViewTargetUser(User $actor, User $target): bool
@@ -801,15 +901,7 @@ class AdminDashboardController extends Controller
             return (int) ($workspace->org_id ?? 200) === (int) ($actor->org_id ?? 200);
         }
 
-        if (!$this->isAdminOnly($actor)) {
-            return false;
-        }
-
-        return DB::table('workspace_user')
-            ->where('workspace_id', $workspace->id)
-            ->where('user_id', $actor->id)
-            ->where('is_admin', true)
-            ->exists();
+        return $this->isWorkspaceManager($actor, $workspace);
     }
 
     public function createEnterpriseOrganization(Request $request): RedirectResponse

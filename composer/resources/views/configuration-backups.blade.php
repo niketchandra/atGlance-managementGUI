@@ -58,107 +58,146 @@
             <p style="color: var(--ag-muted); font-size: 16px;">No configuration backups found matching your filters</p>
         </div>
     @else
-        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 24px;">
+        <style>
+            .cfg-toolbar { display: flex; justify-content: flex-end; margin-bottom: 12px; }
+            .cfg-toggle { display: inline-flex; border: 1px solid var(--ag-line); border-radius: 10px; overflow: hidden; }
+            .cfg-toggle button { background: none; border: 0; padding: 6px 12px; cursor: pointer; color: var(--ag-muted); font-size: 13px; }
+            .cfg-toggle button.is-active { background: var(--ag-surface); color: var(--ag-text); font-weight: 600; }
+            .cfg-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+            .cfg-table { width: 100%; border-collapse: collapse; font-size: 14px; min-width: 820px; }
+            .cfg-table th { text-align: left; padding: 12px; color: var(--ag-muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.4px; border-bottom: 1px solid var(--ag-line); }
+            .cfg-table td { padding: 12px; border-bottom: 1px solid var(--ag-line); color: var(--ag-text); }
+            [data-cfg-view="list"] .cfg-grid, [data-cfg-view="card"] .cfg-list { display: none !important; }
+        </style>
+
+        <div id="cfgView" data-cfg-view="card">
+        <div class="cfg-toolbar">
+            <div class="cfg-toggle" role="group" aria-label="View">
+                <button type="button" data-view="card" class="is-active"><i class="fas fa-th-large"></i> Cards</button>
+                <button type="button" data-view="list"><i class="fas fa-list"></i> List</button>
+            </div>
+        </div>
+        <div class="cfg-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 24px;">
             @foreach($items as $item)
                 @php
-                    $isActive = strtolower($item->status) === 'active';
+                    $isActive = strtolower((string) $item->status) === 'active';
                     $systemActive = strtolower($item->system_status ?? 'inactive') === 'active';
                     $versionsUrl = !empty($item->service_id)
                         ? route('configuration-backups.service-versions', ['serviceId' => $item->service_id])
                         : route('configuration-backups.service-versions-by-name', ['serviceName' => $item->service_name]);
                 @endphp
-                <div class="ag-card ag-item-card" style="padding: 0; overflow: hidden; transition: transform 0.2s ease, box-shadow 0.2s ease;">
-                    
-                    <!-- Card Header -->
-                    <div class="ag-banner" style="border-radius: 0; padding: 20px; position: relative;">
-                        <div style="display: flex; align-items: center; justify-content: space-between;">
-                            <div style="display: flex; align-items: center; gap: 12px;">
-                                <div style="background: rgba(255,255,255,0.25); border-radius: 16px; width: 50px; height: 50px; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(10px);">
-                                    <i class="fas fa-server" style="font-size: 24px; color: white;"></i>
-                                </div>
-                                <div style="flex: 1; min-width: 0;">
-                                    <div style="font-size: 11px; color: rgba(255,255,255,0.8); font-weight: 500; margin-bottom: 2px;">SERVICE NAME</div>
-                                    <div style="font-size: 18px; color: white; font-weight: bold; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ $item->service_name ?? 'N/A' }}</div>
-                                </div>
+                <div style="background: linear-gradient(180deg, var(--ag-card) 0%, var(--ag-surface) 100%); border-radius: 16px; border: 2px solid {{ ['error' => '#e45757', 'warning' => '#e0a030'][$aiStatus[$item->id] ?? ''] ?? '#e6e9ee' }}; box-shadow: var(--ag-shadow); overflow: hidden; transition: transform 0.2s ease, box-shadow 0.2s ease;">
+                    <div class="ag-banner" style="border-radius: 0; padding: 20px; color: white;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <div>
+                                <div style="font-size: 11px; opacity: 0.85;">CONFIG ID</div>
+                                <div style="font-size: 18px; font-weight: bold;">#{{ $item->id }}</div>
                             </div>
-                            <div style="background: rgba(17, 24, 39, 0.85); border: 1px solid rgba(255,255,255,0.3); padding: 6px 14px; border-radius: 20px; font-size: 11px; color: white; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">
+                            <div style="padding: 6px 14px; border-radius: 20px; font-size: 11px; font-weight: 700; background: {{ $isActive ? '#137a54' : '#b33b3b' }}; border: 1px solid rgba(255,255,255,0.3); text-transform: uppercase; letter-spacing: 0.4px;">
                                 {{ ucfirst($item->status) }}
                             </div>
                         </div>
                     </div>
 
-                    <!-- Card Body -->
                     <div style="padding: 24px;">
-                        <!-- Config ID -->
-                        <div style="margin-bottom: 18px;">
-                            <div style="font-size: 11px; color: var(--ag-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px;">
-                                <i class="fas fa-hashtag" style="margin-right: 4px;"></i> Config ID
-                            </div>
-                            <div style="font-size: 16px; color: var(--ag-text); font-weight: 600;">
-                                #{{ $item->id }}
-                            </div>
-                        </div>
-
-                        <!-- System ID & Status -->
-                        <div style="margin-bottom: 18px;">
-                            <div style="font-size: 11px; color: var(--ag-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px;">
-                                <i class="fas fa-microchip" style="margin-right: 4px;"></i> System Info
-                            </div>
-                            <div style="display: flex; align-items: center; justify-content: space-between;">
-                                <div style="font-size: 14px; color: var(--ag-subtle); font-weight: 500;">
-                                    @if($item->system_register_id)
-                                        System #{{ $item->system_register_id }}
-                                    @else
-                                        <span style="color: var(--ag-muted);">No System</span>
-                                    @endif
-                                </div>
+                        <div style="margin-bottom: 12px;">
+                            <div style="font-size: 11px; color: var(--ag-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px;">Service Name</div>
+                            <div style="font-size: 16px; color: var(--ag-text); font-weight: 700; word-break: break-word;">{{ $item->service_name ?? 'N/A' }}</div>
+                            <div style="font-size: 12px; color: var(--ag-muted); margin-top: 4px;">
                                 @if($item->system_register_id)
-                                    <div style="background: {{ $systemActive ? '#e8f5e9' : '#ffebee' }}; color: {{ $systemActive ? '#2e7d32' : '#c62828' }}; padding: 4px 10px; border-radius: 12px; font-size: 11px; font-weight: 600;">
-                                        {{ $systemActive ? 'Active' : 'Inactive' }}
-                                    </div>
+                                    <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; background: {{ $systemActive ? '#1fa874' : '#8a9099' }};" title="{{ $systemActive ? 'System active' : 'System inactive' }}"></span>{{ $item->system_name ?? 'System #' . $item->system_register_id }}
+                                @else
+                                    No System
                                 @endif
-                            </div>
-                            @if($item->validation_hash)
-                                <div class="ag-card" style="margin-top: 8px; padding: 10px;">
-                                    <div style="font-size: 11px; color: var(--ag-teal); font-weight: 600; margin-bottom: 6px;">Validation Hash</div>
-                                    <a href="javascript:void(0)" id="config-hash-link-{{ $item->id }}" onclick="toggleHash('config-hash-content-{{ $item->id }}', this)" style="font-size: 12px; color: var(--ag-teal); text-decoration: underline; cursor: pointer; font-weight: 600;">
-                                        Show hash
-                                    </a>
-                                    <div class="ag-card" id="config-hash-content-{{ $item->id }}" style="display: none; margin-top: 8px; padding: 8px; font-size: 11px; color: var(--ag-text); word-break: break-all; line-height: 1.5; position: relative; padding-right: 70px;">
-                                        <span id="config-hash-value-{{ $item->id }}">{{ $item->validation_hash }}</span>
-                                        <button onclick="copyHashById('config-hash-value-{{ $item->id }}', this)" style="position: absolute; top: 6px; right: 6px; background: var(--ag-teal); color: white; border: none; padding: 4px 8px; border-radius: 4px; font-size: 10px; cursor: pointer; font-weight: 600; transition: background 0.2s;">
-                                            <i class="fas fa-copy"></i> Copy
-                                        </button>
-                                    </div>
-                                </div>
-                            @endif
-                        </div>
-
-                        <!-- Created At -->
-                        <div style="margin-bottom: 20px;">
-                            <div style="font-size: 11px; color: var(--ag-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px;">
-                                <i class="fas fa-clock" style="margin-right: 4px;"></i> Created At
-                            </div>
-                            <div style="font-size: 13px; color: var(--ag-muted);">
-                                {{ \App\Support\UserPreferences::datetime($item->created_at) }}
+                                &middot; {{ \App\Support\UserPreferences::datetime($item->created_at) }}
                             </div>
                         </div>
 
-                        <!-- Action Buttons -->
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding-top: 16px; border-top: 1px solid var(--ag-line);">
-                                    <button class="ag-btn ag-btn--accent" onclick="window.location.href='{{ $versionsUrl }}'" 
-                                    style=" display: flex; align-items: center; justify-content: center; gap: 6px;">
-                                <i class="fas fa-eye"></i> View Versions ({{ $item->version_count ?? 1 }})
-                            </button>
-                            <div style="background: var(--ag-surface); color: var(--ag-text); padding: 12px; border-radius: 12px; font-size: 13px; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 6px; flex-direction: column;">
-                                <div style="font-size: 10px; color: var(--ag-subtle);">LATEST VERSION</div>
-                                <div style="font-size: 16px; font-weight: bold;">{{ $item->version ?? 'N/A' }}</div>
+                        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px; font-size: 11px; color: var(--ag-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">
+                            AI Check @include('partials.ai-badge', ['status' => $aiStatus[$item->id] ?? null])
+                        </div>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px;">
+                            <div style="background: var(--ag-surface); border-radius: 12px; padding: 10px;">
+                                <div style="font-size: 10px; color: var(--ag-muted); font-weight: 600;">VERSIONS</div>
+                                <div style="font-size: 16px; color: var(--ag-text); font-weight: 700;">{{ $item->version_count ?? 1 }}</div>
+                            </div>
+                            <div style="background: var(--ag-surface); border-radius: 12px; padding: 10px;">
+                                <div style="font-size: 10px; color: var(--ag-muted); font-weight: 600;">LATEST VERSION</div>
+                                <div style="font-size: 16px; color: var(--ag-text); font-weight: 700;">{{ $item->version ?? 'N/A' }}</div>
                             </div>
                         </div>
+
+                        <button class="ag-btn ag-btn--accent" onclick="window.location.href='{{ $versionsUrl }}'"
+                                style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; transition: all 0.2s ease;">
+                            <i class="fas fa-folder-open"></i> View Configuration Files & Versions
+                        </button>
                     </div>
                 </div>
             @endforeach
         </div>
+
+        <div class="ag-card cfg-list" style="padding: 0; overflow-x: auto;">
+            <table class="cfg-table">
+                <thead>
+                    <tr>
+                        <th>Service</th>
+                        <th>Status</th>
+                        <th>AI Check</th>
+                        <th>Config ID</th>
+                        <th>System</th>
+                        <th>Latest Version</th>
+                        <th>Versions</th>
+                        <th>Created</th>
+                        <th style="text-align: right;">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach($items as $item)
+                        @php
+                            $systemActive = strtolower($item->system_status ?? 'inactive') === 'active';
+                            $versionsUrl = !empty($item->service_id)
+                                ? route('configuration-backups.service-versions', ['serviceId' => $item->service_id])
+                                : route('configuration-backups.service-versions-by-name', ['serviceName' => $item->service_name]);
+                        @endphp
+                        <tr>
+                            <td><strong>{{ $item->service_name ?? 'N/A' }}</strong></td>
+                            <td>{{ ucfirst($item->status) }}</td>
+                            <td>@include('partials.ai-badge', ['status' => $aiStatus[$item->id] ?? null])</td>
+                            <td style="color: var(--ag-muted);">#{{ $item->id }}</td>
+                            <td style="white-space: nowrap;">
+                                @if($item->system_register_id)
+                                    <span class="cfg-dot" style="background: {{ $systemActive ? '#1fa874' : '#8a9099' }};" title="{{ $systemActive ? 'Active' : 'Inactive' }}"></span>{{ $item->system_name ?? 'System #' . $item->system_register_id }}
+                                @else
+                                    <span style="color: var(--ag-muted);">No System</span>
+                                @endif
+                            </td>
+                            <td>{{ $item->version ?? 'N/A' }}</td>
+                            <td>{{ $item->version_count ?? 1 }}</td>
+                            <td style="white-space: nowrap; color: var(--ag-muted);">{{ \App\Support\UserPreferences::datetime($item->created_at) }}</td>
+                            <td style="text-align: right; white-space: nowrap;">
+                                <a class="ag-btn ag-btn--ghost" href="{{ route('configuration-backups.view', ['id' => $item->id]) }}" style="text-decoration: none; padding: 5px 10px; font-size: 12px;"><i class="fas fa-file-alt"></i> View</a>
+                                <a class="ag-btn ag-btn--accent" href="{{ $versionsUrl }}" style="text-decoration: none; padding: 5px 10px; font-size: 12px;"><i class="fas fa-code-branch"></i> Versions</a>
+                            </td>
+                        </tr>
+                    @endforeach
+                </tbody>
+            </table>
+        </div>
+        </div>
+
+        <script>
+        (function () {
+            const wrap = document.getElementById('cfgView');
+            const buttons = wrap.querySelectorAll('.cfg-toggle button');
+            function setView(view) {
+                wrap.dataset.cfgView = view;
+                buttons.forEach(b => b.classList.toggle('is-active', b.dataset.view === view));
+                try { localStorage.setItem('configBackupsView', view); } catch (e) {}
+            }
+            buttons.forEach(b => b.addEventListener('click', () => setView(b.dataset.view)));
+            try { if (localStorage.getItem('configBackupsView') === 'list') { setView('list'); } } catch (e) {}
+        })();
+        </script>
     @endif
     @include('partials.simple-pager', ['pager' => $items])
 </div>

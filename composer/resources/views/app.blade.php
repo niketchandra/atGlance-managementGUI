@@ -47,6 +47,10 @@
                     $agNavItems[] = ['label' => 'Site Settings', 'icon' => 'fa-sliders-h', 'url' => route('admin.settings'), 'active' => ['admin.settings*']];
                     $agNavItems[] = ['label' => 'Enterprise Console', 'icon' => 'fa-building', 'url' => route('enterprise.console'), 'active' => ['enterprise.*', 'admin.workspaces*', 'workspace.*']];
                 }
+                // A user-role account can still be workspace admin of some workspaces.
+                if (!$agIsAdmin && \Illuminate\Support\Facades\DB::table('workspace_user')->where('user_id', $agUser->id)->where('is_admin', true)->exists()) {
+                    $agNavItems[] = ['label' => 'Workspace', 'icon' => 'fa-sitemap', 'url' => route('admin.workspaces'), 'active' => ['admin.workspaces*']];
+                }
                 $agNavItems[] = ['label' => 'Settings', 'icon' => 'fa-cog', 'url' => route('settings'), 'active' => ['settings*']];
             }
             $agNavItems[] = ['label' => 'Profile', 'icon' => 'fa-user-circle', 'url' => route('profile'), 'active' => ['profile*']];
@@ -71,7 +75,7 @@
                         <label for="workspace_selector" class="sr-only">Workspace</label>
                         <select id="workspace_selector" name="workspace_id" onchange="this.form.submit()">
                             @foreach($workspaceSelectorOptions as $workspaceOption)
-                                <option value="{{ $workspaceOption->id }}" {{ (int) ($selectedWorkspaceId ?? 0) === (int) $workspaceOption->id ? 'selected' : '' }}>
+                                <option value="{{ $workspaceOption->id }}" {{ ($workspaceOption->id === null ? $selectedWorkspaceId === null : $selectedWorkspaceId !== null && (int) $selectedWorkspaceId === (int) $workspaceOption->id) ? 'selected' : '' }}>
                                     {{ $workspaceOption->name }}
                                 </option>
                             @endforeach
