@@ -101,7 +101,28 @@
 
             <div style="margin-bottom: 16px;">
                 <label class="ag-label">Tags</label>
-                <textarea class="ag-textarea" name="tags" rows="3" style="width: 100%;" placeholder="Comma-separated tags">{{ old('tags', $system->tags) }}</textarea>
+                <textarea class="ag-textarea" id="systemTags" name="tags" rows="3" style="width: 100%;" placeholder="Comma-separated tags">{{ old('tags', $system->tags) }}</textarea>
+                @if(!empty($tagCatalogue))
+                    <div style="margin-top: 8px; font-size: 12px; color: var(--ag-muted);">Workspace tags (click to add):</div>
+                    <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px;">
+                        @foreach($tagCatalogue as $catalogueTag)
+                            <button type="button" class="ag-btn ag-btn--ghost" data-add-tag="{{ $catalogueTag }}" style="padding: 3px 10px; font-size: 12px; border-radius: 999px;">+ {{ $catalogueTag }}</button>
+                        @endforeach
+                    </div>
+                    <script>
+                        document.querySelectorAll('[data-add-tag]').forEach(function (button) {
+                            button.addEventListener('click', function () {
+                                const field = document.getElementById('systemTags');
+                                const tags = field.value.split(',').map(function (t) { return t.trim(); }).filter(Boolean);
+                                const tag = button.dataset.addTag;
+                                if (!tags.some(function (t) { return t.toLowerCase() === tag.toLowerCase(); })) {
+                                    tags.push(tag);
+                                }
+                                field.value = tags.join(', ');
+                            });
+                        });
+                    </script>
+                @endif
             </div>
 
             @if($isAdmin)

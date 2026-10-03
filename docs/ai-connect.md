@@ -180,6 +180,14 @@ Every successful run is saved in `config_ai_validations` (model `App\Models\Conf
 
 The page says which provider and model receive the file. AI output can be wrong; check it before changing a live service. Small models are the least reliable: in testing, `gpt-oss:20b` recommended `KillMode=control-group` for Debian's `ssh.service`, which would end every open SSH session on restart.
 
+## Automatic checks
+
+A workspace can review configs automatically: each new upload, and/or the latest
+version of every config on a schedule. These reviews are saved like manual ones,
+with `trigger` set to `upload` or `schedule` and no user. They run on the queue
+worker (`App\Jobs\ValidateConfigWithAi`) through `App\Services\ConfigAiReviewer`,
+which the **Validate with AI** button also uses. See `docs/workspace-settings.md`.
+
 ## Out of scope
 
 - **Amazon Bedrock and Google Vertex AI.** They need AWS SigV4 or Google OAuth. For now, use OpenRouter, or run a LiteLLM proxy and connect it as a Custom provider.

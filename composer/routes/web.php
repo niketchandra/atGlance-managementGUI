@@ -3,6 +3,7 @@
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\WorkspaceSettingsController;
 use App\Http\Controllers\AdminDashboardController;
 use App\Http\Controllers\AiConnectController;
 use App\Http\Controllers\BackupRestoreController;
@@ -83,6 +84,7 @@ Route::middleware('app.installed')->group(function () {
         Route::post('/settings/api-keys/revoke', [DashboardController::class, 'revokeApiKey'])->name('settings.api-keys.revoke');
         Route::post('/password/update', [DashboardController::class, 'updatePassword'])->name('password.update');
         Route::post('/settings/preferences', [DashboardController::class, 'updatePreferences'])->name('settings.preferences');
+        Route::post('/settings/notifications', [DashboardController::class, 'updateNotificationPreferences'])->name('settings.notifications');
         Route::post('/settings/preferences/timezone', [DashboardController::class, 'detectTimezone'])->name('settings.preferences.timezone');
         Route::delete('/settings/sessions/{session}', [DashboardController::class, 'endSession'])->name('settings.sessions.end');
         Route::post('/settings/sessions/others', [DashboardController::class, 'endOtherSessions'])->name('settings.sessions.others');
@@ -119,11 +121,6 @@ Route::middleware('app.installed')->group(function () {
             Route::get('/settings/domain/ca.crt', [DomainSettingsController::class, 'downloadCa'])->name('admin.settings.domain.ca');
             Route::post('/settings/ai/test', [AiConnectController::class, 'test'])->name('admin.settings.ai.test');
             Route::post('/settings/ai/models', [AiConnectController::class, 'models'])->name('admin.settings.ai.models');
-            Route::get('/notifications', [NotificationsController::class, 'index'])->name('admin.notifications');
-            Route::post('/notifications/groups', [NotificationsController::class, 'store'])->name('admin.notifications.store');
-            Route::put('/notifications/groups/{group}', [NotificationsController::class, 'update'])->name('admin.notifications.update');
-            Route::delete('/notifications/groups/{group}', [NotificationsController::class, 'destroy'])->name('admin.notifications.destroy');
-            Route::post('/notifications/groups/{group}/test', [NotificationsController::class, 'test'])->name('admin.notifications.test');
             Route::post('/settings/migration/config', [AdminDashboardController::class, 'updateMigrationSettings'])->name('admin.settings.migration.config');
             Route::post('/settings/migration/analyze', [AdminDashboardController::class, 'analyzeMigration'])->name('admin.settings.migration.analyze');
             Route::post('/settings/migration/start', [AdminDashboardController::class, 'startMigration'])->name('admin.settings.migration.start');
@@ -140,6 +137,24 @@ Route::middleware('app.installed')->group(function () {
             Route::post('/workspaces/{workspaceId}/admins', [AdminDashboardController::class, 'addAdminToWorkspace'])->name('admin.workspaces.admins.add');
             Route::post('/workspaces/{workspaceId}/users', [AdminDashboardController::class, 'addUserToWorkspace'])->name('admin.workspaces.users.add');
             Route::delete('/workspaces/{workspaceId}/users/{userId}', [AdminDashboardController::class, 'removeUserFromWorkspace'])->name('admin.workspaces.users.remove');
+            Route::put('/workspaces/{workspaceId}/users/{userId}/permissions', [AdminDashboardController::class, 'updateMemberPermissions'])->whereNumber(['workspaceId', 'userId'])->name('admin.workspaces.users.permissions');
+            Route::get('/workspaces/{workspaceId}/ai/progress', [WorkspaceSettingsController::class, 'aiProgress'])->whereNumber('workspaceId')->name('admin.workspaces.ai.progress');
+            Route::post('/workspaces/{workspaceId}/ai/reset', [WorkspaceSettingsController::class, 'resetAiQueue'])->whereNumber('workspaceId')->name('admin.workspaces.ai.reset');
+            Route::put('/workspaces/{workspaceId}/settings/general', [WorkspaceSettingsController::class, 'updateGeneral'])->whereNumber('workspaceId')->name('admin.workspaces.settings.general');
+            Route::put('/workspaces/{workspaceId}/settings/tags', [WorkspaceSettingsController::class, 'updateTags'])->whereNumber('workspaceId')->name('admin.workspaces.settings.tags');
+            Route::put('/workspaces/{workspaceId}/settings/ai', [WorkspaceSettingsController::class, 'updateAi'])->whereNumber('workspaceId')->name('admin.workspaces.settings.ai');
+            Route::post('/workspaces/{workspaceId}/ai/run', [WorkspaceSettingsController::class, 'runAiSweep'])->whereNumber('workspaceId')->middleware('throttle:6,1')->name('admin.workspaces.ai.run');
+            Route::put('/workspaces/{workspaceId}/settings/backup', [WorkspaceSettingsController::class, 'updateBackup'])->whereNumber('workspaceId')->name('admin.workspaces.settings.backup');
+            Route::post('/workspaces/{workspaceId}/backups/run', [WorkspaceSettingsController::class, 'runBackup'])->whereNumber('workspaceId')->middleware('throttle:6,1')->name('admin.workspaces.backups.run');
+            Route::get('/workspaces/{workspaceId}/backups/{runId}/download', [WorkspaceSettingsController::class, 'downloadBackup'])->whereNumber(['workspaceId', 'runId'])->name('admin.workspaces.backups.download');
+            Route::put('/workspaces/{workspaceId}/settings/notifications', [WorkspaceSettingsController::class, 'updateNotifications'])->whereNumber('workspaceId')->name('admin.workspaces.settings.notifications');
+            // Notification groups: NotificationsController only offers the super admin's scopes or
+            // the workspaces where the user is workspace admin (authorizeScope).
+            Route::get('/notifications', [NotificationsController::class, 'index'])->name('admin.notifications');
+            Route::post('/notifications/groups', [NotificationsController::class, 'store'])->name('admin.notifications.store');
+            Route::put('/notifications/groups/{group}', [NotificationsController::class, 'update'])->name('admin.notifications.update');
+            Route::delete('/notifications/groups/{group}', [NotificationsController::class, 'destroy'])->name('admin.notifications.destroy');
+            Route::post('/notifications/groups/{group}/test', [NotificationsController::class, 'test'])->name('admin.notifications.test');
         });
 
         Route::middleware('super.admin.role')->group(function () {

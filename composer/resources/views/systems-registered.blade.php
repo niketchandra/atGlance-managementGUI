@@ -21,6 +21,11 @@
             <i class="fas fa-filter" style="color: var(--ag-text); font-size: 18px;"></i>
             <h3 style="font-size: 16px; font-weight: 500; color: var(--ag-text); margin: 0;">Search & Filter</h3>
         </div>
+        <datalist id="systemTagCatalogue">
+            @foreach($tagCatalogue ?? [] as $catalogueTag)
+                <option value="{{ $catalogueTag }}"></option>
+            @endforeach
+        </datalist>
         <form method="GET" action="{{ route('systems-registered') }}" id="filterForm">
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 16px;">
                 <div>
@@ -33,7 +38,7 @@
                 </div>
                 <div>
                     <label class="ag-label">Tags</label>
-                    <input class="ag-input" type="text" name="tags" value="{{ request('tags') }}" placeholder="Search by tags" style="width: 100%; transition: border-color 0.2s;" onfocus="this.style.borderColor='#667eea'" onblur="this.style.borderColor='#e0e0e0'">
+                    <input class="ag-input" type="text" name="tags" list="systemTagCatalogue" value="{{ request('tags') }}" placeholder="Search by tags" style="width: 100%; transition: border-color 0.2s;" onfocus="this.style.borderColor='#667eea'" onblur="this.style.borderColor='#e0e0e0'">
                 </div>
                 <div>
                     <label class="ag-label">OS Type</label>

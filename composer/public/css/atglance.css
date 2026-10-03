@@ -79,7 +79,7 @@ body.ag-body {
 /* ----------------------------------------------------------------- Shell */
 
 .ag-frame {
-    max-width: 1440px;
+    max-width: min(1760px, calc(100vw - 32px));
     margin: 24px auto;
     padding: 20px 24px 8px;
     background: var(--ag-frame);

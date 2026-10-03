@@ -10,6 +10,9 @@ The **Backup & Restore** tab in `/admin/settings` has two separate sections:
 `php artisan backup:portal` still exists and runs the database backup, so older
 host crontabs keep working.
 
+Each workspace can also back up its own stored config files on its own schedule,
+with notes (`php artisan backup:workspace {id}`). See `docs/workspace-settings.md`.
+
 The logic is in `composer/app/Services/BackupService.php`, the settings in
 `composer/app/Support/BackupSettings.php`, and the commands in
 `composer/routes/console.php`.
@@ -54,6 +57,7 @@ as before.
 | S3 | `backups/{database|config}/YYYY/MM/{database-backup-YYYYMMDD-HHMMSS.sql.gz | config-backup-YYYYMMDD-HHMMSS.zip}` |
 | Local copies | The same path on the local disk: `storage/app/private/backups/...` |
 | Pre-restore snapshots | `storage/app/private/backups/snapshots/{type}/pre-restore-...` |
+| Workspace backups | `backups/workspace-{id}/YYYY/MM/workspace-backup-YYYYMMDD-HHMMSS.zip` (local and/or S3) |
 
 Local copies are on the same server and volume as the app. They help with
 mistakes and bad restores, not with losing the server; use S3 for that.

@@ -36,6 +36,11 @@
         <button class="ag-tab settings-tab" onclick="switchSettingsTab('api', this)">
             <i class="fas fa-plug"></i> API Keys
         </button>
+        @if($notificationWorkspaces->isNotEmpty())
+            <button class="ag-tab settings-tab" onclick="switchSettingsTab('notifications', this)">
+                <i class="fas fa-bell"></i> Notifications
+            </button>
+        @endif
     </div>
 
     <style>
@@ -471,6 +476,13 @@
             </form>
         </div>
     </div>
+
+    <!-- NOTIFICATIONS -->
+    @if($notificationWorkspaces->isNotEmpty())
+        <div class="settings-content" id="notifications">
+            @include('partials.notification-preferences')
+        </div>
+    @endif
 
     <!-- API KEYS -->
     <div class="settings-content" id="api">
