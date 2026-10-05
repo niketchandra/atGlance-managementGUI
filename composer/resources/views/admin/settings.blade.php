@@ -43,6 +43,7 @@
         <button type="button" class="ag-tab settings-tab-btn {{ $activeTab === 'ai-connect' ? 'active' : '' }}" data-tab="ai-connect"><i class="fas fa-robot"></i> AI Connect</button>
         <button type="button" class="ag-tab settings-tab-btn {{ $activeTab === 'notification' ? 'active' : '' }}" data-tab="notification"><i class="fas fa-bell"></i> Notification</button>
         <button type="button" class="ag-tab settings-tab-btn {{ $activeTab === 'licence' ? 'active' : '' }}" data-tab="licence"><i class="fas fa-key"></i> Licence</button>
+        <button type="button" class="ag-tab settings-tab-btn {{ $activeTab === 'mcp' ? 'active' : '' }}" data-tab="mcp"><i class="fas fa-network-wired"></i> MCP</button>
     </nav>
     <div class="ag-side-content">
 
@@ -846,6 +847,69 @@
             </fieldset>
         </form>
         <script type="application/json" id="ai-provider-catalog">@json(\App\Support\AiSettings::catalogForView())</script>
+    </div>
+
+    <div id="tab-mcp" class="settings-tab-content ag-card" style="display:{{ $activeTab === 'mcp' ? 'block' : 'none' }}; padding:24px;">
+        <h2 style="font-size: 18px; margin-bottom: 8px;">Model Context Protocol (MCP)</h2>
+        @php
+            $mcpEnabledValue = \App\Models\AdminSetting::getValue('mcp_enabled', 'false');
+            $mcpEnabled = in_array($mcpEnabledValue, ['true', '1', true], true);
+        @endphp
+
+        <p style="font-size: 13px; color: var(--ag-muted); margin-bottom: 14px;">
+            Enable Model Context Protocol (MCP) to allow AI assistants and external tools to query AtGlance data. MCP starts and stops automatically.
+        </p>
+
+        <form method="POST" action="{{ route('admin.settings.mcp') }}" style="margin-bottom: 24px;">
+            @csrf
+            @method('PUT')
+            <label style="display: flex; gap: 8px; align-items: center; font-size: 13px; color: var(--ag-text); margin-bottom: 16px; cursor: pointer;">
+                <input type="hidden" name="enabled" value="0">
+                <input type="checkbox" name="enabled" value="1" {{ $mcpEnabled ? 'checked' : '' }} style="cursor: pointer;">
+                <strong>Enable MCP</strong>
+            </label>
+            <button class="ag-btn" type="submit">{{ $mcpEnabled ? 'Update' : 'Enable' }} MCP</button>
+        </form>
+
+        @if($mcpEnabled)
+            <div style="background: var(--ag-surface); border-radius: 12px; padding: 16px; margin-bottom: 20px;">
+                <h3 style="font-size: 14px; font-weight: 600; margin-bottom: 12px;">Setup Instructions</h3>
+
+                <div style="margin-bottom: 16px;">
+                    <h4 style="font-size: 13px; font-weight: 600; color: var(--ag-text); margin-bottom: 8px;">1. n8n (Docker)</h4>
+                    <p style="font-size: 12px; color: var(--ag-muted); margin-bottom: 8px;">Inside n8n container, use this MCP endpoint:</p>
+                    <div style="background: var(--ag-surface-secondary); border-radius: 8px; padding: 12px; font-family: monospace; font-size: 12px; color: var(--ag-text); word-break: break-all; display: flex; gap: 8px; align-items: center;">
+                        <span id="n8n-url" style="flex: 1;">http://ce-atglance-gateway:8002/mcp</span>
+                        <button type="button" onclick="navigator.clipboard.writeText('http://ce-atglance-gateway:8002/mcp'); alert('Copied to clipboard')" style="padding: 4px 12px; background: var(--ag-teal); color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 12px;">Copy</button>
+                    </div>
+                </div>
+
+                <div style="margin-bottom: 16px;">
+                    <h4 style="font-size: 13px; font-weight: 600; color: var(--ag-text); margin-bottom: 8px;">2. Claude Code or VS Code (Local)</h4>
+                    <p style="font-size: 12px; color: var(--ag-muted); margin-bottom: 8px;">On your local machine, use this MCP endpoint:</p>
+                    <div style="background: var(--ag-surface-secondary); border-radius: 8px; padding: 12px; font-family: monospace; font-size: 12px; color: var(--ag-text); word-break: break-all; display: flex; gap: 8px; align-items: center;">
+                        <span id="local-url" style="flex: 1;">http://localhost:8002/mcp</span>
+                        <button type="button" onclick="navigator.clipboard.writeText('http://localhost:8002/mcp'); alert('Copied to clipboard')" style="padding: 4px 12px; background: var(--ag-teal); color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 12px;">Copy</button>
+                    </div>
+                </div>
+
+                <div style="margin-bottom: 16px;">
+                    <h4 style="font-size: 13px; font-weight: 600; color: var(--ag-text); margin-bottom: 8px;">3. Authentication</h4>
+                    <p style="font-size: 12px; color: var(--ag-muted);">
+                        For all MCP clients, you need a Personal Access Token (PAT). Generate one in <a href="{{ route('dashboard.settings') }}?tab=api-keys" style="color: var(--ag-teal); text-decoration: underline;">Settings → API Keys</a>.
+                        <br>Use the token format: <code style="background: var(--ag-surface-secondary); padding: 2px 6px; border-radius: 4px;">Authorization: Bearer atgla-YOUR_TOKEN</code>
+                    </p>
+                </div>
+
+                <div style="border-top: 1px solid var(--ag-border); padding-top: 12px;">
+                    <p style="font-size: 12px; color: var(--ag-muted);">MCP is read-only and respects your workspace membership and roles. Only the data visible to your user account will be accessible.</p>
+                </div>
+            </div>
+        @else
+            <div style="padding: 16px; border-radius: 12px; background: var(--ag-surface); color: var(--ag-subtle); font-size: 13px;">
+                MCP is currently disabled. Enable it above to access setup instructions and get started with AI integrations.
+            </div>
+        @endif
     </div>
 
     <div id="tab-notification" class="settings-tab-content ag-card" style="display:{{ $activeTab === 'notification' ? 'block' : 'none' }}; padding:24px;">

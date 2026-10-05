@@ -2593,4 +2593,17 @@ class AdminDashboardController extends Controller
 
         return sprintf('https://%s.s3.%s.amazonaws.com/%s', $bucket, $region, ltrim($path, '/'));
     }
+
+    public function updateMcpSettings(Request $request): RedirectResponse
+    {
+        $this->authorize('superAdmin');
+
+        $validated = $request->validate(['enabled' => 'required|boolean']);
+
+        AdminSetting::putValue('mcp', 'mcp_enabled', $validated['enabled'] ? 'true' : 'false');
+
+        ActivityRecorder::record('mcp_setting_updated', ['enabled' => $validated['enabled']]);
+
+        return back()->with('success', 'MCP setting updated. Container will start/stop within the next minute.');
+    }
 }

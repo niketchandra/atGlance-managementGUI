@@ -109,6 +109,11 @@ Artisan::command('backup:workspace {workspace : Workspace id}', function (Backup
     return $run->status === BackupService::STATUS_SUCCESS ? 0 : 1;
 })->purpose("Back up one workspace's stored configuration files");
 
+// MCP container management: start/stop based on site setting.
+if (InstallationState::isInstalled()) {
+    Schedule::command('mcp:manage')->everyMinute()->withoutOverlapping();
+}
+
 // Per-workspace schedules from the workspace settings page (Vulnerability Checks and Backups tabs).
 if (InstallationState::isInstalled()) {
     try {

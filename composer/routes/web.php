@@ -117,6 +117,7 @@ Route::middleware('app.installed')->group(function () {
             Route::post('/settings/domain/plugin', [DomainSettingsController::class, 'togglePlugin'])->name('admin.settings.domain.plugin');
             Route::post('/settings/domain', [DomainSettingsController::class, 'save'])->name('admin.settings.domain');
             Route::post('/settings/domain/check', [DomainSettingsController::class, 'check'])->name('admin.settings.domain.check');
+            Route::put('/settings/mcp', [AdminDashboardController::class, 'updateMcpSettings'])->name('admin.settings.mcp');
             Route::delete('/settings/domain/certificate', [DomainSettingsController::class, 'removeCertificate'])->name('admin.settings.domain.certificate.remove');
             Route::get('/settings/domain/ca.crt', [DomainSettingsController::class, 'downloadCa'])->name('admin.settings.domain.ca');
             Route::post('/settings/ai/test', [AiConnectController::class, 'test'])->name('admin.settings.ai.test');
