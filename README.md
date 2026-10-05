@@ -43,7 +43,7 @@ Browser (admins, users) ─────────────▶ Web ──┘
 Run one command on a Linux server (amd64 or arm64). Docker is installed for you if it is missing.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/niketchandra/atGlance-managementGUI/main/install.sh | sudo bash
+curl -fsSL https://app.atglance.live/console/atglance-installer.sh | sudo bash
 ```
 
 1. The installer checks the server (root, OS, CPU, disk, memory, ports) and installs Docker and Docker Compose if needed.
@@ -60,7 +60,7 @@ On Windows 10/11 or Windows Server, use `install.ps1`. It needs [Docker Desktop]
 2. Download and run the installer:
 
    ```powershell
-   irm https://raw.githubusercontent.com/niketchandra/atGlance-managementGUI/main/install.ps1 | iex
+   irm https://app.atglance.live/console/atglance-installer.ps1 | iex
    ```
 
    Or, from a clone of this repository:

@@ -15,6 +15,7 @@ use App\Models\User;
 use App\Models\Workspace;
 use App\Services\BackupService;
 use App\Support\BackupSettings;
+use App\Support\McpControl;
 use App\Support\S3Settings;
 use App\Support\SiteProfile;
 use Illuminate\Http\UploadedFile;
@@ -2596,14 +2597,27 @@ class AdminDashboardController extends Controller
 
     public function updateMcpSettings(Request $request): RedirectResponse
     {
-        $this->authorize('superAdmin');
+        abort_unless(Auth::user()?->isSuperAdmin(), 403);
 
-        $validated = $request->validate(['enabled' => 'required|boolean']);
+        $enabled = $request->validate(['enabled' => 'required|boolean'])['enabled'];
+        $enabled = filter_var($enabled, FILTER_VALIDATE_BOOLEAN);
 
-        AdminSetting::putValue('mcp', 'mcp_enabled', $validated['enabled'] ? 'true' : 'false');
+        McpControl::setEnabled($enabled);
+        $error = McpControl::apply($enabled);
 
-        ActivityRecorder::record('mcp_setting_updated', ['enabled' => $validated['enabled']]);
+        ActivityRecorder::record(
+            Auth::id(),
+            'settings.mcp_updated',
+            'MCP turned ' . ($enabled ? 'on' : 'off') . ($error !== null ? ' (container not changed: ' . $error . ')' : ''),
+            $error === null ? ActivityRecorder::SUCCESS : ActivityRecorder::FAILURE
+        );
 
-        return back()->with('success', 'MCP setting updated. Container will start/stop within the next minute.');
+        $redirect = redirect()->route('admin.settings', ['tab' => 'mcp']);
+
+        if ($error !== null) {
+            return $redirect->withErrors(['mcp' => 'MCP turned ' . ($enabled ? 'on' : 'off') . ', but the MCP container was not ' . ($enabled ? 'started' : 'stopped') . ': ' . $error]);
+        }
+
+        return $redirect->with('success', $enabled ? 'MCP turned on. The MCP server is running.' : 'MCP turned off. The MCP server is stopped.');
     }
 }

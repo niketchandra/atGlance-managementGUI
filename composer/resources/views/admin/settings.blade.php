@@ -850,64 +850,66 @@
     </div>
 
     <div id="tab-mcp" class="settings-tab-content ag-card" style="display:{{ $activeTab === 'mcp' ? 'block' : 'none' }}; padding:24px;">
-        <h2 style="font-size: 18px; margin-bottom: 8px;">Model Context Protocol (MCP)</h2>
         @php
-            $mcpEnabledValue = \App\Models\AdminSetting::getValue('mcp_enabled', 'false');
-            $mcpEnabled = in_array($mcpEnabledValue, ['true', '1', true], true);
+            $mcpEnabled = \App\Support\McpControl::enabled();
+            $mcpCanEdit = (int) auth()->user()->rbac_id === 100;
+            $mcpStatus = $activeTab === 'mcp' ? \App\Support\McpControl::status() : null;
+            $mcpStatusLabel = ['running' => 'Server running', 'stopped' => 'Server stopped', 'unknown' => 'Server state unknown'][$mcpStatus] ?? null;
+            $mcpStatusStyle = ['running' => 'background: var(--ag-success-soft); color: var(--ag-success);', 'stopped' => 'background: var(--ag-surface); color: var(--ag-subtle);', 'unknown' => 'background: var(--ag-warning-soft); color: var(--ag-warning);'][$mcpStatus] ?? '';
+            $mcpMismatch = $mcpStatus !== null && $mcpStatus !== 'unknown' && ($mcpStatus === 'running') !== $mcpEnabled;
+            $mcpInfo = \App\Support\McpConnect::info(request()->getHost());
         @endphp
 
+        <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 8px;">
+            <h2 style="font-size: 18px;">MCP</h2>
+            <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+                <span style="font-size: 12px; font-weight: 600; border-radius: 999px; padding: 3px 10px; {{ $mcpEnabled ? 'background: var(--ag-success-soft); color: var(--ag-success);' : 'background: var(--ag-surface); color: var(--ag-subtle);' }}">{{ $mcpEnabled ? 'On' : 'Off' }}</span>
+                @if($mcpStatusLabel)
+                    <span style="font-size: 12px; font-weight: 600; border-radius: 999px; padding: 3px 10px; {{ $mcpStatusStyle }}">{{ $mcpStatusLabel }}</span>
+                @endif
+            </div>
+        </div>
+        @if($mcpStatus === 'unknown')
+            <div style="margin-bottom: 12px; padding: 10px; border-radius: 12px; background: var(--ag-warning-soft); color: var(--ag-warning); font-size: 12px; line-height: 1.6;">
+                The console cannot reach <code>mcp-control</code>, so it cannot start or stop the MCP server. On Docker Compose, run <code>docker compose up -d</code> in the install folder to add it. On other platforms, start or stop the MCP service there.
+            </div>
+        @elseif($mcpMismatch)
+            <div style="margin-bottom: 12px; padding: 10px; border-radius: 12px; background: var(--ag-warning-soft); color: var(--ag-warning); font-size: 12px; line-height: 1.6;">
+                The MCP server is {{ $mcpStatus === 'running' ? 'running although MCP is off' : 'stopped although MCP is on' }}. The console corrects this within a minute.
+            </div>
+        @endif
         <p style="font-size: 13px; color: var(--ag-muted); margin-bottom: 14px;">
-            Enable Model Context Protocol (MCP) to allow AI assistants and external tools to query AtGlance data. MCP starts and stops automatically.
+            Lets AI clients (Claude Code, Claude Desktop, VS Code, GitHub Copilot, n8n and other MCP apps) answer questions from this console's data: systems, config backups, AI reviews and vulnerabilities.
+            Read-only. Each client uses its own API key and sees only what that user can see.
+            When MCP is on, every user gets an <strong>MCP</strong> link in the top bar with the setup steps.
         </p>
 
-        <form method="POST" action="{{ route('admin.settings.mcp') }}" style="margin-bottom: 24px;">
-            @csrf
-            @method('PUT')
-            <label style="display: flex; gap: 8px; align-items: center; font-size: 13px; color: var(--ag-text); margin-bottom: 16px; cursor: pointer;">
-                <input type="hidden" name="enabled" value="0">
-                <input type="checkbox" name="enabled" value="1" {{ $mcpEnabled ? 'checked' : '' }} style="cursor: pointer;">
-                <strong>Enable MCP</strong>
-            </label>
-            <button class="ag-btn" type="submit">{{ $mcpEnabled ? 'Update' : 'Enable' }} MCP</button>
-        </form>
+        @if($mcpCanEdit)
+            <form method="POST" action="{{ route('admin.settings.mcp') }}" style="margin-bottom: 20px;">
+                @csrf
+                @method('PUT')
+                <input type="hidden" name="enabled" value="{{ $mcpEnabled ? '0' : '1' }}">
+                <button class="ag-btn {{ $mcpEnabled ? 'ag-btn--ghost' : '' }}" type="submit">{{ $mcpEnabled ? 'Turn off MCP' : 'Turn on MCP' }}</button>
+            </form>
+        @else
+            <div style="margin-bottom: 16px; padding: 10px; border-radius: 12px; background: var(--ag-surface); color: var(--ag-subtle); font-size: 13px;">Only the super admin can turn MCP on or off.</div>
+        @endif
+
+        <div style="display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 6px 14px; font-size: 13px; margin-bottom: 16px;">
+            <span style="color: var(--ag-muted);">MCP URL</span><code style="overflow-wrap: anywhere;">{{ $mcpInfo['primary'] }}</code>
+            <span style="color: var(--ag-muted);">Private IP URL</span>
+            @if($mcpInfo['fallback'])
+                <code style="overflow-wrap: anywhere;">{{ $mcpInfo['fallback'] }}</code>
+            @else
+                <span style="color: var(--ag-warning);">Unknown. Set the server's private IP in <a href="{{ route('admin.settings', ['tab' => 'site']) }}" style="color: var(--ag-teal); text-decoration: underline;">Site Configuration</a> so users get a working fallback address.</span>
+            @endif
+        </div>
 
         @if($mcpEnabled)
-            <div style="background: var(--ag-surface); border-radius: 12px; padding: 16px; margin-bottom: 20px;">
-                <h3 style="font-size: 14px; font-weight: 600; margin-bottom: 12px;">Setup Instructions</h3>
-
-                <div style="margin-bottom: 16px;">
-                    <h4 style="font-size: 13px; font-weight: 600; color: var(--ag-text); margin-bottom: 8px;">1. n8n (Docker)</h4>
-                    <p style="font-size: 12px; color: var(--ag-muted); margin-bottom: 8px;">Inside n8n container, use this MCP endpoint:</p>
-                    <div style="background: var(--ag-surface-secondary); border-radius: 8px; padding: 12px; font-family: monospace; font-size: 12px; color: var(--ag-text); word-break: break-all; display: flex; gap: 8px; align-items: center;">
-                        <span id="n8n-url" style="flex: 1;">http://ce-atglance-gateway:8002/mcp</span>
-                        <button type="button" onclick="navigator.clipboard.writeText('http://ce-atglance-gateway:8002/mcp'); alert('Copied to clipboard')" style="padding: 4px 12px; background: var(--ag-teal); color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 12px;">Copy</button>
-                    </div>
-                </div>
-
-                <div style="margin-bottom: 16px;">
-                    <h4 style="font-size: 13px; font-weight: 600; color: var(--ag-text); margin-bottom: 8px;">2. Claude Code or VS Code (Local)</h4>
-                    <p style="font-size: 12px; color: var(--ag-muted); margin-bottom: 8px;">On your local machine, use this MCP endpoint:</p>
-                    <div style="background: var(--ag-surface-secondary); border-radius: 8px; padding: 12px; font-family: monospace; font-size: 12px; color: var(--ag-text); word-break: break-all; display: flex; gap: 8px; align-items: center;">
-                        <span id="local-url" style="flex: 1;">http://localhost:8002/mcp</span>
-                        <button type="button" onclick="navigator.clipboard.writeText('http://localhost:8002/mcp'); alert('Copied to clipboard')" style="padding: 4px 12px; background: var(--ag-teal); color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 12px;">Copy</button>
-                    </div>
-                </div>
-
-                <div style="margin-bottom: 16px;">
-                    <h4 style="font-size: 13px; font-weight: 600; color: var(--ag-text); margin-bottom: 8px;">3. Authentication</h4>
-                    <p style="font-size: 12px; color: var(--ag-muted);">
-                        For all MCP clients, you need a Personal Access Token (PAT). Generate one in <a href="{{ route('dashboard.settings') }}?tab=api-keys" style="color: var(--ag-teal); text-decoration: underline;">Settings → API Keys</a>.
-                        <br>Use the token format: <code style="background: var(--ag-surface-secondary); padding: 2px 6px; border-radius: 4px;">Authorization: Bearer atgla-YOUR_TOKEN</code>
-                    </p>
-                </div>
-
-                <div style="border-top: 1px solid var(--ag-border); padding-top: 12px;">
-                    <p style="font-size: 12px; color: var(--ag-muted);">MCP is read-only and respects your workspace membership and roles. Only the data visible to your user account will be accessible.</p>
-                </div>
-            </div>
+            <a href="{{ route('mcp.connect') }}" class="ag-btn ag-btn--ghost"><i class="fas fa-plug"></i> Open the MCP setup page</a>
         @else
-            <div style="padding: 16px; border-radius: 12px; background: var(--ag-surface); color: var(--ag-subtle); font-size: 13px;">
-                MCP is currently disabled. Enable it above to access setup instructions and get started with AI integrations.
+            <div style="padding: 14px; border-radius: 12px; background: var(--ag-surface); color: var(--ag-subtle); font-size: 13px;">
+                MCP is off. Turn it on to start the MCP server and show the MCP setup page to users.
             </div>
         @endif
     </div>

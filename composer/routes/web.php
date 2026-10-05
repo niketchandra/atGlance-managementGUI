@@ -3,6 +3,7 @@
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\McpConnectController;
 use App\Http\Controllers\WorkspaceSettingsController;
 use App\Http\Controllers\AdminDashboardController;
 use App\Http\Controllers\AiConnectController;
@@ -75,6 +76,7 @@ Route::middleware('app.installed')->group(function () {
         Route::get('/systems-registered/{systemId}/services', [DashboardController::class, 'systemServices'])->name('systems-registered.services');
         Route::get('/live-service-monitoring', [DashboardController::class, 'liveServiceMonitoring'])->name('live-service-monitoring');
         Route::get('/vulnerabilities-identified', [DashboardController::class, 'vulnerabilitiesIdentified'])->name('vulnerabilities-identified');
+        Route::get('/connect-ai', McpConnectController::class)->name('mcp.connect');
         Route::get('/settings', [DashboardController::class, 'settings'])->name('settings');
         Route::post('/settings/update', [DashboardController::class, 'updateSettings'])->name('settings.update');
         Route::post('/settings/pin/reset', [DashboardController::class, 'resetPin'])->name('settings.pin.reset');
@@ -117,6 +119,7 @@ Route::middleware('app.installed')->group(function () {
             Route::post('/settings/domain/plugin', [DomainSettingsController::class, 'togglePlugin'])->name('admin.settings.domain.plugin');
             Route::post('/settings/domain', [DomainSettingsController::class, 'save'])->name('admin.settings.domain');
             Route::post('/settings/domain/check', [DomainSettingsController::class, 'check'])->name('admin.settings.domain.check');
+            Route::get('/settings/mcp', fn () => redirect()->route('admin.settings', ['tab' => 'mcp']));
             Route::put('/settings/mcp', [AdminDashboardController::class, 'updateMcpSettings'])->name('admin.settings.mcp');
             Route::delete('/settings/domain/certificate', [DomainSettingsController::class, 'removeCertificate'])->name('admin.settings.domain.certificate.remove');
             Route::get('/settings/domain/ca.crt', [DomainSettingsController::class, 'downloadCa'])->name('admin.settings.domain.ca');

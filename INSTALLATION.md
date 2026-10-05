@@ -38,14 +38,23 @@ Linux server: follow Steps 1 to 3 below. Windows machine: jump to [Deploy on Win
 | Memory | 2 GB (1 GB works for small installs) |
 | Disk | 5 GB free, more for stored configuration files |
 | Access | root or sudo, outbound internet to Docker Hub and GitHub |
-| Ports | 8000 (web console) open to users and servers; 8002 (gateway) open to servers |
+| Ports | 8000 (web console) open to users and servers; 8002 (gateway: atglance CLI and the `/mcp` MCP server) open to servers and AI clients |
 
 You do not need Docker installed. The installer installs it.
 
 ### Step 1: Run the installer
 
+One command downloads the installer and deploys everything:
+
 ```bash
-curl -fsSL https://raw.githubusercontent.com/niketchandra/atGlance-managementGUI/main/install.sh | sudo bash
+curl -fsSL https://app.atglance.live/console/atglance-installer.sh | sudo bash
+```
+
+Or download the file first, read it, then run it:
+
+```bash
+curl -fsSL https://app.atglance.live/console/atglance-installer.sh -o atglance-installer.sh
+sudo bash atglance-installer.sh
 ```
 
 The installer:
@@ -59,7 +68,7 @@ The installer:
 To change the defaults, pass options after `bash -s --`:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/niketchandra/atGlance-managementGUI/main/install.sh \
+curl -fsSL https://app.atglance.live/console/atglance-installer.sh \
   | sudo bash -s -- --version 1.2.1 --dir /opt/atglance
 ```
 
@@ -81,6 +90,7 @@ You see these containers, all `Up` and the app `healthy`:
 ```
 ce-atglance-app        ce-atglance-worker     ce-atglance-scheduler
 ce-atglance-db         ce-atglance-redis      ce-atglance-gateway
+ce-atglance-mcp
 ```
 
 ### Step 3: Open the firewall and add HTTPS
@@ -91,18 +101,28 @@ ce-atglance-db         ce-atglance-redis      ce-atglance-gateway
 
 Continue with [After the install](#after-the-install).
 
-### Manual install without the script
+### Manual install: clone the repository and run Docker Compose
 
-If you cannot pipe a script into `bash`, do the same steps by hand on a server with Docker and the Compose plugin:
+Use this when you cannot run the installer. You need Docker Engine with the Compose plugin and `git`.
 
 ```bash
-sudo mkdir -p /opt/atglance && cd /opt/atglance
-sudo curl -fsSL https://raw.githubusercontent.com/niketchandra/atGlance-managementGUI/main/docker-compose.yml -o docker-compose.yml
-sudo curl -fsSL https://raw.githubusercontent.com/niketchandra/atGlance-managementGUI/main/.env.example -o .env
-sudo nano .env        # set DB_PASSWORD and DB_ROOT_PASSWORD to long random values
+# 1. Clone the repository
+sudo git clone https://github.com/niketchandra/atGlance-managementGUI.git /opt/atglance
+cd /opt/atglance
+
+# 2. Create the settings file and set two long random passwords
+sudo cp .env.example .env
+sudo nano .env        # set DB_PASSWORD and DB_ROOT_PASSWORD
+
+# 3. Pull the images and start everything
 sudo docker compose pull
 sudo docker compose up -d
+
+# 4. Check: seven containers Up, app healthy
+sudo docker compose ps
 ```
+
+Then open `http://<server-ip>:8000` for the setup wizard. To upgrade later: `git pull`, then `docker compose pull && docker compose up -d`.
 
 ### Upgrade, manage, uninstall
 
@@ -132,23 +152,47 @@ Use `install.ps1` on Windows 10/11 or Windows Server. It does the same steps as 
 | Disk | 5 GB free, more for stored configuration files |
 | Software | [Docker Desktop](https://www.docker.com/products/docker-desktop/) running in **Linux containers** mode (the default) |
 | Access | An elevated PowerShell (Run as administrator), outbound internet to Docker Hub and GitHub |
-| Ports | 8000 (web console) open to users and servers; 8002 (gateway) open to servers |
+| Ports | 8000 (web console) open to users and servers; 8002 (gateway: atglance CLI and the `/mcp` MCP server) open to servers and AI clients |
 
 If Docker is missing, the script tries `winget install Docker.DockerDesktop`, then asks you to start Docker Desktop and run it again.
 
 #### Step 1: Run the installer
 
-Open PowerShell as administrator (Start menu, search PowerShell, right-click, **Run as administrator**), then run:
+Open PowerShell as administrator (Start menu, search PowerShell, right-click, **Run as administrator**). One command downloads the installer and deploys everything:
 
 ```powershell
-irm https://raw.githubusercontent.com/niketchandra/atGlance-managementGUI/main/install.ps1 | iex
+irm https://app.atglance.live/console/atglance-installer.ps1 | iex
 ```
 
-Or, from a clone of this repository:
+Or download the file first, then run it:
 
 ```powershell
-.\install.ps1
+irm https://app.atglance.live/console/atglance-installer.ps1 -OutFile atglance-installer.ps1
+powershell -ExecutionPolicy Bypass -File .\atglance-installer.ps1
 ```
+
+#### Manual install on Windows: clone the repository and run Docker Compose
+
+Needs Docker Desktop (Linux containers) and Git for Windows. In PowerShell as administrator:
+
+```powershell
+# 1. Clone the repository
+git clone https://github.com/niketchandra/atGlance-managementGUI.git C:\ProgramData\AtGlance
+cd C:\ProgramData\AtGlance
+
+# 2. Create the settings file and set DB_PASSWORD and DB_ROOT_PASSWORD
+Copy-Item .env.example .env
+notepad .env
+
+# 3. Pull the images and start everything
+docker compose pull
+docker compose up -d
+
+# 4. Check: seven containers Up, app healthy
+docker compose ps
+```
+
+Then open `http://localhost:8000` for the setup wizard.
 
 The installer:
 
@@ -181,7 +225,7 @@ Pass options to the script, or set the environment variable when you pipe it to 
 
 ```powershell
 $env:ATGLANCE_VERSION = "1.2.1"
-irm https://raw.githubusercontent.com/niketchandra/atGlance-managementGUI/main/install.ps1 | iex
+irm https://app.atglance.live/console/atglance-installer.ps1 | iex
 ```
 
 | Option | Environment variable | Default | What it does |
@@ -198,7 +242,7 @@ cd C:\ProgramData\AtGlance
 docker compose ps
 ```
 
-You see the same six containers as on Linux. Allow inbound TCP 8000 and 8002 in Windows Firewall. For a custom domain and HTTPS, see [Custom domain and HTTPS](docs/custom-domain.md).
+You see the same seven containers as on Linux. Allow inbound TCP 8000 and 8002 in Windows Firewall. For a custom domain and HTTPS, see [Custom domain and HTTPS](docs/custom-domain.md).
 
 | Task | Command |
 |---|---|

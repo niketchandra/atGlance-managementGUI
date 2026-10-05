@@ -191,3 +191,33 @@ services:
         methods:
           - POST
           - GET
+  # The MCP server itself (container "mcp", internal only). Clients connect to
+  # <host>:8002/mcp. Streamable HTTP keeps responses open (SSE), so no
+  # buffering and a long read timeout.
+  - name: mcp-server-service
+    url: http://mcp:8010
+    read_timeout: 300000
+    write_timeout: 60000
+    routes:
+      - name: mcp-server-route
+        paths:
+          - /mcp
+        strip_path: false
+        request_buffering: false
+        response_buffering: false
+        methods:
+          - GET
+          - POST
+          - DELETE
+
+  # Read-only API for the AtGlance MCP server (mcp/). Same /api/mcp/* path on
+  # the gateway (:8002) and on the app (:8000), so the MCP server needs only a base URL.
+  - name: mcp-api-service
+    url: http://app:8000
+    routes:
+      - name: mcp-api-route
+        paths:
+          - /api/mcp/
+        strip_path: false
+        methods:
+          - GET

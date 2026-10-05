@@ -2,40 +2,40 @@
 
 namespace App\Console\Commands;
 
-use App\Models\AdminSetting;
+use App\Support\McpControl;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
 
 class ManageMcpCommand extends Command
 {
     protected $signature = 'mcp:manage';
-    protected $description = 'Start or stop MCP container based on site setting';
+
+    protected $description = 'Start or stop the MCP container to match Site Setting > MCP';
 
     public function handle(): int
     {
-        $enabledValue = AdminSetting::getValue('mcp_enabled', 'false');
-        $enabled = in_array($enabledValue, ['true', '1', true], true);
+        $enabled = McpControl::enabled();
+        $status = McpControl::status();
 
-        try {
-            if ($enabled) {
-                exec('docker compose -f ' . base_path('../docker-compose.yml') . ' up -d mcp 2>&1', $output, $exitCode);
-                if ($exitCode === 0) {
-                    Log::info('MCP container started successfully');
-                } else {
-                    Log::error('Failed to start MCP container', ['output' => $output]);
-                }
-            } else {
-                exec('docker compose -f ' . base_path('../docker-compose.yml') . ' down mcp 2>&1', $output, $exitCode);
-                if ($exitCode === 0) {
-                    Log::info('MCP container stopped successfully');
-                } else {
-                    Log::error('Failed to stop MCP container', ['output' => $output]);
-                }
-            }
-        } catch (\Exception $e) {
-            Log::error('MCP management error', ['error' => $e->getMessage()]);
+        if ($status === McpControl::UNKNOWN) {
+            $this->warn('MCP control is not reachable; nothing changed.');
+
+            return 0;
+        }
+
+        if (($status === McpControl::RUNNING) === $enabled) {
+            return 0;
+        }
+
+        $error = McpControl::apply($enabled);
+        if ($error !== null) {
+            Log::warning('MCP container not ' . ($enabled ? 'started' : 'stopped'), ['error' => $error]);
+            $this->error($error);
+
             return 1;
         }
+
+        $this->info('MCP container ' . ($enabled ? 'started' : 'stopped') . '.');
 
         return 0;
     }

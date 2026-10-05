@@ -28,15 +28,12 @@ services:
   scheduler:
     <<: *dev-app
 
-  db:
-    ports:
-      - "127.0.0.1:3306:3306"
-
-  redis:
-    ports:
-      - "127.0.0.1:6379:6379"
-
   gateway:
     build:
       context: ./kong
     image: ce-atglance-gateway:dev
+
+  mcp:
+    build:
+      context: ./mcp
+    image: ce-atglance-mcp:dev
