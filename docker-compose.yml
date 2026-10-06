@@ -3,10 +3,11 @@
 # Production / install:   docker compose up -d
 #
 # The Kong gateway (port 8002) always runs: the atglance CLI sends its API
-# calls to <host>:8002, and to <host>:8000 for logout.
+# calls to <host>:8002, and to <host>:8000 for logout. The same port serves
+# the MCP server at <host>:8002/mcp.
 # Local development:       see docker-compose.dev.yml (builds from source)
 #
-# Settings come from .env next to this file (see .env.example). install.sh
+# Settings come from .env next to this file (see .env.example). atglance-installer.sh
 # creates it with random passwords.
 
 name: atglance
@@ -117,6 +118,37 @@ services:
       app:
         condition: service_healthy
 
+  # Read-only MCP server for AI clients (Claude Desktop, Claude Code, ...).
+  # Turned on and off in Site Setting > Plugins > MCP Server (off by default): the console starts and
+  # stops this container through the controller service below.
+  # No published port: clients reach it through the gateway at <host>:8002/mcp,
+  # each with their own "Authorization: Bearer atgla-..." API key. See docs/mcp.md.
+  mcp:
+    image: ${ATGLANCE_REGISTRY:-atglance}/ce-atglance-mcp:${ATGLANCE_VERSION:-latest}
+    container_name: ce-atglance-mcp
+    restart: unless-stopped
+    environment:
+      ATGLANCE_URL: http://app:8000
+      # Reached only through Kong on the internal network; Kong sends Host "mcp:8010".
+      ATGLANCE_MCP_ALLOWED_HOSTS: "mcp:8010"
+    depends_on:
+      app:
+        condition: service_healthy
+
+  # Lets the console start/stop the mcp container. Holds the Docker socket but only
+  # forwards start, stop and inspect of ce-atglance-mcp; every other call gets 403.
+  # Internal only, no published port.
+  controller:
+    image: nginx:1.27-alpine
+    container_name: ce-atglance-controller
+    restart: unless-stopped
+    volumes:
+      # DOCKER_SOCKET in .env for rootless Docker or a non-standard socket (atglance-installer.sh sets it).
+      - ${DOCKER_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock
+    configs:
+      - source: controller-nginx
+        target: /etc/nginx/nginx.conf
+
   # Optional database admin UI. Uncomment to use: docker compose --profile tools up -d
   # dbadmin:
   #   image: phpmyadmin:5.2
@@ -136,3 +168,31 @@ volumes:
   app-storage:
   db-data:
   redis-data:
+
+configs:
+  controller-nginx:
+    content: |
+      user root;
+      worker_processes 1;
+      events { worker_connections 64; }
+      http {
+        access_log off;
+        server {
+          listen 2375;
+          # Fixed upstream paths: the client's raw path is never forwarded.
+          location = /mcp/start {
+            limit_except POST { deny all; }
+            proxy_pass http://unix:/var/run/docker.sock:/containers/ce-atglance-mcp/start;
+          }
+          location = /mcp/stop {
+            limit_except POST { deny all; }
+            proxy_pass http://unix:/var/run/docker.sock:/containers/ce-atglance-mcp/stop?t=5;
+            proxy_read_timeout 30s;
+          }
+          location = /mcp/status {
+            limit_except GET { deny all; }
+            proxy_pass http://unix:/var/run/docker.sock:/containers/ce-atglance-mcp/json;
+          }
+          location / { return 403; }
+        }
+      }

@@ -47,6 +47,10 @@
                     $agNavItems[] = ['label' => 'Site Settings', 'icon' => 'fa-sliders-h', 'url' => route('admin.settings'), 'active' => ['admin.settings*']];
                     $agNavItems[] = ['label' => 'Enterprise Console', 'icon' => 'fa-building', 'url' => route('enterprise.console'), 'active' => ['enterprise.*', 'admin.workspaces*', 'workspace.*']];
                 }
+                // A user-role account can still be workspace admin of some workspaces.
+                if (!$agIsAdmin && \Illuminate\Support\Facades\DB::table('workspace_user')->where('user_id', $agUser->id)->where('is_admin', true)->exists()) {
+                    $agNavItems[] = ['label' => 'Workspace', 'icon' => 'fa-sitemap', 'url' => route('admin.workspaces'), 'active' => ['admin.workspaces*']];
+                }
                 $agNavItems[] = ['label' => 'Settings', 'icon' => 'fa-cog', 'url' => route('settings'), 'active' => ['settings*']];
             }
             $agNavItems[] = ['label' => 'Profile', 'icon' => 'fa-user-circle', 'url' => route('profile'), 'active' => ['profile*']];
@@ -63,6 +67,17 @@
                 @endif
             </a>
 
+            @if(!$requiresProfileSetup && \App\Support\McpControl::enabled())
+                @php $agMcpActive = request()->routeIs('mcp.connect'); @endphp
+                <nav class="ag-nav ag-nav--app" aria-label="Quick links">
+                    <div class="ag-nav-track">
+                        <a href="{{ route('mcp.connect') }}" class="ag-nav-link {{ $agMcpActive ? 'is-active' : '' }}" title="Connect AI tools (MCP)" @if($agMcpActive) aria-current="page" @endif>
+                            <i class="fas fa-plug"></i> MCP
+                        </a>
+                    </div>
+                </nav>
+            @endif
+
             <div class="ag-topbar-right">
                 @if(!empty($workspaceSelectorOptions) && count($workspaceSelectorOptions) > 0)
                     <form method="POST" action="{{ route('workspace.select') }}" class="ag-workspace">
@@ -71,7 +86,7 @@
                         <label for="workspace_selector" class="sr-only">Workspace</label>
                         <select id="workspace_selector" name="workspace_id" onchange="this.form.submit()">
                             @foreach($workspaceSelectorOptions as $workspaceOption)
-                                <option value="{{ $workspaceOption->id }}" {{ (int) ($selectedWorkspaceId ?? 0) === (int) $workspaceOption->id ? 'selected' : '' }}>
+                                <option value="{{ $workspaceOption->id }}" {{ ($workspaceOption->id === null ? $selectedWorkspaceId === null : $selectedWorkspaceId !== null && (int) $selectedWorkspaceId === (int) $workspaceOption->id) ? 'selected' : '' }}>
                                     {{ $workspaceOption->name }}
                                 </option>
                             @endforeach
@@ -115,10 +130,11 @@
                     @endforeach
                 </nav>
 
+                @if($agIsSuperAdmin)
                 @php
                     $agLicence = \App\Support\License::summary();
                     $agLicenceActivated = \App\Support\License::date($agLicence['activated_at']);
-                    $agLicenceValidated = \App\Support\License::date($agLicence['verified_at']);
+                    $agLicenceExpiry = \App\Support\License::expiry($agLicence['expires_at']);
                 @endphp
                 <div class="ag-licence-card {{ $agLicence['active'] ? '' : 'is-missing' }}">
                     <div class="ag-licence-head">
@@ -131,22 +147,21 @@
                     @if($agLicence['active'])
                         <div class="ag-licence-plan">{{ $agLicence['plan'] !== '' ? ucfirst($agLicence['plan']) : 'Community Edition' }}</div>
                         <div class="ag-licence-line">Activated On {{ $agLicenceActivated !== '' ? $agLicenceActivated : '-' }}</div>
-                        <div class="ag-licence-line">Validated On {{ $agLicenceValidated !== '' ? $agLicenceValidated : '-' }}</div>
+                        <div class="ag-licence-line" @if($agLicenceExpiry['days_left'] !== null && $agLicenceExpiry['days_left'] <= 30) style="color: var(--ag-warning);" @endif>{{ $agLicenceExpiry['text'] }}</div>
                     @else
                         <div class="ag-licence-line">New users and API keys stay locked until a licence is added.</div>
                     @endif
-                    @if($agIsAdmin)
-                        @if($agLicence['active'])
-                            <a href="{{ \App\Support\License::portalUrl() }}" target="_blank" rel="noopener" class="ag-btn ag-btn--sm ag-licence-btn">
-                                <i class="fas fa-arrow-up-right-dots"></i> Upgrade
-                            </a>
-                        @else
-                            <a href="{{ route('admin.settings', ['tab' => 'licence']) }}" class="ag-btn ag-btn--sm ag-licence-btn">
-                                <i class="fas fa-key"></i> Add licence
-                            </a>
-                        @endif
+                    @if($agLicence['active'])
+                        <a href="{{ \App\Support\License::portalUrl() }}" target="_blank" rel="noopener" class="ag-btn ag-btn--sm ag-licence-btn">
+                            <i class="fas fa-arrow-up-right-dots"></i> Upgrade
+                        </a>
+                    @else
+                        <a href="{{ route('admin.settings', ['tab' => 'licence']) }}" class="ag-btn ag-btn--sm ag-licence-btn">
+                            <i class="fas fa-key"></i> Add licence
+                        </a>
                     @endif
                 </div>
+                @endif
 
                 <div class="ag-sidebar-meta">Version {{ $appVersion ?? config('app.version') }}</div>
             </aside>

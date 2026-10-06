@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\ActivityLog;
 use App\Services\BackupService;
 use App\Services\RestoreService;
+use App\Support\BackupSettings;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -17,23 +18,57 @@ use Throwable;
 class BackupRestoreController extends Controller
 {
     /**
-     * Only the super-admin may replace the whole portal (DB and .env).
+     * Only the super-admin may replace the whole database (database and older portal backups).
      */
-    private const PORTAL_RESTORE_RBAC_ID = 100;
+    private const DATABASE_RESTORE_RBAC_ID = 100;
+
+    /**
+     * Backup types listed in each section of the Backup & Restore tab.
+     */
+    private const SECTION_TYPES = [
+        'database' => [BackupService::TYPE_DATABASE, BackupService::TYPE_PORTAL],
+        'files' => [BackupService::TYPE_CONFIG],
+    ];
 
     public function __construct(private RestoreService $restores)
     {
     }
 
-    public function index(): JsonResponse
+    public function index(Request $request): JsonResponse
     {
-        $result = $this->restores->listBackups();
+        $section = (string) $request->query('section', '');
+        $types = self::SECTION_TYPES[$section] ?? array_merge(...array_values(self::SECTION_TYPES));
+
+        $result = $this->restores->listBackups($types);
 
         return response()->json([
             'backups' => $result['backups'],
             'errors' => $result['errors'],
-            'can_restore_portal' => $this->canRestorePortal(),
+            'can_restore_database' => $this->canRestoreDatabase(),
+            // Kept for older scripts.
+            'can_restore_portal' => $this->canRestoreDatabase(),
         ]);
+    }
+
+    /**
+     * Runs one backup now, with the saved destinations and retention, even when
+     * its schedule is turned off.
+     */
+    public function run(Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'type' => ['required', Rule::in(BackupSettings::TYPES)],
+        ]);
+
+        $run = app(BackupService::class)->run($validated['type'], true);
+        $label = BackupSettings::LABELS[$validated['type']];
+        $back = redirect()->route('admin.settings', ['tab' => 'backup-restore']);
+
+        return match ($run['status']) {
+            BackupService::STATUS_SUCCESS => $back->with('success', $label . ' finished. ' . $run['message']),
+            BackupService::STATUS_SKIPPED => $back->withErrors(['backup_run' => $label . ' did not run: ' . $run['message']]),
+            default => $back->withErrors(['backup_run' => $label . ' failed: ' . $run['message']]),
+        };
     }
 
     public function restore(Request $request): RedirectResponse
@@ -60,8 +95,12 @@ class BackupRestoreController extends Controller
             return $back->withErrors(['restore' => 'Password is incorrect.']);
         }
 
-        if ($type === BackupService::TYPE_PORTAL && !$this->canRestorePortal()) {
+        if ($type === BackupService::TYPE_PORTAL && !$this->canRestoreDatabase()) {
             return $back->withErrors(['restore' => 'Only the super admin can restore a portal backup.']);
+        }
+
+        if ($type === BackupService::TYPE_DATABASE && !$this->canRestoreDatabase()) {
+            return $back->withErrors(['restore' => 'Only the super admin can restore a database backup.']);
         }
 
         try {
@@ -75,16 +114,22 @@ class BackupRestoreController extends Controller
 
         $this->logRestore($request, $user->id, 200, $validated, $type, $result);
 
-        $message = $type === BackupService::TYPE_CONFIG
-            ? sprintf('Configuration files restored (%d files written).', $result['summary']['files_written'])
-            : 'Portal restored. Restart the app containers so the restored .env takes effect.';
+        $message = match ($type) {
+            BackupService::TYPE_CONFIG => sprintf(
+                'Configuration files restored (%d config files and %d console files written).',
+                $result['summary']['files_written'],
+                $result['summary']['console_files_written'] ?? 0
+            ),
+            BackupService::TYPE_DATABASE => 'Database restored. Sign in again if your session ended.',
+            default => 'Portal restored. Restart the app containers so the restored .env takes effect.',
+        };
 
         return $back->with('success', $message . ' Snapshot of the previous state: ' . $result['snapshot']);
     }
 
-    private function canRestorePortal(): bool
+    private function canRestoreDatabase(): bool
     {
-        return (int) (Auth::user()->rbac_id ?? 0) === self::PORTAL_RESTORE_RBAC_ID;
+        return (int) (Auth::user()->rbac_id ?? 0) === self::DATABASE_RESTORE_RBAC_ID;
     }
 
     private function logRestore(Request $request, int $userId, int $statusCode, array $validated, string $type, array $details): void

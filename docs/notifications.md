@@ -3,7 +3,10 @@
 AtGlance notifies the people responsible for a workspace when something happens to its servers.
 
 - The **super admin** (`rbac_id` 100) allows channels and sets their organization-level connection on the **Notification** tab (`/admin/settings?tab=notification`).
-- **Workspace admins** (`rbac_id` 101 with `workspace_user.is_admin`) add **groups** for the workspaces they manage on the **Notifications** page (`/admin/notifications`). A group is one channel, one target, and the events it receives.
+- **Workspace admins with the Admin role** (`rbac_id` 101 with `workspace_user.is_admin`) add **groups** for the workspaces they manage on the **Notifications** page (`/admin/notifications`, linked from the workspace's Notifications tab). A group is one channel, one target, and the events it receives. An email group can be a distribution list; a Slack, Teams or Telegram group is a chat channel.
+- Workspace admins with the User role see the workspace's groups and settings read-only on the workspace's Notifications tab.
+- On the workspace's **Notifications** tab, workspace admins with the Admin role choose which events the workspace sends at all, and which events members get by email by default.
+- **Members** choose their own events under **Settings > Notifications**, per workspace. Until a member saves a choice, the workspace default applies.
 - The super admin also manages **organization** groups, which receive org-wide events.
 
 Example: the super admin sets SMTP on the Email Configuration tab and allows Email. The admin of the `ansible` workspace then adds a group "Ansible on-call" with the team's email addresses. Every host registered in `ansible` sends them an email.
@@ -13,15 +16,19 @@ Example: the super admin sets SMTP on the Email Configuration tab and allows Ema
 | Channel | Super admin sets | Group target |
 |---|---|---|
 | Email | SMTP on the Email Configuration tab (check it there with **Send test email**, which uses the saved settings) | Email addresses, comma separated |
-| Microsoft Teams | Allow | Teams channel webhook URL (Workflows template "Post to a channel when a webhook request is received"), https |
-| Slack | Allow | Slack incoming webhook URL, `https://hooks.slack.com/...` |
+| Microsoft Teams | Allow | Teams channel webhook URL from the Workflows template "Send webhook alerts to a channel", https. Not for private channels; about 28 KB per message |
+| Slack | Allow | Slack incoming webhook URL, `https://hooks.slack.com/...` (one channel per webhook) |
 | WhatsApp (SimpleFloww) | Not available yet: waiting for the provider's API details | — |
-| n8n | Allow; optional auth header name and value (for the Webhook node's Header Auth) | n8n webhook URL |
-| Telegram | Allow; bot token | Chat ID (e.g. `-1001234567890`) or `@channel`; the bot must be in the chat |
-| Webhook | Allow; signing secret | Webhook URL (http or https) |
-| SMS (Mailchimp Transactional) | Allow; API key; from number (E.164) | Phone numbers in E.164, comma separated |
+| n8n | Allow; optional Header auth (name, value) and/or Basic auth (user, password), matching the Webhook node | n8n **Production** URL (the workflow must be active) |
+| Telegram | Allow; bot token from @BotFather; optional "Send silently" (`disable_notification`) | Chat ID (e.g. `-1001234567890`) or `@channel`; the bot must be in the chat (an admin in channels) |
+| Webhook | Allow; optional signing secret | Webhook URL (http or https) |
+| SMS (Mailchimp Transactional) | Allow; API key; approved sending number (E.164); consent type (`recurring` default, `recurring-no-confirm`, `onetime`) | Phone numbers in E.164, comma separated |
 
-A channel can be used only when it is allowed and its required settings are complete. The Notification tab shows "Ready" or "Setup needed" for each channel.
+A channel can be used only when it is allowed and its required settings are complete. The Notification tab lists the channels on the left ("Ready", "Setup needed", "Off", "Coming soon") and, for the open channel, the official guide link, the organization setup steps, the fields, and the steps for a workspace group's target with an example. Guides: `NotificationSettings::GUIDES`.
+
+SMS uses the request body from Mailchimp's "Send your first SMS" guide:
+`POST https://mandrillapp.com/api/1.1/messages/send-sms` with `{"key": ..., "message": {"sms": {"text", "to", "from", "consent"}}}`.
+Earlier versions sent `message.{to, from, text}` to `api/1.0` without `consent`.
 
 ## Events
 
@@ -29,10 +36,19 @@ A channel can be used only when it is allowed and its required settings are comp
 |---|---|---|
 | `system.registered` | Workspace | A host is registered or reactivated in the workspace |
 | `system.deregistered` | Workspace | A host in the workspace is deregistered |
-| `backup.succeeded` | Organization | `backup:config` or `backup:portal` uploads a backup |
+| `config.uploaded` | Workspace | The CLI uploads a config file for a host in the workspace |
+| `config.upload_failed` | Workspace | The console could not save an upload for a known host |
+| `ai.issues_found` | Workspace | An AI review (manual or automatic) ends with status `error` or `warning` |
+| `workspace.backup_succeeded` | Workspace | A workspace backup is saved (`backup:workspace` or Run now) |
+| `workspace.backup_failed` | Workspace | A workspace backup fails |
+| `workspace.member_added` | Workspace | A user or workspace admin is added to the workspace |
+| `workspace.member_removed` | Workspace | A member is removed from the workspace |
+| `backup.succeeded` | Organization | `backup:config` or `backup:database` (or Run now) saves a backup |
 | `backup.failed` | Organization | A scheduled backup fails |
 
-Workspace events go to the groups of the host's workspace. Hosts with no workspace send nothing. Organization events go to organization groups.
+Workspace events go to the groups of the host's workspace, and are sent only when the workspace has the event turned on (all are on until the Notifications tab is saved). Hosts with no workspace send nothing. Organization events go to organization groups.
+
+Workspace events are also emailed to members who want them (when the Email channel is allowed). This is one message with the members in Bcc. Addresses that an email group already received are skipped. The member list comes from `WorkspaceNotificationPreference::recipientsFor()`.
 
 System events come from `App\Models\SystemRegister` model events, so every API path (register, deregister, force, reactivate) is covered. Backup events come from `App\Services\BackupService`.
 

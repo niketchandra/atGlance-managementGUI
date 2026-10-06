@@ -26,31 +26,111 @@ Browser (admins, users) ─────────────▶ Web ──┘
 - **White-label**: your organization's name and logo, plus About, Features, FAQ, Support and Contact pages.
 - **Resilience**: if MySQL goes down, writes are queued in Redis and replayed when it comes back.
 
-## Installation Steps
+## Installation and update
 
 > [!IMPORTANT]
-> **Choose how to deploy.** Both ways use the same images from Docker Hub. Full steps: **[INSTALLATION.md](INSTALLATION.md)**.
+> **Choose how to deploy.** Both ways use the same images from Docker Hub. Full steps: **[INSTALLATION-UPDATE.md](INSTALLATION-UPDATE.md)**.
 >
 > | | **Part A: VM** | **Part B: Container service** |
 > |---|---|---|
 > | Where | Any Linux server: EC2, Azure VM, VPS, bare metal | AWS ECS (Fargate/EC2), Kubernetes, Azure Container Apps, Cloud Run |
 > | MySQL and Redis | Included, as containers | Managed services (RDS, ElastiCache, and so on) |
 > | Effort | One command | Task definitions or manifests, load balancer, shared storage |
-> | Guide | [Part A](INSTALLATION.md#part-a-deploy-on-a-vm) | [Part B](INSTALLATION.md#part-b-deploy-on-a-container-service) |
+> | Guide | [Part A](INSTALLATION-UPDATE.md#part-a-deploy-on-a-vm) | [Part B](INSTALLATION-UPDATE.md#part-b-deploy-on-a-container-service) |
 
 ### Part A: Deploy on a VM
 
-Run one command on a Linux server (amd64 or arm64). Docker is installed for you if it is missing.
+Run one command on a Linux server (amd64; arm64 images are not published yet). Docker is installed for you if it is missing.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/niketchandra/atGlance-managementGUI/main/install.sh | sudo bash
+curl -fsSL https://app.atglance.live/console/atglance-installer.sh | sudo bash
+```
+
+Or from a clone of this repository (the installer and updater are in `scripts/`):
+
+```bash
+git clone https://github.com/niketchandra/atGlance-managementGUI.git
+sudo bash atGlance-managementGUI/scripts/atglance-installer.sh
 ```
 
 1. The installer checks the server (root, OS, CPU, disk, memory, ports) and installs Docker and Docker Compose if needed.
-2. It creates `/opt/atglance` with random database passwords, pulls the images and starts the containers.
+2. It creates `/opt/atglance` with random database passwords, pulls the latest `atglance/ce-atglance-app`, `-gateway` and `-mcp` images and starts the containers.
 3. Open the printed URL, `http://<server-ip>:8000`, and complete the setup wizard.
+4. If you ran it from a clone, the clone is removed. It is kept when it has local changes, or with `--keep-clone`.
 
-Open ports 8000 (web console) and 8002 (API gateway for the `atglance` CLI) in the firewall. Pin a version with `| sudo bash -s -- --version 1.2.1`. To upgrade, run the installer again. It keeps your data and passwords.
+Open ports 8000 (web console) and 8002 (API gateway for the `atglance` CLI) in the firewall. The installer always deploys the newest release (`latest` images). To update later, see [Update](#update).
+
+#### Windows (PowerShell)
+
+On Windows 10/11 or Windows Server, use `atglance-installer.ps1`. It needs [Docker Desktop](https://www.docker.com/products/docker-desktop/) running in **Linux containers** mode (the default). If Docker is missing, the script tries `winget install Docker.DockerDesktop`, then asks you to start Docker Desktop and run it again.
+
+1. Open **PowerShell as administrator** (Start menu, search PowerShell, right-click, **Run as administrator**).
+2. Download and run the installer:
+
+   ```powershell
+   irm https://app.atglance.live/console/atglance-installer.ps1 | iex
+   ```
+
+   Or, from a clone of this repository:
+
+   ```powershell
+   git clone https://github.com/niketchandra/atGlance-managementGUI.git
+   powershell -ExecutionPolicy Bypass -File .\atGlance-managementGUI\scripts\atglance-installer.ps1
+   ```
+
+3. Open the printed URL, `http://<host-ip>:8000`, and complete the setup wizard.
+
+The installer creates `C:\ProgramData\AtGlance` with random database passwords, pulls the latest `atglance/ce-atglance-app`, `-gateway` and `-mcp` images and starts the containers. Open ports 8000 and 8002 in Windows Firewall. To update later, see [Update](#update).
+
+**If PowerShell blocks the script** ("running scripts is disabled on this system"), the execution policy is too strict. Use one of these:
+
+- Run it once without changing any policy (recommended):
+
+  ```powershell
+  powershell -ExecutionPolicy Bypass -File .\atglance-installer.ps1
+  ```
+
+- Allow it for the current PowerShell window only. The policy reverts when you close the window:
+
+  ```powershell
+  Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+  .\atglance-installer.ps1
+  ```
+
+- Allow local scripts for your user permanently:
+
+  ```powershell
+  Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
+  ```
+
+- If you downloaded the file in a browser and Windows still blocks it, unblock it first: `Unblock-File .\atglance-installer.ps1`.
+
+Options (`-Dir`, `-Registry`, `-Port`, `-KeepClone`) can be passed to `atglance-installer.ps1`; it always deploys the newest release (`latest` images). When piping to `iex`, set the environment variables instead, for example `$env:ATGLANCE_DIR = "D:\atglance"` before the `irm` command.
+
+### Update
+
+The update scripts move a VM install to the newest release and keep your data, passwords and settings:
+
+1. Back up the database, the app key and the compose files.
+2. Compare the running images with the newest release. If nothing changed, stop ("already up to date").
+3. Update every container. Database migrations run when the app starts.
+4. Check health: containers, web console, gateway, migrations, queue worker, scheduler, app log.
+5. Compare the database with the backup: every table present, no rows lost.
+
+Linux:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/niketchandra/atGlance-managementGUI/main/scripts/atglance_update.sh | sudo bash -s -- --yes
+```
+
+Windows (PowerShell as administrator):
+
+```powershell
+irm https://raw.githubusercontent.com/niketchandra/atGlance-managementGUI/main/scripts/atglance_update.ps1 -OutFile atglance_update.ps1
+powershell -ExecutionPolicy Bypass -File .\atglance_update.ps1
+```
+
+Exit code `0` means updated (or already up to date). Exit code `2` means a check failed: the backup folder it prints has a `ROLLBACK.txt`. Options, the clone variant and rollback: [Updating on Linux](INSTALLATION-UPDATE.md#updating) and [Update on Windows](INSTALLATION-UPDATE.md#update-on-windows). Running the installer again also updates and keeps your data, but takes no backup and runs no checks. Container services (ECS, Kubernetes): see [Upgrade on ECS](INSTALLATION-UPDATE.md#upgrade-on-ecs).
 
 ### Part B: Deploy on ECS or another container service
 
@@ -70,7 +150,7 @@ Run the images as separate services next to managed MySQL 8.0 and Redis 7:
 5. Put a load balancer with HTTPS in front: ports 443 and 8000 to the app, port 8002 to the gateway, all on one host name. The CLI needs 8000 and 8002.
 6. Open `https://<your-domain>` and complete the setup wizard.
 
-[INSTALLATION.md](INSTALLATION.md#ecs-on-fargate-step-by-step) has a full ECS Fargate walkthrough with task definitions, plus Kubernetes, Azure Container Apps and Cloud Run notes.
+[INSTALLATION-UPDATE.md](INSTALLATION-UPDATE.md#ecs-on-fargate-step-by-step) has a full ECS Fargate walkthrough with task definitions, plus Kubernetes, Azure Container Apps and Cloud Run notes.
 
 ### After installing
 
@@ -87,8 +167,10 @@ Run the images as separate services next to managed MySQL 8.0 and Redis 7:
 | `ce-atglance-db` | `mysql:8.0` | Database (VM install) |
 | `ce-atglance-redis` | `redis:7-alpine` | Cache, queue and circuit-breaker state (VM install) |
 | `ce-atglance-gateway` | `atglance/ce-atglance-gateway` | Kong API gateway, port 8002, with the AtGlance routes built in. The `atglance` CLI talks to it. |
+| `ce-atglance-mcp` | `atglance/ce-atglance-mcp` | Read-only MCP server for AI clients, at `<host>:8002/mcp`. Off by default, see [mcp.md](docs/mcp.md). |
+| `ce-atglance-controller` | `nginx:1.27-alpine` | Lets the console start and stop the MCP server. Allows only start, stop and status of `ce-atglance-mcp`. |
 
-Only the two `atglance/ce-atglance-*` images are built by this project. The others are public images.
+Only the three `atglance/ce-atglance-*` images are built by this project. The others are public images.
 
 ### Before going to production
 
@@ -118,11 +200,17 @@ docker run --rm -e VIEW_COMPILED_PATH=/tmp/views -v "$(pwd)/composer:/app" -w /a
 
 ### Publish images
 
+Before a release, set the version in `composer/config/app.php` (`'version'`, shown in the console sidebar and sent to the licence server) and in `mcp/pyproject.toml` and `mcp/src/atglance_mcp/__init__.py`. The current release is `2.0.0`.
+
+Images are published for `linux/amd64` only. Tag every release with its version and with `latest`, because the installer and the update scripts always deploy `latest`:
+
 ```bash
-docker buildx build --platform linux/amd64,linux/arm64 \
-  -t atglance/ce-atglance-app:<version> -t atglance/ce-atglance-app:latest --push .
-docker buildx build --platform linux/amd64,linux/arm64 \
-  -t atglance/ce-atglance-gateway:<version> -t atglance/ce-atglance-gateway:latest --push kong
+docker buildx build --platform linux/amd64 \
+  -t atglance/ce-atglance-app:2.0.0 -t atglance/ce-atglance-app:latest --push .
+docker buildx build --platform linux/amd64 \
+  -t atglance/ce-atglance-gateway:2.0.0 -t atglance/ce-atglance-gateway:latest --push kong
+docker buildx build --platform linux/amd64 \
+  -t atglance/ce-atglance-mcp:2.0.0 -t atglance/ce-atglance-mcp:latest --push mcp
 ```
 
 ## Documentation
@@ -132,7 +220,7 @@ docker buildx build --platform linux/amd64,linux/arm64 \
 >
 > | Document | Read it to |
 > |---|---|
-> | **[INSTALLATION.md](INSTALLATION.md)** | Install and upgrade AtGlance on a VM or on ECS, Kubernetes and other container services |
+> | **[INSTALLATION-UPDATE.md](INSTALLATION-UPDATE.md)** | Install and update AtGlance on a VM or on ECS, Kubernetes and other container services |
 > | **[docs/api-reference.md](docs/api-reference.md)** | Connect the `atglance` CLI or your own client: every API endpoint, with requests and responses |
 > | **[docs/web-console.md](docs/web-console.md)** | Find your way around the web console: pages, roles, white-label pages |
 > | **[docs/scheduled-backups.md](docs/scheduled-backups.md)** | Set up scheduled S3 backups and restore the portal |
@@ -142,7 +230,7 @@ All documents are in the [docs](docs/) folder:
 
 | Area | Document | What it covers |
 |---|---|---|
-| Install | [INSTALLATION.md](INSTALLATION.md) | VM installer, ECS Fargate walkthrough, Kubernetes and other platforms |
+| Install | [INSTALLATION-UPDATE.md](INSTALLATION-UPDATE.md) | VM installer and update scripts (`scripts/`), ECS Fargate walkthrough, Kubernetes and other platforms |
 | Use | [web-console.md](docs/web-console.md) | Web console layout, pages and white-label pages |
 | Use | [notifications.md](docs/notifications.md) | Notification channels (Email, Teams, Slack, n8n, Telegram, webhooks, SMS) and events |
 | Use | [ai-connect.md](docs/ai-connect.md) | Connecting an AI provider, per-provider setup |

@@ -2,12 +2,19 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\ConfigAiValidation;
 use App\Models\SystemRegister;
 use App\Models\Workspace;
+use App\Services\ConfigAiReviewer;
 use App\Support\AccountAlerts;
+use App\Support\AiSettings;
 use App\Support\ActivityRecorder;
 use App\Support\License;
 use App\Support\UserPreferences;
+use App\Support\WorkspaceSettings;
+use App\Http\Controllers\Concerns\ScopesWorkspaceData;
+use App\Models\WorkspaceNotificationPreference;
+use App\Notifications\NotificationEvents;
 use App\Support\WebSessions;
 use App\Support\S3Settings;
 use Illuminate\Http\RedirectResponse;
@@ -23,6 +30,8 @@ use Illuminate\Support\Facades\Storage;
 
 class DashboardController extends Controller
 {
+    use ScopesWorkspaceData;
+
     public function selectWorkspace(Request $request): RedirectResponse
     {
         $validated = $request->validate([
@@ -132,34 +141,18 @@ class DashboardController extends Controller
             ->whereBetween('s.created_at', [$previousWeekStart, $previousWeekEnd])
             ->count('s.service_id');
 
-        $isSuperAdmin = (int) ($actor->rbac_id ?? 0) === 100;
-        $alertsBaseQuery = DB::table('activity_logs')
-            ->where('status_code', '>=', 400);
-
-        if (!$isSuperAdmin) {
-            $alertsBaseQuery->where('user_id', (int) $actor->id);
-        }
-
-        $totalPotentialVulnerabilities = (clone $alertsBaseQuery)->count('id');
-        $currentWeekPotentialVulnerabilities = (clone $alertsBaseQuery)
-            ->whereBetween('created_at', [$currentWeekStart, $now])
-            ->count('id');
-        $previousWeekPotentialVulnerabilities = (clone $alertsBaseQuery)
-            ->whereBetween('created_at', [$previousWeekStart, $previousWeekEnd])
-            ->count('id');
-
         $servicesChange = $this->calculateWeeklyChange($currentWeekServicesMonitored, $previousWeekServicesMonitored);
-        $vulnerabilitiesChange = $this->calculateWeeklyChange($currentWeekPotentialVulnerabilities, $previousWeekPotentialVulnerabilities);
+        $vulnerabilityStats = $this->vulnerabilityStats($actor, $selectedWorkspaceId);
 
         return view('dashboard', [
             'totalConfigBackups' => $totalConfigBackups,
             'totalSystemsRegistered' => $totalSystemsRegistered,
             'totalServicesMonitored' => $totalServicesMonitored,
-            'totalPotentialVulnerabilities' => $totalPotentialVulnerabilities,
+            'vulnerabilityStats' => $vulnerabilityStats,
+            'validationTrend' => $this->validationTrend($actor, $selectedWorkspaceId),
             'configChange' => $configChange,
             'systemsChange' => $systemsChange,
             'servicesChange' => $servicesChange,
-            'vulnerabilitiesChange' => $vulnerabilitiesChange,
         ]);
     }
 
@@ -191,15 +184,14 @@ class DashboardController extends Controller
         /** @var User $actor */
         $actor = Auth::user();
 
-        // Subquery to get the latest version for each service
+        // Latest version of each service on each system
         $latestVersionsSubquery = DB::table('configuration_files')
-            ->select('service_name', DB::raw('MAX(id) as latest_id'))
-            ->groupBy('service_name');
+            ->select(DB::raw('MAX(id) as latest_id'))
+            ->groupBy('system_register_id', 'service_name');
 
         $query = DB::table('configuration_files as cf')
             ->joinSub($latestVersionsSubquery, 'latest', function ($join) {
-                $join->on('cf.service_name', '=', 'latest.service_name')
-                     ->on('cf.id', '=', 'latest.latest_id');
+                $join->on('cf.id', '=', 'latest.latest_id');
             })
             ->leftJoin('system_register as sr', 'cf.system_register_id', '=', 'sr.id')
             ->select(
@@ -215,7 +207,7 @@ class DashboardController extends Controller
                 'cf.created_at',
                 'sr.system_name',
                 'sr.status as system_status',
-                DB::raw('(SELECT COUNT(*) FROM configuration_files WHERE service_name = cf.service_name) as version_count')
+                DB::raw("(SELECT COUNT(*) FROM configuration_files AS cfv WHERE COALESCE(cfv.service_name, '') = COALESCE(cf.service_name, '') AND COALESCE(cfv.system_register_id, 0) = COALESCE(cf.system_register_id, 0)) as version_count")
             );
 
             $this->applyWorkspaceScopeToConfigurationQuery($query, 'cf', 'sr', $actor);
@@ -244,7 +236,9 @@ class DashboardController extends Controller
             ->paginate(UserPreferences::get($actor, 'per_page'))
             ->withQueryString();
 
-        return view('configuration-backups', compact('items'));
+        $aiStatus = $this->latestAiStatus('cf.id', $items->pluck('id')->all());
+
+        return view('configuration-backups', compact('items', 'aiStatus'));
     }
 
     public function systemsRegistered(Request $request)
@@ -264,34 +258,47 @@ class DashboardController extends Controller
 
         // Apply filters
         if ($request->filled('name')) {
-            $query->where('system_name', 'like', '%' . $request->name . '%');
+            $query->where('sr.system_name', 'like', '%' . $request->name . '%');
         }
 
         if ($request->filled('ip')) {
-            $query->where('ip_address', 'like', '%' . $request->ip . '%');
+            $query->where('sr.ip_address', 'like', '%' . $request->ip . '%');
         }
 
         if ($request->filled('tags')) {
-            $query->where('tags', 'like', '%' . $request->tags . '%');
+            $query->where('sr.tags', 'like', '%' . $request->tags . '%');
         }
 
         if ($request->filled('os')) {
-            $query->where('os_type', 'like', '%' . $request->os . '%');
+            $query->where('sr.os_type', 'like', '%' . $request->os . '%');
         }
 
         if ($request->filled('status')) {
-            $query->where('status', $request->status);
+            $query->where('sr.status', $request->status);
         }
 
         if ($request->filled('hash')) {
-            $query->where('validation_hash', 'like', '%' . $request->hash . '%');
+            $query->where('sr.validation_hash', 'like', '%' . $request->hash . '%');
         }
 
-        $items = $query->orderByDesc('created_at')
+        $items = $query->orderByDesc('sr.created_at')
             ->paginate(UserPreferences::get($actor, 'per_page'))
             ->withQueryString();
 
-        return view('systems-registered', compact('items'));
+        $systemStats = $this->systemCardStats($items->pluck('id')->all());
+
+        // Tag filter suggestions: the system tag lists of the selected workspace, or of every visible one.
+        $catalogueWorkspaceIds = $selectedWorkspaceId !== null && $selectedWorkspaceId > 0
+            ? [$selectedWorkspaceId]
+            : $this->workspaceIdsForVisibility($actor);
+        $tagCatalogue = collect($catalogueWorkspaceIds)
+            ->flatMap(fn (int $id) => WorkspaceSettings::tagLabels(WorkspaceSettings::get($id)['tags']))
+            ->unique(fn (string $tag) => mb_strtolower($tag))
+            ->sort()
+            ->values()
+            ->all();
+
+        return view('systems-registered', compact('items', 'systemStats', 'tagCatalogue'));
     }
 
     public function editRegisteredSystem(int $systemId)
@@ -322,6 +329,9 @@ class DashboardController extends Controller
             'system' => $system,
             'workspaces' => $workspaces,
             'isAdmin' => $isAdmin,
+            'tagCatalogue' => (int) ($system->workspace_id ?? 0) > 0
+                ? WorkspaceSettings::tagLabels(WorkspaceSettings::get((int) $system->workspace_id)['tags'])
+                : [],
         ]);
     }
 
@@ -507,7 +517,9 @@ class DashboardController extends Controller
 
         $services = $query->orderByDesc('s.created_at')->get();
 
-        return view('system-services', compact('system', 'services'));
+        $aiStatus = $this->latestAiStatus('cf.service_id', $services->pluck('service_id')->all());
+
+        return view('system-services', compact('system', 'services', 'aiStatus'));
     }
 
     public function liveServiceMonitoring()
@@ -515,9 +527,118 @@ class DashboardController extends Controller
         return view('live-service-monitoring');
     }
 
-    public function vulnerabilitiesIdentified()
+    public function vulnerabilitiesIdentified(Request $request)
     {
-        return view('vulnerabilities-identified');
+        /** @var User $actor */
+        $actor = Auth::user();
+
+        $selectedWorkspaceId = $request->session()->has('selected_workspace_id')
+            ? (int) $request->session()->get('selected_workspace_id')
+            : null;
+
+        $severity = in_array($request->query('severity'), ['warning', 'error'], true)
+            ? $request->query('severity')
+            : null;
+
+        $findings = $this->vulnerableConfigurationsQuery($actor, $selectedWorkspaceId)
+            ->when($severity, fn ($query) => $query->where('v.status', $severity))
+            ->select(
+                'cf.id',
+                'cf.service_id',
+                'cf.service_name',
+                'cf.file_name',
+                'cf.version',
+                'sr.system_name',
+                'v.id as validation_id',
+                'v.status as severity',
+                'v.summary',
+                'v.provider',
+                'v.model',
+                'v.created_at as validated_at'
+            )
+            ->orderByRaw("CASE WHEN v.status = 'error' THEN 0 ELSE 1 END")
+            ->orderByDesc('v.created_at')
+            ->paginate(25)
+            ->withQueryString();
+
+        return view('vulnerabilities-identified', [
+            'findings' => $findings,
+            'severity' => $severity,
+            'vulnerabilityStats' => $this->vulnerabilityStats($actor, $selectedWorkspaceId),
+        ]);
+    }
+
+    /**
+     * Config state at the end of each of the last 7 days: how many configs had
+     * a latest AI validation of error, warning or ok ("no issues") by then.
+     * Days without checks carry the previous state forward instead of dropping to 0.
+     */
+    public function validationTrend(User $actor, ?int $selectedWorkspaceId): array
+    {
+        $query = DB::table('config_ai_validations as v')
+            ->join('configuration_files as cf', 'v.configuration_file_id', '=', 'cf.id')
+            ->leftJoin('system_register as sr', 'cf.system_register_id', '=', 'sr.id');
+        $this->applyWorkspaceScopeToConfigurationQuery($query, 'cf', 'sr', $actor, $selectedWorkspaceId);
+
+        $validations = $query->orderBy('v.created_at')->orderBy('v.id')
+            ->get(['v.configuration_file_id', 'v.status', 'v.created_at']);
+
+        $days = [];
+        $latestByConfig = [];
+        $next = 0;
+        $start = now()->subDays(6)->startOfDay();
+
+        for ($i = 0; $i < 7; $i++) {
+            $day = $start->copy()->addDays($i);
+            $dayEnd = $day->copy()->endOfDay()->toDateTimeString();
+
+            while ($next < $validations->count() && $validations[$next]->created_at <= $dayEnd) {
+                $latestByConfig[$validations[$next]->configuration_file_id] = $validations[$next]->status;
+                $next++;
+            }
+
+            $counts = array_count_values($latestByConfig);
+            $days[] = [
+                'label' => $day->format('D j'),
+                'error' => $counts['error'] ?? 0,
+                'warning' => $counts['warning'] ?? 0,
+                'ok' => $counts['ok'] ?? 0,
+            ];
+        }
+
+        $lastCheck = $validations->last()?->created_at;
+
+        return [
+            'days' => $days,
+            'last_check' => $lastCheck ? UserPreferences::datetime($lastCheck) : null,
+        ];
+    }
+
+    /**
+     * Warning and error counts plus week-over-week change, keyed by severity.
+     * Shared with the admin dashboard.
+     */
+    public function vulnerabilityStats(User $actor, ?int $selectedWorkspaceId = null): array
+    {
+        $now = now();
+        $currentWeekStart = $now->copy()->startOfWeek();
+        $previousWeekStart = $currentWeekStart->copy()->subWeek();
+        $previousWeekEnd = $currentWeekStart->copy()->subSecond();
+
+        $stats = [];
+        foreach (['error', 'warning'] as $severity) {
+            $base = $this->vulnerableConfigurationsQuery($actor, $selectedWorkspaceId)->where('v.status', $severity);
+
+            $current = (clone $base)->whereBetween('v.created_at', [$currentWeekStart, $now])->count('cf.id');
+            $previous = (clone $base)->whereBetween('v.created_at', [$previousWeekStart, $previousWeekEnd])->count('cf.id');
+
+            $stats[$severity] = [
+                'total' => (clone $base)->count('cf.id'),
+                'change' => $this->calculateWeeklyChange($current, $previous),
+            ];
+        }
+
+        return $stats;
     }
 
     /**
@@ -593,11 +714,13 @@ class DashboardController extends Controller
                     }
 
                     $scoped->orWhere(function ($ownUnassigned) use ($actor) {
-                        $ownUnassigned->where('cf.user_id', (int) $actor->id)
-                            ->where(function ($unassigned) {
-                                $unassigned->whereNull('cf.system_register_id')
-                                    ->orWhere('cf.system_register_id', 0);
-                            });
+                        $ownUnassigned->where(function ($owner) use ($actor) {
+                            $owner->where('cf.user_id', (int) $actor->id)
+                                ->orWhere('sr.user_id', (int) $actor->id);
+                        })->where(function ($unassigned) {
+                            $unassigned->whereNull('sr.workspace_id')
+                                ->orWhere('sr.workspace_id', 0);
+                        });
                     });
                 });
             })
@@ -660,8 +783,154 @@ class DashboardController extends Controller
             }
         }
 
-        // Return view with configuration data
-        return view('view-configuration', compact('config'));
+        $aiEnabled = AiSettings::enabled();
+        $aiProviderLabel = AiSettings::PROVIDERS[AiSettings::provider()]['label'];
+        $aiModel = AiSettings::model();
+
+        $aiHistory = ConfigAiValidation::with('user:id,name')
+            ->where('configuration_file_id', $config->id)
+            ->orderByDesc('id')
+            ->limit(50)
+            ->get();
+
+        // A shared link (?validation=ID) opens that saved result straight away.
+        $aiSelected = null;
+        if (request()->filled('validation')) {
+            $aiSelected = $aiHistory->firstWhere('id', (int) request('validation'))
+                ?? ConfigAiValidation::with('user:id,name')
+                    ->where('configuration_file_id', $config->id)
+                    ->find((int) request('validation'));
+        }
+
+        return view('view-configuration', [
+            'config' => $config,
+            'aiEnabled' => $aiEnabled,
+            'aiProviderLabel' => $aiProviderLabel,
+            'aiModel' => $aiModel,
+            'aiHistory' => $aiHistory,
+            'aiSelected' => $aiSelected ? $aiSelected->toPayload() + [
+                'share_url' => route('configuration-backups.view', ['id' => $config->id, 'validation' => $aiSelected->id]),
+                'can_delete' => $this->canDeleteAiValidation($actor, $aiSelected),
+            ] : null,
+        ]);
+    }
+
+    /**
+     * Review a configuration file with the AI provider set in AI Connect.
+     */
+    public function validateConfigurationWithAi(Request $request, int $id, ConfigAiReviewer $reviewer)
+    {
+        /** @var User $actor */
+        $actor = Auth::user();
+
+        if (!AiSettings::enabled()) {
+            return response()->json(['success' => false, 'message' => 'AI Connect is not enabled. A super admin can turn it on in Admin Settings.'], 403);
+        }
+
+        $config = DB::table('configuration_files')
+            ->leftJoin('system_register as sr', 'configuration_files.system_register_id', '=', 'sr.id')
+            ->where('configuration_files.id', $id)
+            ->select('configuration_files.*', 'sr.workspace_id as system_workspace_id', 'sr.user_id as system_user_id')
+            ->first();
+
+        if (!$config) {
+            abort(404, 'Configuration file not found');
+        }
+
+        if (!$this->canAccessConfigurationRecord($actor, $config)) {
+            abort(403);
+        }
+
+        try {
+            $validation = $reviewer->review((int) $config->id, (int) $actor->id);
+        } catch (\InvalidArgumentException $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
+        } catch (\RuntimeException $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 502);
+        }
+
+        $validation->setRelation('user', $actor);
+
+        return response()->json($validation->toPayload() + [
+            'share_url' => route('configuration-backups.view', ['id' => $config->id, 'validation' => $validation->id]),
+            'can_delete' => true,
+        ]);
+    }
+
+    /**
+     * A saved AI validation result, for anyone who can open the configuration file.
+     */
+    public function showConfigurationAiValidation(int $id, int $validationId)
+    {
+        /** @var User $actor */
+        $actor = Auth::user();
+
+        $config = DB::table('configuration_files')
+            ->leftJoin('raw_data', 'configuration_files.id', '=', 'raw_data.file_id')
+            ->leftJoin('system_register as sr', 'configuration_files.system_register_id', '=', 'sr.id')
+            ->where('configuration_files.id', $id)
+            ->select('configuration_files.*', 'raw_data.file_data as data', 'sr.workspace_id as system_workspace_id', 'sr.user_id as system_user_id')
+            ->first();
+
+        if (!$config) {
+            abort(404, 'Configuration file not found');
+        }
+
+        if (!$this->canAccessConfigurationRecord($actor, $config)) {
+            abort(403);
+        }
+
+        $validation = ConfigAiValidation::with('user:id,name')
+            ->where('configuration_file_id', $config->id)
+            ->findOrFail($validationId);
+
+        return response()->json($validation->toPayload() + [
+            'share_url' => route('configuration-backups.view', ['id' => $config->id, 'validation' => $validation->id]),
+            'can_delete' => $this->canDeleteAiValidation($actor, $validation),
+        ]);
+    }
+
+    /**
+     * Delete a saved AI validation result: the person who ran it, or an admin who can open the file.
+     */
+    public function deleteConfigurationAiValidation(Request $request, int $id, int $validationId)
+    {
+        /** @var User $actor */
+        $actor = Auth::user();
+
+        $config = DB::table('configuration_files')
+            ->leftJoin('system_register as sr', 'configuration_files.system_register_id', '=', 'sr.id')
+            ->where('configuration_files.id', $id)
+            ->select('configuration_files.*', 'sr.workspace_id as system_workspace_id', 'sr.user_id as system_user_id')
+            ->first();
+
+        if (!$config) {
+            abort(404, 'Configuration file not found');
+        }
+
+        if (!$this->canAccessConfigurationRecord($actor, $config)) {
+            abort(403);
+        }
+
+        $validation = ConfigAiValidation::query()
+            ->where('configuration_file_id', $config->id)
+            ->findOrFail($validationId);
+
+        if (!$this->canDeleteAiValidation($actor, $validation)) {
+            return response()->json(['success' => false, 'message' => 'Only the person who ran this validation or an admin can delete it.'], 403);
+        }
+
+        $validation->delete();
+        ActivityRecorder::record($actor->id, 'config.ai_validation_deleted', 'Deleted an AI validation of ' . $config->file_name, ActivityRecorder::SUCCESS, $request,
+            SystemRegister::query()->whereKey($config->system_register_id)->value('workspace_id'), $config->system_register_id ? (int) $config->system_register_id : null);
+
+        return response()->json(['success' => true]);
+    }
+
+    private function canDeleteAiValidation(User $actor, ConfigAiValidation $validation): bool
+    {
+        return (int) $validation->user_id === (int) $actor->id
+            || in_array((int) ($actor->rbac_id ?? 0), [100, 101], true);
     }
 
     /**
@@ -732,7 +1001,62 @@ class DashboardController extends Controller
         $webSessions = WebSessions::forUser(Auth::user(), request()->session()->getId());
         $sessionsListed = WebSessions::isAvailable();
 
-        return view('settings', compact('apiKeys', 'webSessions', 'sessionsListed'));
+        $notificationWorkspaces = $this->notificationWorkspacesFor(Auth::user());
+
+        return view('settings', compact('apiKeys', 'webSessions', 'sessionsListed', 'notificationWorkspaces'));
+    }
+
+    /**
+     * Settings > Notifications: each workspace the user belongs to, the events it sends,
+     * and what the user chose (or the workspace default when they have not chosen).
+     */
+    private function notificationWorkspacesFor(User $user)
+    {
+        $labels = NotificationEvents::forScope(NotificationEvents::SCOPE_WORKSPACE);
+        $preferences = WorkspaceNotificationPreference::where('user_id', $user->id)->get()->keyBy('workspace_id');
+
+        return $user->workspaces()->where('workspaces.status', 'active')->orderBy('workspaces.name')->get(['workspaces.id', 'workspaces.name'])
+            ->map(function ($workspace) use ($labels, $preferences) {
+                $settings = WorkspaceSettings::get((int) $workspace->id);
+                $sent = $settings['events'] === null ? array_keys($labels) : (array) $settings['events'];
+                $preference = $preferences->get($workspace->id);
+
+                return (object) [
+                    'id' => (int) $workspace->id,
+                    'name' => $workspace->name,
+                    'events' => array_intersect_key($labels, array_flip($sent)),
+                    'chosen' => $preference ? (array) $preference->events : (array) $settings['member_email_default_events'],
+                    'email_enabled' => $preference ? (bool) $preference->email_enabled : true,
+                    'customised' => $preference !== null,
+                ];
+            });
+    }
+
+    public function updateNotificationPreferences(Request $request): RedirectResponse
+    {
+        /** @var User $actor */
+        $actor = Auth::user();
+
+        $validated = $request->validate([
+            'workspace_id' => ['required', 'integer'],
+            'events' => ['nullable', 'array'],
+            'events.*' => ['string', 'max:64'],
+        ]);
+
+        $workspace = $this->notificationWorkspacesFor($actor)->firstWhere('id', (int) $validated['workspace_id']);
+        if ($workspace === null) {
+            abort(403);
+        }
+
+        WorkspaceNotificationPreference::updateOrCreate(
+            ['workspace_id' => $workspace->id, 'user_id' => $actor->id],
+            [
+                'events' => array_values(array_intersect($validated['events'] ?? [], array_keys($workspace->events))),
+                'email_enabled' => $request->boolean('email_enabled'),
+            ]
+        );
+
+        return redirect()->to(route('settings') . '#notifications')->with('success', 'Notification preferences saved for ' . $workspace->name . '.');
     }
 
     /**
@@ -1219,150 +1543,6 @@ class DashboardController extends Controller
     public function products()
     {
         return view('products');
-    }
-
-    private function workspaceIdsForVisibility(User $actor): array
-    {
-        if ((int) ($actor->rbac_id ?? 0) === 100) {
-            return Workspace::query()
-                ->pluck('id')
-                ->map(fn ($id) => (int) $id)
-                ->all();
-        }
-
-        return $actor->workspaces()
-            ->pluck('workspaces.id')
-            ->map(fn ($id) => (int) $id)
-            ->all();
-    }
-
-    private function applyWorkspaceScopeToSystemsQuery($query, string $systemAlias, User $actor, ?int $selectedWorkspaceId = null): void
-    {
-        $isSuperAdmin = (int) ($actor->rbac_id ?? 0) === 100;
-        $workspaceIds = $this->workspaceIdsForVisibility($actor);
-
-        if ($selectedWorkspaceId === 0) {
-            if ($isSuperAdmin) {
-                $query->where(function ($unassignedQuery) use ($systemAlias) {
-                    $unassignedQuery->where($systemAlias . '.workspace_id', 0)
-                        ->orWhereNull($systemAlias . '.workspace_id');
-                });
-            } else {
-                $query->where($systemAlias . '.user_id', (int) $actor->id)
-                    ->where(function ($unassignedQuery) use ($systemAlias) {
-                        $unassignedQuery->where($systemAlias . '.workspace_id', 0)
-                            ->orWhereNull($systemAlias . '.workspace_id');
-                    });
-            }
-
-            return;
-        }
-
-        if ($selectedWorkspaceId !== null && $selectedWorkspaceId > 0) {
-            if (!$isSuperAdmin && !in_array($selectedWorkspaceId, $workspaceIds, true)) {
-                $query->whereRaw('1 = 0');
-
-                return;
-            }
-
-            $query->where($systemAlias . '.workspace_id', $selectedWorkspaceId);
-
-            return;
-        }
-
-        if ($isSuperAdmin) {
-            return;
-        }
-
-        if (empty($workspaceIds)) {
-            $query->whereRaw('1 = 0');
-
-            return;
-        }
-
-        $query->whereIn($systemAlias . '.workspace_id', $workspaceIds);
-    }
-
-    private function applyWorkspaceScopeToConfigurationQuery($query, string $configAlias, string $systemAlias, User $actor, ?int $selectedWorkspaceId = null): void
-    {
-        $isSuperAdmin = (int) ($actor->rbac_id ?? 0) === 100;
-        $workspaceIds = $this->workspaceIdsForVisibility($actor);
-
-        if ($selectedWorkspaceId === 0) {
-            if ($isSuperAdmin) {
-                $query->where(function ($unassignedQuery) use ($systemAlias) {
-                    $unassignedQuery->where($systemAlias . '.workspace_id', 0)
-                        ->orWhereNull($systemAlias . '.workspace_id');
-                });
-            } else {
-                $query->where($configAlias . '.user_id', (int) $actor->id)
-                    ->where(function ($unassignedQuery) use ($configAlias) {
-                        $unassignedQuery->where($configAlias . '.system_register_id', 0)
-                            ->orWhereNull($configAlias . '.system_register_id');
-                    });
-            }
-
-            return;
-        }
-
-        if ($selectedWorkspaceId !== null && $selectedWorkspaceId > 0) {
-            if (!$isSuperAdmin && !in_array($selectedWorkspaceId, $workspaceIds, true)) {
-                $query->whereRaw('1 = 0');
-
-                return;
-            }
-
-            $query->where($systemAlias . '.workspace_id', $selectedWorkspaceId);
-
-            return;
-        }
-
-        if ($isSuperAdmin) {
-            return;
-        }
-
-        $query->where(function ($scoped) use ($workspaceIds, $systemAlias, $configAlias, $actor) {
-            if (!empty($workspaceIds)) {
-                $scoped->whereIn($systemAlias . '.workspace_id', $workspaceIds);
-            }
-
-            $scoped->orWhere(function ($ownUnassigned) use ($configAlias, $actor) {
-                $ownUnassigned->where($configAlias . '.user_id', (int) $actor->id)
-                    ->where(function ($unassigned) use ($configAlias) {
-                        $unassigned->whereNull($configAlias . '.system_register_id')
-                            ->orWhere($configAlias . '.system_register_id', 0);
-                    });
-            });
-        });
-    }
-
-    private function canAccessSystemRecord(User $actor, object $system): bool
-    {
-        if ((int) ($actor->rbac_id ?? 0) === 100) {
-            return true;
-        }
-
-        $workspaceId = (int) ($system->workspace_id ?? 0);
-        if ($workspaceId > 0) {
-            return in_array($workspaceId, $this->workspaceIdsForVisibility($actor), true);
-        }
-
-        return (int) ($system->user_id ?? 0) === (int) $actor->id;
-    }
-
-    private function canAccessConfigurationRecord(User $actor, object $config): bool
-    {
-        if ((int) ($actor->rbac_id ?? 0) === 100) {
-            return true;
-        }
-
-        $workspaceId = (int) ($config->system_workspace_id ?? 0);
-        if ($workspaceId > 0) {
-            return in_array($workspaceId, $this->workspaceIdsForVisibility($actor), true);
-        }
-
-        return (int) ($config->user_id ?? 0) === (int) $actor->id
-            || (int) ($config->system_user_id ?? 0) === (int) $actor->id;
     }
 
     private function resolveDiskAndPathForRead(?string $storageDisk, string $storedLocation): array

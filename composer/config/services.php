@@ -43,4 +43,8 @@ return [
         'portal_url' => env('ATGLANCE_LICENSE_PORTAL_URL', 'https://atglance.live'),
     ],
 
+    'controller' => [
+        'url' => env('ATGLANCE_CONTROLLER_URL', 'http://controller:2375'),
+    ],
+
 ];

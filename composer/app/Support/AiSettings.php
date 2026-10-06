@@ -189,11 +189,21 @@ class AiSettings
         ],
     ];
 
-    public static function enabled(): bool
+    /** AI Connect plugin (Plugins tab): shows the AI Connect tab. Installs that had AI on count as enabled. */
+    public static function pluginEnabled(): bool
     {
-        return filter_var((string) AdminSetting::getValue('ai_enabled', 'false'), FILTER_VALIDATE_BOOL);
+        $stored = AdminSetting::getValue('ai_plugin_enabled', null);
+
+        return filter_var((string) ($stored ?? AdminSetting::getValue('ai_enabled', 'false')), FILTER_VALIDATE_BOOL);
     }
 
+    /** AI features run only while the plugin is on and the active provider is fully set up. */
+    public static function enabled(): bool
+    {
+        return self::pluginEnabled() && self::missing(self::provider()) === [];
+    }
+
+    /** The active provider. */
     public static function provider(): string
     {
         $provider = (string) AdminSetting::getValue('ai_provider', '');
@@ -203,7 +213,7 @@ class AiSettings
 
     public static function model(): string
     {
-        return trim((string) AdminSetting::getValue('ai_model', ''));
+        return self::modelFor(self::provider());
     }
 
     /**
@@ -211,12 +221,81 @@ class AiSettings
      */
     public static function baseUrl(): string
     {
-        return trim((string) AdminSetting::getValue('ai_base_url', ''));
+        return self::baseUrlFor(self::provider());
     }
 
     public static function apiKey(): string
     {
-        return trim((string) AdminSetting::getValue('ai_api_key', ''));
+        return self::apiKeyFor(self::provider());
+    }
+
+    public static function modelFor(string $provider): string
+    {
+        return trim((string) (self::savedConfig()[$provider]['model'] ?? self::legacy($provider, 'ai_model')));
+    }
+
+    public static function baseUrlFor(string $provider): string
+    {
+        return trim((string) (self::savedConfig()[$provider]['base_url'] ?? self::legacy($provider, 'ai_base_url')));
+    }
+
+    public static function apiKeyFor(string $provider): string
+    {
+        if ((self::PROVIDERS[$provider]['key'] ?? 'none') === 'none') {
+            return '';
+        }
+
+        return trim((string) (self::savedKeys()[$provider] ?? self::legacy($provider, 'ai_api_key')));
+    }
+
+    /** Each provider's saved base URL and model: [provider => [base_url, model]]. */
+    public static function savedConfig(): array
+    {
+        $decoded = json_decode((string) AdminSetting::getValue('ai_provider_config', ''), true);
+
+        return is_array($decoded) ? $decoded : [];
+    }
+
+    /** Each provider's saved API key (stored encrypted). */
+    public static function savedKeys(): array
+    {
+        $decoded = json_decode((string) AdminSetting::getValue('ai_provider_keys', ''), true);
+
+        return is_array($decoded) ? $decoded : [];
+    }
+
+    /** What the provider still needs before it can be used, as labels; [] when ready. */
+    public static function missing(string $provider): array
+    {
+        $meta = self::PROVIDERS[$provider] ?? null;
+        if ($meta === null) {
+            return ['Provider'];
+        }
+        $missing = [];
+        if ($meta['base_url'] === null && self::baseUrlFor($provider) === '') {
+            $missing[] = 'Base URL';
+        }
+        if ($meta['key'] === 'required' && self::apiKeyFor($provider) === '') {
+            $missing[] = 'API key';
+        }
+        if (self::modelFor($provider) === '') {
+            $missing[] = 'Model';
+        }
+
+        return $missing;
+    }
+
+    /**
+     * Before per-provider settings existed, one connection was stored in ai_base_url / ai_model /
+     * ai_api_key for the provider in ai_provider. Those values belong to that provider only.
+     */
+    private static function legacy(string $provider, string $key): string
+    {
+        if (AdminSetting::getValue('ai_provider_config', null) !== null || $provider !== (string) AdminSetting::getValue('ai_provider', '')) {
+            return '';
+        }
+
+        return (string) AdminSetting::getValue($key, '');
     }
 
     /**
@@ -250,8 +329,8 @@ class AiSettings
      */
     public static function canReuseSavedKey(string $provider, string $baseUrl): bool
     {
-        return $provider === self::provider()
-            && self::resolveBaseUrl($provider, $baseUrl) === self::resolveBaseUrl(self::provider(), self::baseUrl());
+        return isset(self::PROVIDERS[$provider])
+            && self::resolveBaseUrl($provider, $baseUrl) === self::resolveBaseUrl($provider, self::baseUrlFor($provider));
     }
 
     /**
@@ -288,5 +367,13 @@ class AiSettings
             'model_hint' => $meta['model_hint'],
             'steps' => $meta['steps'],
         ])->all();
+    }
+
+    /** Saves every provider's settings and the active provider; legacy single-connection values are then ignored. */
+    public static function store(array $config, array $keys, string $activeProvider): void
+    {
+        AdminSetting::putValue('ai', 'ai_provider_config', $config);
+        AdminSetting::putValue('ai', 'ai_provider_keys', $keys, $keys !== []);
+        AdminSetting::putValue('ai', 'ai_provider', $activeProvider);
     }
 }

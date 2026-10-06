@@ -225,8 +225,9 @@ class NotificationsTest extends TestCase
             && $r['chat_id'] === '-1001234567890' && str_contains($r['text'], 'System: web-01'));
         Http::assertSent(fn (HttpRequest $r) => $r->url() === 'https://n8n.example.test/webhook/atglance'
             && $r->header('X-N8N-Key')[0] === 'n8n-secret' && $r['event'] === NotificationEvents::SYSTEM_REGISTERED);
-        Http::assertSent(fn (HttpRequest $r) => $r->url() === 'https://mandrillapp.com/api/1.0/messages/send-sms'
-            && $r['key'] === 'mc-key' && $r['message']['to'] === '+919876543211' && $r['message']['from'] === '+14155550100');
+        Http::assertSent(fn (HttpRequest $r) => $r->url() === 'https://mandrillapp.com/api/1.1/messages/send-sms'
+            && $r['key'] === 'mc-key' && $r['message']['sms']['to'] === '+919876543211' && $r['message']['sms']['from'] === '+14155550100'
+            && $r['message']['sms']['consent'] === 'recurring');
         Http::assertSentCount(6);
     }
 
@@ -298,7 +299,7 @@ class NotificationsTest extends TestCase
         Http::assertSentCount(1);
         Http::assertSent(fn (HttpRequest $r) => $r->url() === 'https://hooks.example.test/org'
             && $r['event'] === NotificationEvents::BACKUP_SUCCEEDED
-            && $r['title'] === 'Configuration files backup succeeded');
+            && $r['title'] === 'Configuration & console files backup succeeded');
     }
 
     public function test_send_test_reports_the_result(): void

@@ -28,6 +28,16 @@ class License
         }
     }
 
+    /** A licence key is saved (active or not); changing it is then a replacement. */
+    public static function hasStoredKey(): bool
+    {
+        try {
+            return trim((string) AdminSetting::getValue('license_key', '')) !== '';
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
     /**
      * Saves a licence from a successful LicenseClient::activate() result.
      */
@@ -134,6 +144,34 @@ class License
     /**
      * A stored date/time as a date only ("Sep 30, 2026"); '' when empty.
      */
+    /**
+     * Sidebar expiry line: "Expires On <date> (N days left)", "Expired On <date>", or "No expiry date".
+     *
+     * @return array{text: string, days_left: int|null}
+     */
+    public static function expiry(string $value): array
+    {
+        if (trim($value) === '') {
+            return ['text' => 'No expiry date', 'days_left' => null];
+        }
+
+        try {
+            $expires = Carbon::parse($value)->startOfDay();
+        } catch (\Throwable) {
+            return ['text' => 'Expires On ' . $value, 'days_left' => null];
+        }
+
+        $daysLeft = (int) now()->startOfDay()->diffInDays($expires, false);
+        if ($daysLeft < 0) {
+            return ['text' => 'Expired On ' . $expires->format('M j, Y'), 'days_left' => $daysLeft];
+        }
+
+        return [
+            'text' => 'Expires On ' . $expires->format('M j, Y') . ' (' . ($daysLeft === 0 ? 'today' : $daysLeft . ' ' . ($daysLeft === 1 ? 'day' : 'days') . ' left') . ')',
+            'days_left' => $daysLeft,
+        ];
+    }
+
     public static function date(string $value): string
     {
         if (trim($value) === '') {
@@ -158,7 +196,7 @@ class License
         return [
             'instance_id' => self::instanceId(),
             'hostname' => (string) (gethostname() ?: 'atglance-console'),
-            'version' => (string) config('app.version', '1.0.0'),
+            'version' => (string) config('app.version'),
         ];
     }
 

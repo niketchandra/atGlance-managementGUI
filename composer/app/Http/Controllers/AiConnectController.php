@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\AdminSetting;
 use App\Services\AiClient;
+use App\Support\ActivityRecorder;
 use App\Support\AiSettings;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -19,6 +20,24 @@ use RuntimeException;
  */
 class AiConnectController extends Controller
 {
+    public function togglePlugin(Request $request): RedirectResponse
+    {
+        abort_unless($this->isSuperAdmin(), 403);
+        $enabled = $request->boolean('enabled');
+
+        AdminSetting::putValue('ai', 'ai_plugin_enabled', $enabled ? 'true' : 'false');
+        AdminSetting::putValue('ai', 'ai_enabled', $enabled ? 'true' : 'false');
+        ActivityRecorder::record(Auth::id(), 'settings.ai_plugin', 'AI Connect plugin ' . ($enabled ? 'enabled' : 'disabled'));
+
+        return redirect()->route('admin.settings', ['tab' => 'plugins', 'plugin' => 'ai'])->with('success', $enabled
+            ? 'AI Connect is enabled. Choose and set up a provider on the AI Connect tab.'
+            : 'AI Connect is disabled. No AI reviews run.');
+    }
+
+    /**
+     * Saves every provider's settings (so switching providers loses nothing) and the active provider.
+     * Everything entered is kept even when the active provider is incomplete; AI stays off until it is.
+     */
     public function update(Request $request): RedirectResponse
     {
         $back = redirect()->route('admin.settings', ['tab' => 'ai-connect']);
@@ -26,29 +45,63 @@ class AiConnectController extends Controller
         if (!$this->isSuperAdmin()) {
             return $back->withErrors(['ai' => 'Only the super admin can change the AI connection.']);
         }
+        if (!AiSettings::pluginEnabled()) {
+            return redirect()->route('admin.settings', ['tab' => 'plugins', 'plugin' => 'ai'])
+                ->withErrors(['ai' => 'Enable AI Connect in the Plugins tab first.']);
+        }
 
-        $connection = $this->connectionFromRequest($request);
-        $meta = AiSettings::PROVIDERS[$connection['provider']];
-        $enabled = $request->boolean('ai_enabled');
+        $providers = array_keys(AiSettings::PROVIDERS);
+        $request->validate([
+            'ai_provider' => ['nullable', Rule::in($providers)],
+            'ai_config' => ['nullable', 'array'],
+            'ai_config.*' => ['array'],
+            'ai_config.*.base_url' => ['nullable', 'string', 'max:500', 'regex:/^https?:\/\/[^\s]+$/i'],
+            'ai_config.*.model' => ['nullable', 'string', 'max:200'],
+            'ai_key' => ['nullable', 'array'],
+            'ai_key.*' => ['nullable', 'string', 'max:2000'],
+            'ai_clear_key' => ['nullable', 'array'],
+        ], [
+            'ai_config.*.base_url.regex' => 'The base URL must start with http:// or https://.',
+        ]);
 
-        if ($enabled) {
-            $missing = match (true) {
-                $connection['model'] === '' => 'Enter a model name before enabling the AI connection.',
-                $meta['key'] === 'required' && $connection['api_key'] === '' => 'Enter the API key for ' . $meta['label'] . ' before enabling the AI connection.',
-                default => null,
-            };
-            if ($missing !== null) {
-                return $back->withErrors(['ai' => $missing])->withInput($request->except('ai_api_key'));
+        $config = [];
+        $keys = [];
+        foreach (AiSettings::PROVIDERS as $provider => $meta) {
+            $savedUrl = AiSettings::baseUrlFor($provider);
+            $savedKey = AiSettings::apiKeyFor($provider);
+            $input = (array) $request->input('ai_config.' . $provider, []);
+            $baseUrl = array_key_exists('base_url', $input) ? rtrim(trim((string) $input['base_url']), '/') : $savedUrl;
+            $model = array_key_exists('model', $input) ? trim((string) $input['model']) : AiSettings::modelFor($provider);
+            if ($baseUrl !== '' || $model !== '') {
+                $config[$provider] = ['base_url' => $baseUrl, 'model' => $model];
+            }
+
+            if ($meta['key'] === 'none') {
+                continue;
+            }
+            $key = trim((string) $request->input('ai_key.' . $provider, ''));
+            if ($key === '' && !$request->boolean('ai_clear_key.' . $provider) && AiSettings::canReuseSavedKey($provider, $baseUrl)) {
+                // A blank field keeps the saved key, but never for a changed URL: it would go to another host.
+                $key = $savedKey;
+            }
+            if ($key !== '') {
+                $keys[$provider] = $key;
             }
         }
 
-        AdminSetting::putValue('ai', 'ai_enabled', $enabled ? 'true' : 'false');
-        AdminSetting::putValue('ai', 'ai_provider', $connection['provider']);
-        AdminSetting::putValue('ai', 'ai_base_url', $connection['base_url']);
-        AdminSetting::putValue('ai', 'ai_model', $connection['model']);
-        AdminSetting::putValue('ai', 'ai_api_key', $connection['api_key'], $connection['api_key'] !== '');
+        $active = (string) $request->input('ai_provider', AiSettings::provider());
+        AiSettings::store($config, $keys, $active);
 
-        return $back->with('success', 'AI connection saved.');
+        ActivityRecorder::record(Auth::id(), 'settings.ai_updated', 'AI Connect: active provider ' . AiSettings::PROVIDERS[$active]['label']);
+
+        $missing = AiSettings::missing($active);
+        if ($missing !== []) {
+            return $back
+                ->withErrors(['ai_config.' . $active => AiSettings::PROVIDERS[$active]['label'] . ' is the active provider but is missing: ' . implode(', ', $missing) . '. Saved; AI reviews stay off until it is complete.'])
+                ->withInput($request->except('ai_key'));
+        }
+
+        return $back->with('success', 'AI connection saved. Active provider: ' . AiSettings::PROVIDERS[$active]['label'] . '.');
     }
 
     /**
@@ -119,7 +172,7 @@ class AiConnectController extends Controller
 
         $key = trim((string) ($validated['ai_api_key'] ?? ''));
         if ($key === '' && !$request->boolean('ai_clear_api_key') && AiSettings::canReuseSavedKey($provider, $baseUrl)) {
-            $key = AiSettings::apiKey();
+            $key = AiSettings::apiKeyFor($provider);
         }
         if (AiSettings::PROVIDERS[$provider]['key'] === 'none') {
             $key = '';

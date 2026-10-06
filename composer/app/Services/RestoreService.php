@@ -24,12 +24,13 @@ class RestoreService
     }
 
     /**
-     * Backups that can be restored: scheduled backups in S3 and pre-restore
-     * snapshots on the local disk, newest first.
+     * Backups that can be restored, newest first: scheduled backups in S3,
+     * local copies on this server, and pre-restore snapshots.
      *
+     * @param array<int, string> $types backup types to include
      * @return array{backups: array<int, array>, errors: array<int, string>}
      */
-    public function listBackups(): array
+    public function listBackups(array $types = [BackupService::TYPE_CONFIG, BackupService::TYPE_DATABASE, BackupService::TYPE_PORTAL]): array
     {
         $backups = [];
         $errors = [];
@@ -37,9 +38,9 @@ class RestoreService
         if (S3Settings::enabled()) {
             if (S3Settings::configureDisk()) {
                 try {
-                    foreach ([BackupService::TYPE_CONFIG, BackupService::TYPE_PORTAL] as $type) {
+                    foreach ($types as $type) {
                         $listing = Storage::disk('s3')->getDriver()->listContents(BackupService::S3_PREFIX . $type, true);
-                        $backups = array_merge($backups, $this->describeListing(self::SOURCE_S3, $listing));
+                        $backups = array_merge($backups, $this->describeListing(self::SOURCE_S3, $listing, $types));
                     }
                 } catch (Throwable $e) {
                     $errors[] = 'Could not list S3 backups: ' . ($e->getPrevious()?->getMessage() ?: $e->getMessage());
@@ -50,10 +51,14 @@ class RestoreService
         }
 
         try {
-            $listing = Storage::disk('local')->getDriver()->listContents(BackupService::SNAPSHOT_PREFIX, true);
-            $backups = array_merge($backups, $this->describeListing(self::SOURCE_LOCAL, $listing));
+            foreach ($types as $type) {
+                foreach ([BackupService::LOCAL_PREFIX . $type, BackupService::SNAPSHOT_PREFIX . $type] as $prefix) {
+                    $listing = Storage::disk('local')->getDriver()->listContents($prefix, true);
+                    $backups = array_merge($backups, $this->describeListing(self::SOURCE_LOCAL, $listing, $types));
+                }
+            }
         } catch (Throwable $e) {
-            $errors[] = 'Could not list local snapshots: ' . $e->getMessage();
+            $errors[] = 'Could not list local backups: ' . $e->getMessage();
         }
 
         usort($backups, fn (array $a, array $b) => $b['last_modified'] <=> $a['last_modified']);
@@ -62,8 +67,8 @@ class RestoreService
     }
 
     /**
-     * Returns the backup type (config or portal) for a restorable path, or null
-     * when the path is not a backup this service created.
+     * Returns the backup type (config, database or portal) for a restorable
+     * path, or null when the path is not a backup this service created.
      */
     public function typeFor(string $source, string $path): ?string
     {
@@ -72,8 +77,8 @@ class RestoreService
         }
 
         $pattern = match ($source) {
-            self::SOURCE_S3 => '#^backups/(config|portal)/\d{4}/\d{2}/[A-Za-z0-9._-]+$#',
-            self::SOURCE_LOCAL => '#^backups/snapshots/(config|portal)/[A-Za-z0-9._-]+$#',
+            self::SOURCE_S3 => '#^backups/(config|database|portal)/\d{4}/\d{2}/[A-Za-z0-9._-]+$#',
+            self::SOURCE_LOCAL => '#^backups/(?:snapshots/(config|database|portal)/|(config|database|portal)/\d{4}/\d{2}/)[A-Za-z0-9._-]+$#',
             default => null,
         };
 
@@ -81,7 +86,7 @@ class RestoreService
             return null;
         }
 
-        return $matches[1];
+        return ($matches[1] ?? '') !== '' ? $matches[1] : $matches[2];
     }
 
     /**
@@ -113,9 +118,11 @@ class RestoreService
             $snapshot = $this->backups->createLocalSnapshot($type);
 
             try {
-                $summary = $type === BackupService::TYPE_CONFIG
-                    ? $this->restoreConfig($localFile)
-                    : $this->restorePortal($localFile, $workDir);
+                $summary = match ($type) {
+                    BackupService::TYPE_CONFIG => $this->restoreConfig($localFile),
+                    BackupService::TYPE_DATABASE => $this->restoreDatabase($localFile, $workDir),
+                    default => $this->restorePortal($localFile, $workDir),
+                };
             } catch (Throwable $e) {
                 throw new RuntimeException($e->getMessage() . ' Snapshot of the previous state: ' . $snapshot, 0, $e);
             }
@@ -126,7 +133,7 @@ class RestoreService
         }
     }
 
-    private function describeListing(string $source, iterable $listing): array
+    private function describeListing(string $source, iterable $listing, array $types): array
     {
         $backups = [];
 
@@ -137,12 +144,13 @@ class RestoreService
 
             $path = $item->path();
             $type = $this->typeFor($source, $path);
-            if ($type === null) {
+            if ($type === null || !in_array($type, $types, true)) {
                 continue;
             }
 
             $backups[] = [
                 'source' => $source,
+                'kind' => str_starts_with($path, BackupService::SNAPSHOT_PREFIX) ? 'snapshot' : 'backup',
                 'type' => $type,
                 'path' => $path,
                 'name' => basename($path),
@@ -176,7 +184,33 @@ class RestoreService
      */
     private function restoreConfig(string $localFile): array
     {
-        $payload = json_decode((string) gzdecode((string) file_get_contents($localFile)), true);
+        $consoleFiles = [];
+
+        if (str_ends_with($localFile, '.zip')) {
+            if (!class_exists(ZipArchive::class)) {
+                throw new RuntimeException('PHP zip extension is required for restores.');
+            }
+
+            $zip = new ZipArchive();
+            if ($zip->open($localFile) !== true) {
+                throw new RuntimeException('Not a configuration files backup archive.');
+            }
+
+            $json = $zip->getFromName('config.json');
+            for ($i = 0; $i < $zip->numFiles; $i++) {
+                $target = $this->consoleFileTarget((string) $zip->getNameIndex($i));
+                if ($target !== null) {
+                    $consoleFiles[$target] = $zip->getFromIndex($i);
+                }
+            }
+            $zip->close();
+
+            $payload = $json === false ? null : json_decode($json, true);
+        } else {
+            // Backups made before console files were included.
+            $payload = json_decode((string) gzdecode((string) file_get_contents($localFile)), true);
+        }
+
         if (!is_array($payload) || ($payload['type'] ?? null) !== BackupService::TYPE_CONFIG || !is_array($payload['tables'] ?? null)) {
             throw new RuntimeException('Not a configuration files backup.');
         }
@@ -229,7 +263,84 @@ class RestoreService
             }
         }
 
-        return ['rows' => $rows, 'files_written' => $filesWritten];
+        $consoleWritten = 0;
+        foreach ($consoleFiles as $target => $content) {
+            if ($content === false) {
+                continue;
+            }
+            File::ensureDirectoryExists(dirname($target));
+            File::put($target, $content);
+            $consoleWritten++;
+        }
+
+        return ['rows' => $rows, 'files_written' => $filesWritten, 'console_files_written' => $consoleWritten];
+    }
+
+    /**
+     * Maps an archive entry under files/ to its path in storage/, or null when
+     * the entry is not a console file this service backs up.
+     */
+    private function consoleFileTarget(string $entry): ?string
+    {
+        if (!str_starts_with($entry, 'files/') || str_ends_with($entry, '/') || str_contains($entry, '..') || str_contains($entry, '\\')) {
+            return null;
+        }
+
+        $relative = substr($entry, strlen('files/'));
+        foreach (BackupService::CONSOLE_FILE_ROOTS as $archiveFolder => $storageFolder) {
+            if (str_starts_with($relative, $archiveFolder . '/')) {
+                $rest = substr($relative, strlen($archiveFolder) + 1);
+
+                return $rest === '' ? null : storage_path($storageFolder . '/' . $rest);
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Replaces the whole database with the backup's SQL dump, then runs
+     * pending migrations so an older backup is brought up to the current schema.
+     */
+    private function restoreDatabase(string $localFile, string $workDir): array
+    {
+        $sqlPath = $workDir . DIRECTORY_SEPARATOR . 'database.sql';
+        $in = gzopen($localFile, 'rb');
+        $out = fopen($sqlPath, 'wb');
+        if ($in === false || $out === false) {
+            throw new RuntimeException('Could not read the database backup.');
+        }
+
+        try {
+            while (!gzeof($in)) {
+                fwrite($out, (string) gzread($in, 1024 * 1024));
+            }
+        } finally {
+            gzclose($in);
+            fclose($out);
+        }
+
+        if (!str_contains((string) file_get_contents($sqlPath, false, null, 0, 65536), 'CREATE TABLE')) {
+            throw new RuntimeException('Not a database backup.');
+        }
+
+        $statements = $this->runSqlFile($sqlPath);
+        Artisan::call('migrate', ['--force' => true]);
+
+        return ['statements' => $statements];
+    }
+
+    private function runSqlFile(string $sqlPath): int
+    {
+        $statements = 0;
+        $this->withoutForeignKeyChecks(function () use ($sqlPath, &$statements) {
+            foreach ($this->sqlStatements($sqlPath, DB::connection()->getDriverName()) as $statement) {
+                DB::unprepared($statement);
+                $statements++;
+            }
+        });
+
+        return $statements;
     }
 
     /**
@@ -260,13 +371,7 @@ class RestoreService
         file_put_contents($sqlPath, $sql);
         unset($sql);
 
-        $statements = 0;
-        $this->withoutForeignKeyChecks(function () use ($sqlPath, &$statements) {
-            foreach ($this->sqlStatements($sqlPath, DB::connection()->getDriverName()) as $statement) {
-                DB::unprepared($statement);
-                $statements++;
-            }
-        });
+        $statements = $this->runSqlFile($sqlPath);
 
         Artisan::call('migrate', ['--force' => true]);
 

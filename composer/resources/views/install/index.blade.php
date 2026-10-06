@@ -244,7 +244,7 @@
                 </div>
 
                 <footer class="mt-auto pt-6 text-xs text-slate-500">
-                    <p>Version {{ config('app.version', 'v1.0.0') }}</p>
+                    <p>Version {{ config('app.version') }}</p>
                     <p class="mt-1">All rights reserved.</p>
                 </footer>
             </aside>

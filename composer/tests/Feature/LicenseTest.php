@@ -246,17 +246,60 @@ class LicenseTest extends TestCase
             ->assertDontSee('user.email');
     }
 
-    public function test_sidebar_shows_activated_and_validated_dates(): void
+    public function test_replacing_a_saved_licence_needs_the_password(): void
+    {
+        Organization::query()->updateOrCreate(['id' => 200], ['name' => 'Acme Corp']);
+        $this->actingAsRole(100);
+        License::store('atg_old_licence_key_000000', ['details' => ['name' => 'Old licence', 'plan' => 'free', 'expires_at' => null, 'extra' => []]]);
+        $this->fakeVerify($this->availableBody());
+        $this->fakeActivate($this->inUseBody(), 201);
+
+        $this->get(route('admin.settings', ['tab' => 'licence']))
+            ->assertOk()
+            ->assertSee('Replace licence key')
+            ->assertSee('name="password"', false);
+
+        $this->post(route('admin.settings.licence'), ['license_key' => self::KEY])
+            ->assertSessionHasErrors('password');
+        $this->post(route('admin.settings.licence'), ['license_key' => self::KEY, 'password' => 'wrong'])
+            ->assertSessionHasErrors('password');
+        Http::assertNothingSent();
+        $this->assertSame('atg_old_licence_key_000000', (string) AdminSetting::getValue('license_key'));
+
+        $this->post(route('admin.settings.licence'), ['license_key' => self::KEY, 'password' => 'secret-pass'])
+            ->assertSessionHasNoErrors();
+        $this->assertSame(self::KEY, (string) AdminSetting::getValue('license_key'));
+    }
+
+    public function test_first_licence_does_not_ask_for_a_password(): void
+    {
+        $this->actingAsRole(100);
+
+        $this->get(route('admin.settings', ['tab' => 'licence']))
+            ->assertOk()
+            ->assertDontSee('id="license-password"', false);
+    }
+
+    public function test_sidebar_shows_activated_and_expiry_dates(): void
     {
         $this->fakeActivate($this->inUseBody(), 201);
         License::store(self::KEY, app(LicenseClient::class)->activate(self::KEY, 'Acme Corp'));
+        AdminSetting::putValue('license', 'license_expires_at', now()->addDays(45)->toDateString());
 
         $this->actingAsRole(100);
         $this->get(route('profile'))
             ->assertOk()
             ->assertSee('Activated On Sep 1, 2026')
-            ->assertSee('Validated On ' . now()->format('M j, Y'))
-            ->assertDontSee('No expiry date');
+            ->assertSee('Expires On ' . now()->addDays(45)->format('M j, Y') . ' (45 days left)')
+            ->assertDontSee('Validated On');
+    }
+
+    public function test_expiry_line_wording(): void
+    {
+        $this->assertSame('No expiry date', License::expiry('')['text']);
+        $this->assertSame('Expires On ' . now()->addDay()->format('M j, Y') . ' (1 day left)', License::expiry(now()->addDay()->toDateString())['text']);
+        $this->assertSame('Expires On ' . now()->format('M j, Y') . ' (today)', License::expiry(now()->toDateString())['text']);
+        $this->assertSame('Expired On ' . now()->subDays(3)->format('M j, Y'), License::expiry(now()->subDays(3)->toDateString())['text']);
     }
 
     public function test_daily_check_keeps_licence_active_and_updates_validated_date(): void
@@ -307,13 +350,13 @@ class LicenseTest extends TestCase
         $this->assertTrue(License::isActive());
     }
 
-    public function test_daily_check_is_scheduled(): void
+    public function test_daily_check_is_paused(): void
     {
+        // The daily schedule is commented out in routes/console.php for now; the command still works by hand.
         $events = collect(app(\Illuminate\Console\Scheduling\Schedule::class)->events())
             ->filter(fn ($event) => str_contains((string) $event->command, 'license:check'));
 
-        $this->assertCount(1, $events);
-        $this->assertSame('15 2 * * *', $events->first()->expression);
+        $this->assertCount(0, $events);
     }
 
     public function test_failed_activation_does_not_save(): void
@@ -431,9 +474,9 @@ class LicenseTest extends TestCase
             ->assertSee(License::portalUrl(), false);
     }
 
-    public function test_sidebar_licence_card_asks_admins_to_add_a_missing_licence(): void
+    public function test_sidebar_licence_card_asks_the_super_admin_to_add_a_missing_licence(): void
     {
-        $this->actingAsRole(101);
+        $this->actingAsRole(100);
         $this->get(route('profile'))
             ->assertOk()
             ->assertSee('Not licensed')
@@ -441,15 +484,17 @@ class LicenseTest extends TestCase
             ->assertSee(route('admin.settings', ['tab' => 'licence']), false);
     }
 
-    public function test_regular_users_see_licence_status_without_admin_buttons(): void
+    public function test_admins_and_users_do_not_see_the_sidebar_licence_card(): void
     {
         License::store(self::KEY, ['status' => LicenseClient::VERIFIED_STATUS, 'details' => ['plan' => 'free']]);
 
-        $this->actingAsRole(102);
-        $this->get(route('profile'))
-            ->assertOk()
-            ->assertSee('ag-licence-card', false)
-            ->assertDontSee('Upgrade')
-            ->assertDontSee('Add licence');
+        foreach ([101, 102] as $rbacId) {
+            $this->actingAsRole($rbacId);
+            $this->get(route('profile'))
+                ->assertOk()
+                ->assertDontSee('ag-licence-card', false)
+                ->assertDontSee('Upgrade')
+                ->assertDontSee('Add licence');
+        }
     }
 }

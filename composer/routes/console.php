@@ -2,8 +2,10 @@
 
 use App\Services\BackupService;
 use App\Services\LicenseClient;
+use App\Services\WorkspaceAiSweep;
 use App\Support\InstallationState;
 use App\Support\License;
+use App\Support\WorkspaceSettings;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
@@ -29,10 +31,14 @@ $runBackup = function (string $type) {
 };
 
 Artisan::command('backup:config', $runBackup(BackupService::TYPE_CONFIG))
-    ->purpose('Back up configuration files to S3');
+    ->purpose('Back up configuration files and console files (local copies and/or S3)');
 
-Artisan::command('backup:portal', $runBackup(BackupService::TYPE_PORTAL))
-    ->purpose('Back up the portal (.env, admin settings, database dump) to S3');
+Artisan::command('backup:database', $runBackup(BackupService::TYPE_DATABASE))
+    ->purpose('Back up the database as a gzipped SQL dump (local copies and/or S3)');
+
+// Older name, kept so existing host crontabs keep working.
+Artisan::command('backup:portal', $runBackup(BackupService::TYPE_DATABASE))
+    ->purpose('Same as backup:database');
 
 Artisan::command('activity:prune {--days= : Keep this many days (default ACTIVITY_RETENTION_DAYS, 180)}', function () {
     $days = (int) ($this->option('days') ?: config('app.activity_retention_days', 180));
@@ -66,7 +72,8 @@ Artisan::command('license:check', function (LicenseClient $client) {
 
 if (InstallationState::isInstalled()) {
     Schedule::command('activity:prune')->dailyAt('03:30')->withoutOverlapping();
-    Schedule::command('license:check')->dailyAt('02:15')->withoutOverlapping();
+    // Daily licence check paused for now; run `php artisan license:check` by hand if needed.
+    // Schedule::command('license:check')->dailyAt('02:15')->withoutOverlapping();
 }
 
 // Frequencies come from the Backup & Restore tab. The scheduler re-reads them on
@@ -77,7 +84,7 @@ if (InstallationState::isInstalled()) {
     try {
         $backups = app(BackupService::class);
 
-        foreach (['backup:config' => BackupService::TYPE_CONFIG, 'backup:portal' => BackupService::TYPE_PORTAL] as $command => $type) {
+        foreach (['backup:config' => BackupService::TYPE_CONFIG, 'backup:database' => BackupService::TYPE_DATABASE] as $command => $type) {
             $expression = $backups->scheduleExpression($type);
 
             if ($expression !== null) {
@@ -86,5 +93,47 @@ if (InstallationState::isInstalled()) {
         }
     } catch (Throwable $e) {
         Log::warning('Backup schedules not registered', ['error' => $e->getMessage()]);
+    }
+}
+
+Artisan::command('ai:validate-workspace {workspace : Workspace id}', function (WorkspaceAiSweep $sweep) {
+    $run = $sweep->run((int) $this->argument('workspace'));
+    $this->info($run['message']);
+
+    return 0;
+})->purpose('Queue AI reviews of the latest config versions in one workspace');
+
+Artisan::command('backup:workspace {workspace : Workspace id}', function (BackupService $backups) {
+    $run = $backups->runWorkspace((int) $this->argument('workspace'));
+    $run->status === BackupService::STATUS_SUCCESS ? $this->info($run->message) : $this->error($run->message);
+
+    return $run->status === BackupService::STATUS_SUCCESS ? 0 : 1;
+})->purpose("Back up one workspace's stored configuration files");
+
+// MCP container management: start/stop based on site setting.
+if (InstallationState::isInstalled()) {
+    Schedule::command('mcp:manage')->everyMinute()->withoutOverlapping();
+}
+
+// Per-workspace schedules from the workspace settings page (Vulnerability Checks and Backups tabs).
+if (InstallationState::isInstalled()) {
+    try {
+        foreach (WorkspaceSettings::workspacesWith('ai_sweep_enabled') as $workspaceId => $settings) {
+            $expression = WorkspaceSettings::expression($settings, 'ai_sweep');
+
+            if ($expression !== null) {
+                Schedule::command('ai:validate-workspace ' . $workspaceId)->cron($expression)->withoutOverlapping(120);
+            }
+        }
+
+        foreach (WorkspaceSettings::workspacesWith('backup_enabled') as $workspaceId => $settings) {
+            $expression = WorkspaceSettings::expression($settings, 'backup');
+
+            if ($expression !== null) {
+                Schedule::command('backup:workspace ' . $workspaceId)->cron($expression)->withoutOverlapping(120);
+            }
+        }
+    } catch (Throwable $e) {
+        Log::warning('Workspace schedules not registered', ['error' => $e->getMessage()]);
     }
 }

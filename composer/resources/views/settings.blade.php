@@ -33,12 +33,14 @@
         <button class="ag-tab settings-tab" onclick="switchSettingsTab('preferences', this)">
             <i class="fas fa-sliders-h"></i> Preferences
         </button>
-        <button class="ag-tab settings-tab" onclick="switchSettingsTab('billing', this)">
-            <i class="fas fa-credit-card"></i> Billing
-        </button>
         <button class="ag-tab settings-tab" onclick="switchSettingsTab('api', this)">
             <i class="fas fa-plug"></i> API Keys
         </button>
+        @if($notificationWorkspaces->isNotEmpty())
+            <button class="ag-tab settings-tab" onclick="switchSettingsTab('notifications', this)">
+                <i class="fas fa-bell"></i> Notifications
+            </button>
+        @endif
     </div>
 
     <style>
@@ -475,55 +477,12 @@
         </div>
     </div>
 
-    <!-- BILLING -->
-    <div class="settings-content" id="billing">
-        <div class="settings-card">
-            <h2 style="font-size: 20px; font-weight: 500; margin-bottom: 25px;"><i class="fas fa-credit-card"></i> Billing & Subscription</h2>
-
-            <div class="ag-banner" style="padding: 25px; margin-bottom: 25px;">
-                <h3 style="font-size: 16px; margin-bottom: 10px;">Current Plan</h3>
-                <p style="font-size: 28px; font-weight: bold; margin-bottom: 10px;">Professional</p>
-                <p style="opacity: 0.9;">$49/month • Renewal on March 15, 2026</p>
-            </div>
-
-            <h3 style="font-size: 16px; font-weight: 500; margin-bottom: 15px;">Payment Method</h3>
-            <div class="ag-card" style="padding: 15px; margin-bottom: 20px;">
-                <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <div>
-                        <strong><i class="fas fa-credit-card"></i> Visa ending in 4242</strong>
-                        <p style="color: var(--ag-muted); font-size: 13px; margin-top: 5px;">Expires 12/2028</p>
-                    </div>
-                    <button type="button" class="btn-secondary">Update</button>
-                </div>
-            </div>
-
-            <h3 style="font-size: 16px; font-weight: 500; margin-bottom: 15px;">Recent Invoices</h3>
-            <table class="ag-table" style="width: 100%;">
-                <thead>
-                    <tr style="background: var(--ag-surface); border-bottom: 1px solid var(--ag-line);">
-                        <th style="padding: 12px; text-align: left;">Date</th>
-                        <th style="padding: 12px; text-align: left;">Amount</th>
-                        <th style="padding: 12px; text-align: left;">Status</th>
-                        <th style="padding: 12px; text-align: left;">Action</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr style="border-bottom: 1px solid var(--ag-line);">
-                        <td style="padding: 12px;">February 15, 2026</td>
-                        <td style="padding: 12px;">$49.00</td>
-                        <td style="padding: 12px;"><span class="status-badge status-active">Paid</span></td>
-                        <td style="padding: 12px;"><a href="#" style="color: var(--ag-text);">Download</a></td>
-                    </tr>
-                    <tr style="border-bottom: 1px solid var(--ag-line);">
-                        <td style="padding: 12px;">January 15, 2026</td>
-                        <td style="padding: 12px;">$49.00</td>
-                        <td style="padding: 12px;"><span class="status-badge status-active">Paid</span></td>
-                        <td style="padding: 12px;"><a href="#" style="color: var(--ag-text);">Download</a></td>
-                    </tr>
-                </tbody>
-            </table>
+    <!-- NOTIFICATIONS -->
+    @if($notificationWorkspaces->isNotEmpty())
+        <div class="settings-content" id="notifications">
+            @include('partials.notification-preferences')
         </div>
-    </div>
+    @endif
 
     <!-- API KEYS -->
     <div class="settings-content" id="api">

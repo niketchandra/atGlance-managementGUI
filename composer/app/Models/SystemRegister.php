@@ -78,10 +78,10 @@ class SystemRegister extends Model
             }
 
             if ($system->status === 'active') {
-                ActivityRecorder::record((int) $system->user_id, 'system.reactivated', 'Reactivated system ' . $system->system_name);
+                ActivityRecorder::record((int) $system->user_id, 'system.reactivated', 'Reactivated system ' . $system->system_name, ActivityRecorder::SUCCESS, null, $system->workspace_id ? (int) $system->workspace_id : null, (int) $system->id);
                 $system->notifyWorkspace(NotificationEvents::SYSTEM_REGISTERED, 'System reactivated');
             } elseif ($system->getOriginal('status') === 'active') {
-                ActivityRecorder::record((int) $system->user_id, 'system.deregistered', 'Deregistered system ' . $system->system_name);
+                ActivityRecorder::record((int) $system->user_id, 'system.deregistered', 'Deregistered system ' . $system->system_name, ActivityRecorder::SUCCESS, null, $system->workspace_id ? (int) $system->workspace_id : null, (int) $system->id);
                 if ($owner = User::find($system->user_id)) {
                     \App\Support\AccountAlerts::systemDeregistered($owner, (string) $system->system_name);
                 }

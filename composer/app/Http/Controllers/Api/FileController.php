@@ -6,9 +6,16 @@ use App\Http\Controllers\Controller;
 use App\Models\ConfigurationFile;
 use App\Models\RawData;
 use App\Models\Service;
+use App\Jobs\ValidateConfigWithAi;
+use App\Notifications\NotificationEvents;
+use App\Services\Notifier;
+use App\Services\ConfigAiReviewer;
+use App\Support\AiSettings;
 use App\Support\S3Settings;
+use App\Support\WorkspaceSettings;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -118,6 +125,8 @@ class FileController extends Controller
         }
 
         if (!$service) {
+            $this->notifyUploadFailed($systemId, $originalName, 'Unable to resolve service for upload.');
+
             return response()->json([
                 'message' => 'Unable to resolve service for upload.',
             ], 422);
@@ -132,38 +141,46 @@ class FileController extends Controller
 
         $resolvedVersion = $this->resolveNextVersionLabel((int) $service->service_id);
         
-        $configFile = DB::transaction(function () use ($user, $systemId, $service, $originalName, $serviceName, $filePath, $storageDisk, $request, $fileContent, $resolvedVersion) {
-            $payload = [
-                'user_id' => $user->id,
-                'system_register_id' => $systemId,
-                'service_id' => $service->service_id,
-                'file_name' => $originalName,
-                'service_name' => $serviceName,
-                'file_location' => $filePath,
-                'validation_hash' => $request->input('validation_hash'),
-                'version' => $resolvedVersion,
-            ];
+        try {
+            $configFile = DB::transaction(function () use ($user, $systemId, $service, $originalName, $serviceName, $filePath, $storageDisk, $request, $fileContent, $resolvedVersion) {
+                $payload = [
+                    'user_id' => $user->id,
+                    'system_register_id' => $systemId,
+                    'service_id' => $service->service_id,
+                    'file_name' => $originalName,
+                    'service_name' => $serviceName,
+                    'file_location' => $filePath,
+                    'validation_hash' => $request->input('validation_hash'),
+                    'version' => $resolvedVersion,
+                ];
 
-            if ($this->hasStorageDiskColumn()) {
-                $payload['storage_disk'] = $storageDisk;
-            }
+                if ($this->hasStorageDiskColumn()) {
+                    $payload['storage_disk'] = $storageDisk;
+                }
 
-            $configFile = ConfigurationFile::create($payload);
+                $configFile = ConfigurationFile::create($payload);
 
-            RawData::create([
-                'file_id' => $configFile->id,
-                'user_id' => $user->id,
-                'system_register_id' => $systemId,
-                'service_id' => $service->service_id,
-                'file_name' => $originalName,
-                'service_name' => $serviceName,
-                'file_data' => $fileContent,
-                'validation_hash' => $request->input('validation_hash'),
-                'version' => $resolvedVersion,
-            ]);
+                RawData::create([
+                    'file_id' => $configFile->id,
+                    'user_id' => $user->id,
+                    'system_register_id' => $systemId,
+                    'service_id' => $service->service_id,
+                    'file_name' => $originalName,
+                    'service_name' => $serviceName,
+                    'file_data' => $fileContent,
+                    'validation_hash' => $request->input('validation_hash'),
+                    'version' => $resolvedVersion,
+                ]);
 
-            return $configFile;
-        });
+                return $configFile;
+            });
+        } catch (\Throwable $e) {
+            $this->notifyUploadFailed($systemId, $originalName, 'The console could not save the file.');
+
+            throw $e;
+        }
+
+        $this->afterConfigUploaded($configFile);
 
         $fileMetadata = $this->resolveFileLocationMetadata($configFile->storage_disk ?? null, (string) $configFile->file_location);
 
@@ -187,6 +204,57 @@ class FileController extends Controller
                 'created_at' => $configFile->created_at,
             ],
         ], 201);
+    }
+
+    /**
+     * Workspace follow-ups for a new config version: the automatic AI check when the
+     * workspace turned it on. Never fails the upload.
+     */
+    private function afterConfigUploaded(ConfigurationFile $configFile): void
+    {
+        try {
+            $workspaceId = (int) DB::table('system_register')->where('id', $configFile->system_register_id)->value('workspace_id');
+            if ($workspaceId <= 0) {
+                return;
+            }
+
+            if (WorkspaceSettings::get($workspaceId)['ai_on_upload'] && AiSettings::enabled()) {
+                ValidateConfigWithAi::dispatch((int) $configFile->id, ConfigAiReviewer::TRIGGER_UPLOAD);
+            }
+
+            $system = DB::table('system_register')->where('id', $configFile->system_register_id)->first(['system_name']);
+            app(Notifier::class)->notify(
+                NotificationEvents::CONFIG_UPLOADED,
+                $workspaceId,
+                'Config backup uploaded: ' . $configFile->file_name,
+                array_filter([
+                    'System' => $system->system_name ?? null,
+                    'Service' => $configFile->service_name,
+                    'File' => $configFile->file_name,
+                    'Version' => $configFile->version,
+                ]),
+                ['configuration_file_id' => $configFile->id, 'url' => route('configuration-backups.view', ['id' => $configFile->id])],
+            );
+        } catch (\Throwable $e) {
+            Log::warning('Config upload follow-up failed', ['configuration_file_id' => $configFile->id, 'error' => $e->getMessage()]);
+        }
+    }
+
+    private function notifyUploadFailed(mixed $systemId, string $fileName, string $reason): void
+    {
+        try {
+            $system = DB::table('system_register')->where('id', (int) $systemId)->first(['workspace_id', 'system_name']);
+            if ($system && (int) $system->workspace_id > 0) {
+                app(Notifier::class)->notify(
+                    NotificationEvents::CONFIG_UPLOAD_FAILED,
+                    (int) $system->workspace_id,
+                    'Config backup upload failed: ' . $fileName,
+                    ['System' => (string) $system->system_name, 'File' => $fileName, 'Reason' => $reason],
+                );
+            }
+        } catch (\Throwable) {
+            // Never let a notification problem change the upload response.
+        }
     }
 
     public function upload(Request $request)

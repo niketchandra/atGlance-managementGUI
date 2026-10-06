@@ -79,7 +79,7 @@ body.ag-body {
 /* ----------------------------------------------------------------- Shell */
 
 .ag-frame {
-    max-width: 1440px;
+    max-width: min(1760px, calc(100vw - 32px));
     margin: 24px auto;
     padding: 20px 24px 8px;
     background: var(--ag-frame);
@@ -1486,4 +1486,73 @@ a[style*='cursor: pointer'][style*='background']:not(.ag-btn):hover {
     .ag-topbar--app .ag-brand--wordmark img {
         height: 26px;
     }
+}
+
+/* Console top bar page link (MCP): a single gradient pill with icon, like the
+   home page's active "Home" pill. The menu button there opens the sidebar, so the
+   pill stays visible in the top bar on phones too. */
+.ag-nav.ag-nav--app .ag-nav-track {
+    padding: 0;
+    background: none;
+    box-shadow: none;
+    overflow: visible;
+}
+
+.ag-nav.ag-nav--app .ag-nav-link,
+.ag-nav.ag-nav--app .ag-nav-link:hover {
+    color: var(--ag-text);
+    font-weight: 500;
+    background: var(--ag-gradient);
+    box-shadow: 0 4px 14px rgba(76, 201, 255, 0.35);
+}
+
+.ag-nav.ag-nav--app .ag-nav-link:hover {
+    box-shadow: 0 6px 18px rgba(76, 201, 255, 0.5);
+}
+
+.ag-nav.ag-nav--app .ag-nav-link i {
+    display: inline;
+}
+
+@media (max-width: 900px) {
+    .ag-nav.ag-nav--app {
+        display: flex;
+        order: 0;
+        flex: 0 1 auto;
+        flex-basis: auto;
+    }
+
+    .ag-nav.ag-nav--app .ag-nav-track {
+        flex-direction: row;
+        width: auto;
+    }
+}
+
+@media (max-width: 560px) {
+    .ag-nav.ag-nav--app .ag-nav-link {
+        padding: 8px 12px;
+    }
+}
+
+/* Two-pane settings layout (Site Setting > SSO, Notification, Backup & Restore):
+   items on the left (tick to turn on, click to open), the open item's settings on the right. */
+.ag-split { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 20px; align-items: start; }
+.ag-split-nav { position: sticky; top: 16px; display: flex; flex-direction: column; gap: 4px; padding: 8px; border-radius: 16px; background: var(--ag-surface); }
+.ag-split-hint { font-size: 11px; color: var(--ag-muted); padding: 4px 10px 6px; }
+.ag-split-item { display: flex; align-items: center; gap: 8px; padding: 4px 6px 4px 10px; border-radius: 12px; }
+.ag-split-item.is-open { background: var(--ag-card); box-shadow: var(--ag-shadow); }
+.ag-split-item input[type=checkbox] { flex-shrink: 0; cursor: pointer; }
+.ag-split-item input[type=checkbox]:disabled { cursor: not-allowed; }
+.ag-split-open { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; padding: 6px 0; border: 0; background: none; font: inherit; font-size: 13px; color: var(--ag-text); text-align: left; cursor: pointer; }
+.ag-split-open i { width: 16px; text-align: center; color: var(--ag-subtle); }
+.ag-split-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ag-split-state { font-size: 11px; color: var(--ag-muted); white-space: nowrap; }
+.ag-split-state.is-on { color: var(--ag-success); }
+.ag-split-state.is-warn { color: var(--ag-warning); }
+.ag-split-state.is-bad { color: var(--ag-danger); }
+.ag-split-panel { border: 1px solid var(--ag-line); border-radius: 14px; padding: 18px; min-width: 0; }
+
+@media (max-width: 900px) {
+    .ag-split { grid-template-columns: 1fr; }
+    .ag-split-nav { position: static; }
 }

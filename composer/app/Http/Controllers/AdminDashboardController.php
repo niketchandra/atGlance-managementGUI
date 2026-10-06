@@ -14,8 +14,12 @@ use App\Models\SystemRegister;
 use App\Models\User;
 use App\Models\Workspace;
 use App\Services\BackupService;
+use App\Support\BackupSettings;
+use App\Support\McpControl;
 use App\Support\S3Settings;
 use App\Support\SiteProfile;
+use App\Support\SsoProviders;
+use App\Support\SsoSettings;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -36,6 +40,26 @@ class AdminDashboardController extends Controller
         $visibleWorkspaceIds = $this->isAdminOnly($actor)
             ? $this->visibleWorkspaceIdsForAdmin($actor)
             : [];
+
+        // Workspace picked in the top bar; null means "All" (the super admin default).
+        $selectedWorkspaceId = request()->session()->has('selected_workspace_id')
+            ? (int) request()->session()->get('selected_workspace_id')
+            : null;
+        // Super admin and admins both get "All" (null); a picked workspace narrows every card.
+        $isSuperAdmin = in_array((int) ($actor->rbac_id ?? 0), [100, 101], true);
+        $superAdminWorkspace = function ($query, string $column) use ($isSuperAdmin, $selectedWorkspaceId) {
+            if (!$isSuperAdmin || $selectedWorkspaceId === null) {
+                return;
+            }
+
+            if ($selectedWorkspaceId === 0) {
+                $query->where(fn ($unassigned) => $unassigned->whereNull($column)->orWhere($column, 0));
+
+                return;
+            }
+
+            $query->where($column, $selectedWorkspaceId);
+        };
 
         $totalUsers = User::query()
             ->where(function ($query) {
@@ -59,6 +83,7 @@ class AdminDashboardController extends Controller
             ->count();
 
         $totalSystems = SystemRegister::query()
+            ->when($isSuperAdmin && $selectedWorkspaceId !== null, fn ($query) => $superAdminWorkspace($query, 'workspace_id'))
             ->when($this->isAdminOnly($actor), function ($query) use ($visibleWorkspaceIds) {
                 if (empty($visibleWorkspaceIds)) {
                     $query->whereRaw('1 = 0');
@@ -72,6 +97,7 @@ class AdminDashboardController extends Controller
 
         $totalServices = Service::query()
             ->join('system_register as sr', 'sr.id', '=', 'services.system_id')
+            ->when($isSuperAdmin && $selectedWorkspaceId !== null, fn ($query) => $superAdminWorkspace($query, 'sr.workspace_id'))
             ->when($this->isAdminOnly($actor), function ($query) use ($visibleWorkspaceIds) {
                 if (empty($visibleWorkspaceIds)) {
                     $query->whereRaw('1 = 0');
@@ -86,6 +112,7 @@ class AdminDashboardController extends Controller
 
         $totalConfigFiles = ConfigurationFile::query()
             ->leftJoin('system_register as sr', 'sr.id', '=', 'configuration_files.system_register_id')
+            ->when($isSuperAdmin && $selectedWorkspaceId !== null, fn ($query) => $superAdminWorkspace($query, 'sr.workspace_id'))
             ->when($this->isAdminOnly($actor), function ($query) use ($visibleWorkspaceIds, $actor) {
                 $query->where(function ($scoped) use ($visibleWorkspaceIds, $actor) {
                     if (!empty($visibleWorkspaceIds)) {
@@ -103,7 +130,13 @@ class AdminDashboardController extends Controller
             })
             ->count('configuration_files.id');
 
+        $dashboard = app(DashboardController::class);
+        $vulnerabilityStats = $dashboard->vulnerabilityStats($actor, $selectedWorkspaceId);
+        $validationTrend = $dashboard->validationTrend($actor, $selectedWorkspaceId);
+
         return view('admin.dashboard', compact(
+            'vulnerabilityStats',
+            'validationTrend',
             'totalUsers',
             'totalSystems',
             'totalServices',
@@ -129,23 +162,34 @@ class AdminDashboardController extends Controller
                 DB::raw('COUNT(DISTINCT system_register.id) as system_count'),
                 DB::raw('COUNT(DISTINCT services.service_id) as service_count'),
                 DB::raw('COUNT(DISTINCT configuration_files.id) as configuration_count')
-            )
-            ->where(function ($query) {
-                $query->whereNull('users.rbac_id')
-                    ->orWhereNotIn('users.rbac_id', [100, 101]);
-            });
+            );
 
         if ($this->isAdminOnly($actor)) {
-            if (empty($visibleWorkspaceIds)) {
+            // The role inside a workspace comes from workspace_user.is_admin, so a manager of
+            // another workspace is listed here when they are a plain member of one we manage.
+            $managedWorkspaceIds = $this->managedWorkspaceIds($actor);
+            $usersQuery->where('users.id', '!=', (int) $actor->id)
+                ->where(function ($query) {
+                    $query->whereNull('users.rbac_id')
+                        ->orWhere('users.rbac_id', '!=', 100);
+                });
+
+            if (empty($managedWorkspaceIds)) {
                 $usersQuery->whereRaw('1 = 0');
             } else {
-                $usersQuery->whereExists(function ($query) use ($visibleWorkspaceIds) {
+                $usersQuery->whereExists(function ($query) use ($managedWorkspaceIds) {
                     $query->select(DB::raw(1))
                         ->from('workspace_user as wu')
                         ->whereColumn('wu.user_id', 'users.id')
-                        ->whereIn('wu.workspace_id', $visibleWorkspaceIds);
+                        ->whereIn('wu.workspace_id', $managedWorkspaceIds)
+                        ->where('wu.is_admin', false);
                 });
             }
+        } else {
+            $usersQuery->where(function ($query) {
+                $query->whereNull('users.rbac_id')
+                    ->orWhereNotIn('users.rbac_id', [100, 101]);
+            });
         }
 
         $users = $usersQuery
@@ -545,9 +589,46 @@ class AdminDashboardController extends Controller
             ->orderBy('workspaces.name')
             ->get(['workspaces.id', 'workspaces.name', 'workspaces.description', 'workspaces.status']);
 
+        $workspaceTags = $workspaces->mapWithKeys(fn ($workspace) => [
+            $workspace->id => \App\Support\WorkspaceSettings::tagLabels(\App\Support\WorkspaceSettings::get((int) $workspace->id)['tags']),
+        ]);
+        $tagFilter = trim((string) request('tag', ''));
+        if ($tagFilter !== '') {
+            $workspaces = $workspaces->filter(fn ($workspace) => collect($workspaceTags[$workspace->id])
+                ->contains(fn (string $tag) => mb_strtolower($tag) === mb_strtolower($tagFilter)))->values();
+        }
+
         return view('admin.manage-workspaces', [
             'workspaces' => $workspaces,
+            'workspaceTags' => $workspaceTags,
+            'allWorkspaceTags' => $workspaceTags->flatten()->unique(fn ($tag) => mb_strtolower($tag))->sort()->values(),
+            'tagFilter' => $tagFilter,
+            'canCreateWorkspace' => in_array((int) ($actor->rbac_id ?? 0), [100, 101], true),
         ]);
+    }
+
+    /**
+     * An admin (rbac 101) creates a workspace in their organization and becomes its workspace admin.
+     */
+    public function createAdminWorkspace(Request $request): RedirectResponse
+    {
+        $actor = Auth::user();
+        $validated = $request->validate([
+            'name' => ['required', 'string', 'max:255', 'unique:workspaces,name'],
+            'description' => ['nullable', 'string', 'max:512'],
+        ]);
+
+        $workspace = Workspace::create([
+            'org_id' => (int) ($actor->org_id ?? 200),
+            'name' => $validated['name'],
+            'description' => $validated['description'] ?? null,
+            'status' => 'active',
+        ]);
+        $workspace->addUser($actor->id, true);
+
+        return redirect()
+            ->route('admin.workspaces.show', $workspace->id)
+            ->with('success', 'Workspace created. You are its workspace admin.');
     }
 
     public function viewWorkspace(int $workspaceId): View
@@ -561,17 +642,24 @@ class AdminDashboardController extends Controller
         $isSuperAdmin = $this->isSuperAdmin($actor);
         $admins = $workspace->admins()->get();
         $regularUsers = $workspace->regularUsers()->get();
-        $allAdmins = User::query()
-            ->where('rbac_id', 101)
-            ->where('org_id', (int) ($workspace->org_id ?? 200))
-            ->orderBy('name')
-            ->get();
         $assignedUserIds = $workspace->users()->pluck('users.id')->all();
+        // Workspace admin is a per-workspace role (workspace_user.is_admin): any user or admin
+        // of the organization can hold it. Plain members here can be promoted.
+        $allAdmins = User::query()
+            ->where('org_id', (int) ($workspace->org_id ?? 200))
+            ->where(function ($query) {
+                $query->whereNull('rbac_id')
+                    ->orWhereIn('rbac_id', [101, 102]);
+            })
+            ->whereNotIn('id', $admins->pluck('id')->all())
+            ->orderBy('name')
+            ->get(['id', 'name', 'email']);
+        // Admin-role users (101) can be plain members here while managing another workspace.
         $allRegularUsers = User::query()
             ->where('org_id', (int) ($workspace->org_id ?? 200))
             ->where(function ($query) {
                 $query->whereNull('rbac_id')
-                    ->orWhere('rbac_id', 102);
+                    ->orWhereIn('rbac_id', [101, 102]);
             })
             ->whereNotIn('id', $assignedUserIds)
             ->orderBy('name')
@@ -580,6 +668,7 @@ class AdminDashboardController extends Controller
         $workspaceShowRouteName = $isSuperAdmin ? 'workspace.detail' : 'admin.workspaces.show';
         $workspaceAddUserRouteName = $isSuperAdmin ? 'workspace.users.add' : 'admin.workspaces.users.add';
         $workspaceRemoveUserRouteName = $isSuperAdmin ? 'workspace.users.remove' : 'admin.workspaces.users.remove';
+        $workspaceAddAdminRouteName = $isSuperAdmin ? 'workspace.admins.add' : 'admin.workspaces.admins.add';
         $workspaceUpdateRouteName = $isSuperAdmin ? 'workspace.update' : null;
         $workspaceDeleteRouteName = $isSuperAdmin ? 'workspace.destroy' : null;
 
@@ -591,7 +680,21 @@ class AdminDashboardController extends Controller
             'allRegularUsers' => $allRegularUsers,
             'isSuperAdmin' => $isSuperAdmin,
             'canEditWorkspaceMetadata' => $isSuperAdmin,
-            'canManageAdmins' => $isSuperAdmin,
+            'canManageAdmins' => $workspace->allows($actor, 'admins'),
+            'workspaceAddAdminRouteName' => $workspaceAddAdminRouteName,
+            'permissions' => $workspace->permissionsFor($actor),
+            'canSetPermissions' => $this->canSetPermissions($actor, $workspace),
+            'adminPermissions' => $admins->mapWithKeys(fn (User $admin) => [
+                $admin->id => Workspace::resolvePermissions(json_decode((string) ($admin->pivot->permissions ?? ''), true)),
+            ]),
+            'aiRun' => \App\Models\WorkspaceAiRun::where('workspace_id', $workspace->id)->latest('id')->first(),
+            'removableMemberIds' => $workspace->users()->get()
+                ->filter(fn (User $member) => $this->canRemoveMember($actor, $member, $workspace))
+                ->pluck('id')->map(fn ($id) => (int) $id)->all(),
+            'settings' => \App\Support\WorkspaceSettings::get($workspace->id),
+            'notificationGroups' => \App\Models\NotificationGroup::where('workspace_id', $workspace->id)->orderBy('name')->get(),
+            'memberPreferences' => \App\Models\WorkspaceNotificationPreference::where('workspace_id', $workspace->id)->get()->keyBy('user_id'),
+            'backupRuns' => \App\Models\WorkspaceBackupRun::where('workspace_id', $workspace->id)->latest('id')->limit(20)->get(),
             'workspaceShowRouteName' => $workspaceShowRouteName,
             'workspaceUpdateRouteName' => $workspaceUpdateRouteName,
             'workspaceDeleteRouteName' => $workspaceDeleteRouteName,
@@ -641,24 +744,41 @@ class AdminDashboardController extends Controller
     public function addAdminToWorkspace(Request $request, int $workspaceId): RedirectResponse
     {
         $actor = Auth::user();
-        if (!$this->isSuperAdmin($actor)) {
+        $workspace = Workspace::findOrFail($workspaceId);
+        if (!$workspace->allows($actor, 'admins')) {
             abort(403);
         }
 
-        $workspace = Workspace::findOrFail($workspaceId);
-
         $validated = $request->validate([
             'admin_id' => ['required', 'integer', 'exists:users,id'],
+            'permissions' => ['nullable', 'array'],
+            'permissions.*' => [Rule::in(array_keys(Workspace::PERMISSIONS))],
         ]);
 
         $admin = User::where('id', $validated['admin_id'])
-            ->where('rbac_id', 101)
+            ->where('org_id', (int) ($workspace->org_id ?? 200))
+            ->where(function ($query) {
+                $query->whereNull('rbac_id')
+                    ->orWhere('rbac_id', '!=', 100);
+            })
             ->firstOrFail();
 
         $workspace->addUser($admin->id, true);
+        // Access for a User-role workspace admin is chosen by an Admin-role workspace admin (or the super admin).
+        if ($this->canSetPermissions($actor, $workspace) && (int) ($admin->rbac_id ?? 0) === 102) {
+            $workspace->setPermissions($admin->id, array_fill_keys($validated['permissions'] ?? [], true)
+                + array_map(fn () => false, Workspace::PERMISSIONS));
+        }
+        app(\App\Services\Notifier::class)->notify(
+            \App\Notifications\NotificationEvents::WORKSPACE_MEMBER_ADDED,
+            $workspace->id,
+            'Member added: ' . $workspace->name,
+            ['Workspace' => $workspace->name, 'Member' => $admin->name . ' (' . $admin->email . ')', 'Role' => 'Workspace admin', 'By' => (string) $actor->name],
+        );
+        ActivityRecorder::record((int) $actor->id, 'workspace.member_added', 'Added ' . $admin->name . ' as a workspace admin', ActivityRecorder::SUCCESS, null, (int) $workspace->id);
 
         return redirect()
-            ->route('workspace.detail', $workspaceId)
+            ->route($this->isSuperAdmin($actor) ? 'workspace.detail' : 'admin.workspaces.show', $workspaceId)
             ->with('success', 'Admin added to workspace.');
     }
 
@@ -666,7 +786,7 @@ class AdminDashboardController extends Controller
     {
         $actor = Auth::user();
         $workspace = Workspace::findOrFail($workspaceId);
-        if (!$this->canManageWorkspaceUsers($actor, $workspace)) {
+        if (!$workspace->allows($actor, 'members')) {
             abort(403);
         }
 
@@ -681,13 +801,20 @@ class AdminDashboardController extends Controller
             ]);
         }
 
-        if ($this->isAdminOnly($actor) && in_array((int) ($targetUser->rbac_id ?? 0), [100, 101], true)) {
+        if ($this->isWorkspaceManager($targetUser, $workspace)) {
             return redirect()->back()->withErrors([
-                'user_id' => 'Admins can only add regular users to workspace.',
+                'user_id' => 'This user is already a manager of this workspace.',
             ]);
         }
 
         $workspace->addUser($targetUser->id, false);
+        app(\App\Services\Notifier::class)->notify(
+            \App\Notifications\NotificationEvents::WORKSPACE_MEMBER_ADDED,
+            $workspace->id,
+            'Member added: ' . $workspace->name,
+            ['Workspace' => $workspace->name, 'Member' => $targetUser->name . ' (' . $targetUser->email . ')', 'Role' => 'User', 'By' => (string) $actor->name],
+        );
+        ActivityRecorder::record((int) $actor->id, 'workspace.member_added', 'Added ' . $targetUser->name . ' as a member', ActivityRecorder::SUCCESS, null, (int) $workspace->id);
 
         $showRoute = $this->isSuperAdmin($actor) ? 'workspace.detail' : 'admin.workspaces.show';
 
@@ -705,13 +832,20 @@ class AdminDashboardController extends Controller
         }
 
         $targetUser = User::findOrFail($userId);
-        if ($this->isAdminOnly($actor) && in_array((int) ($targetUser->rbac_id ?? 0), [100, 101], true)) {
+        if (!$this->canRemoveMember($actor, $targetUser, $workspace)) {
             return redirect()->back()->withErrors([
-                'authorization' => 'Admins cannot remove admin members from a workspace.',
+                'authorization' => 'You cannot remove this member. Workspace admins with the User role cannot remove admins who have the Admin role, and nobody can remove themselves or the super admin.',
             ]);
         }
 
         $workspace->removeUser($userId);
+        app(\App\Services\Notifier::class)->notify(
+            \App\Notifications\NotificationEvents::WORKSPACE_MEMBER_REMOVED,
+            $workspace->id,
+            'Member removed: ' . $workspace->name,
+            ['Workspace' => $workspace->name, 'Member' => $targetUser->name . ' (' . $targetUser->email . ')', 'Role' => 'Removed', 'By' => (string) $actor->name],
+        );
+        ActivityRecorder::record((int) $actor->id, 'workspace.member_removed', 'Removed ' . $targetUser->name . ' from the workspace', ActivityRecorder::SUCCESS, null, (int) $workspace->id);
 
         $showRoute = $this->isSuperAdmin($actor) ? 'workspace.detail' : 'admin.workspaces.show';
 
@@ -740,6 +874,92 @@ class AdminDashboardController extends Controller
             ->pluck('workspaces.id')
             ->map(fn ($id) => (int) $id)
             ->all();
+    }
+
+    /**
+     * Who may remove $target from $workspace (the actor already manages it):
+     * - nobody removes themselves or the super admin;
+     * - a workspace admin with the User role cannot remove a workspace admin who has the Admin role.
+     */
+    private function canRemoveMember(User $actor, User $target, Workspace $workspace): bool
+    {
+        if ($this->isSuperAdmin($actor)) {
+            return (int) $target->id !== (int) $actor->id;
+        }
+
+        if ((int) $target->id === (int) $actor->id || (int) ($target->rbac_id ?? 0) === 100) {
+            return false;
+        }
+
+        $targetIsAdmin = $this->isWorkspaceManager($target, $workspace);
+        if (!$workspace->allows($actor, $targetIsAdmin ? 'admins' : 'members')) {
+            return false;
+        }
+
+        if (!$this->isAdminOnly($actor) && $targetIsAdmin && (int) ($target->rbac_id ?? 0) === 101) {
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Only workspace admins with the Admin role, and the super admin, decide what a
+     * User-role workspace admin may change.
+     */
+    private function canSetPermissions(User $actor, Workspace $workspace): bool
+    {
+        return in_array((int) ($actor->rbac_id ?? 0), [100, 101], true) && $workspace->canBeManagedBy($actor);
+    }
+
+    public function updateMemberPermissions(Request $request, int $workspaceId, int $userId): RedirectResponse
+    {
+        $actor = Auth::user();
+        $workspace = Workspace::findOrFail($workspaceId);
+        if (!$this->canSetPermissions($actor, $workspace)) {
+            abort(403);
+        }
+
+        $target = User::findOrFail($userId);
+        if (!$this->isWorkspaceManager($target, $workspace) || (int) ($target->rbac_id ?? 0) !== 102) {
+            return redirect()->back()->withErrors([
+                'permissions' => 'Access can only be set for workspace admins with the User role.',
+            ]);
+        }
+
+        $validated = $request->validate([
+            'permissions' => ['nullable', 'array'],
+            'permissions.*' => [Rule::in(array_keys(Workspace::PERMISSIONS))],
+        ]);
+
+        $workspace->setPermissions($target->id, array_fill_keys($validated['permissions'] ?? [], true)
+            + array_map(fn () => false, Workspace::PERMISSIONS));
+
+        return redirect()
+            ->route($this->isSuperAdmin($actor) ? 'workspace.detail' : 'admin.workspaces.show', ['workspaceId' => $workspaceId, 'tab' => 'members'])
+            ->with('success', 'Access updated for ' . $target->name . '.');
+    }
+
+    /**
+     * Workspaces where the user is a manager (workspace_user.is_admin), as opposed to a plain member.
+     */
+    private function managedWorkspaceIds(User $user): array
+    {
+        return DB::table('workspace_user')
+            ->where('user_id', $user->id)
+            ->where('is_admin', true)
+            ->pluck('workspace_id')
+            ->map(fn ($id) => (int) $id)
+            ->all();
+    }
+
+    private function isWorkspaceManager(User $user, Workspace $workspace): bool
+    {
+        return DB::table('workspace_user')
+            ->where('workspace_id', $workspace->id)
+            ->where('user_id', $user->id)
+            ->where('is_admin', true)
+            ->exists();
     }
 
     private function canViewTargetUser(User $actor, User $target): bool
@@ -800,15 +1020,7 @@ class AdminDashboardController extends Controller
             return (int) ($workspace->org_id ?? 200) === (int) ($actor->org_id ?? 200);
         }
 
-        if (!$this->isAdminOnly($actor)) {
-            return false;
-        }
-
-        return DB::table('workspace_user')
-            ->where('workspace_id', $workspace->id)
-            ->where('user_id', $actor->id)
-            ->where('is_admin', true)
-            ->exists();
+        return $this->isWorkspaceManager($actor, $workspace);
     }
 
     public function createEnterpriseOrganization(Request $request): RedirectResponse
@@ -866,41 +1078,33 @@ class AdminDashboardController extends Controller
         $s3StorageBaseUrl = $this->resolveStorageBaseUrl('s3');
 
         $useS3Storage = $this->isFeatureEnabledSetting('s3_enabled', $this->isS3Enabled());
-        $backupRestoreEnabled = $this->isFeatureEnabledSetting('backup_restore_enabled');
-        $backupConfigToS3 = $this->isFeatureEnabledSetting('backup_config_to_s3');
-        $backupPortalToS3 = $this->isFeatureEnabledSetting('backup_portal_to_s3');
-        $backupConfigCron = $this->normalizeCronFrequency((string) AdminSetting::getValue('backup_config_cron', ''));
-        $backupPortalCron = $this->normalizeCronFrequency((string) AdminSetting::getValue('backup_portal_cron', ''));
+        $backupRestoreEnabled = BackupSettings::masterEnabled();
         $migrationEnabled = $this->isFeatureEnabledSetting('migration_enabled', $useS3Storage);
 
-        if (!$backupConfigToS3) {
-            $backupConfigCron = '';
-        }
-
-        if (!$backupPortalToS3) {
-            $backupPortalCron = '';
-        }
-
         $backupService = app(BackupService::class);
+        $backupSections = [];
         $configuredCronSetups = [];
-        if ($backupConfigToS3 && $backupConfigCron !== '') {
-            $configuredCronSetups[] = [
-                'name' => 'Configuration files backup to S3',
-                'frequency' => $this->cronFrequencyLabel($backupConfigCron),
-                'expression' => $this->cronFrequencyExpression($backupConfigCron),
-                'command' => 'backup:config',
-                'last_run' => $backupService->lastRun(BackupService::TYPE_CONFIG),
+        foreach (BackupSettings::TYPES as $backupType) {
+            $settings = BackupSettings::get($backupType);
+            $backupSections[$backupType] = $settings + [
+                'label' => BackupSettings::LABELS[$backupType],
+                'last_run' => $backupService->lastRun($backupType),
             ];
-        }
 
-        if ($backupPortalToS3 && $backupPortalCron !== '') {
-            $configuredCronSetups[] = [
-                'name' => 'Portal backup (.env, settings, DB) to S3',
-                'frequency' => $this->cronFrequencyLabel($backupPortalCron),
-                'expression' => $this->cronFrequencyExpression($backupPortalCron),
-                'command' => 'backup:portal',
-                'last_run' => $backupService->lastRun(BackupService::TYPE_PORTAL),
-            ];
+            $expression = BackupSettings::expression($settings);
+            if ($backupRestoreEnabled && $settings['enabled'] && $expression !== null) {
+                $destinations = array_filter([
+                    $settings['to_local'] ? 'local (keep ' . $settings['keep_local'] . ')' : null,
+                    $settings['to_s3'] ? 'S3 (keep ' . $settings['keep_s3'] . ')' : null,
+                ]);
+                $configuredCronSetups[] = [
+                    'name' => BackupSettings::LABELS[$backupType] . ' to ' . implode(' and ', $destinations),
+                    'frequency' => BackupSettings::frequencyLabel($settings),
+                    'expression' => $expression,
+                    'command' => $backupType === BackupService::TYPE_DATABASE ? 'backup:database' : 'backup:config',
+                    'last_run' => $backupSections[$backupType]['last_run'],
+                ];
+            }
         }
 
         $migrationDirection = (string) session('migration_direction', $useS3Storage ? 'local_to_s3' : 's3_to_local');
@@ -915,20 +1119,6 @@ class AdminDashboardController extends Controller
         $siteMetadata = $this->getJsonSetting('site_metadata', []);
         $siteTags = $this->getJsonSetting('site_tags', []);
         $mailRecipients = $this->getJsonSetting('mail_recipients', []);
-        $ssoProviderOptions = config('sso.providers', []);
-        $ssoSettings = $this->resolveSsoSettingsFromEnvironment($ssoProviderOptions);
-        $ssoEnabledProviders = $ssoSettings['enabled_providers'];
-        $ssoProviderUrls = $ssoSettings['provider_urls'];
-        $ssoProviderClientIds = $ssoSettings['provider_client_ids'];
-        $ssoProviderClientSecrets = $ssoSettings['provider_client_secrets'];
-        $ssoProviderTenantIds = $ssoSettings['provider_tenant_ids'];
-
-        $hasSsoProviderClientSecrets = collect($ssoProviderOptions)
-            ->mapWithKeys(function ($meta, $providerKey) use ($ssoProviderClientSecrets) {
-                return [$providerKey => !empty($ssoProviderClientSecrets[$providerKey] ?? '')];
-            })
-            ->all();
-
         return view('admin.settings', [
             'siteUrl' => $siteUrl,
             'siteDomain' => $siteDomain,
@@ -956,10 +1146,8 @@ class AdminDashboardController extends Controller
             's3StorageBaseUrl' => $s3StorageBaseUrl,
             'hasS3Secret' => $s3Runtime['secret'] !== '',
             'backupRestoreEnabled' => $backupRestoreEnabled,
-            'backupConfigToS3' => $backupConfigToS3,
-            'backupPortalToS3' => $backupPortalToS3,
-            'backupConfigCron' => $backupConfigCron,
-            'backupPortalCron' => $backupPortalCron,
+            'backupSections' => $backupSections,
+            'backupFrequencies' => BackupSettings::FREQUENCIES,
             'configuredCronSetups' => $configuredCronSetups,
             'migrationEnabled' => $migrationEnabled,
             'migrationDirection' => $migrationDirection,
@@ -977,19 +1165,9 @@ class AdminDashboardController extends Controller
             'mailFromAddress' => AdminSetting::getValue('mail_from_address', ''),
             'mailFromName' => AdminSetting::getValue('mail_from_name', ''),
             'mailRecipientsText' => implode(',', $mailRecipients),
-            'ssoEnabled' => $ssoSettings['enabled'],
+            'ssoEnabled' => SsoSettings::enabled(),
             'disableEmailRegistration' => $this->isFeatureEnabledSetting('disable_email_registration'),
-            'ssoProvider' => $ssoEnabledProviders[0] ?? '',
-            'ssoProviderOptions' => $ssoProviderOptions,
-            'ssoEnabledProviders' => $ssoEnabledProviders,
-            'ssoProviderUrls' => $ssoProviderUrls,
-            'ssoProviderClientIds' => $ssoProviderClientIds,
-            'hasSsoProviderClientSecrets' => $hasSsoProviderClientSecrets,
-            'ssoProviderTenantIds' => $ssoProviderTenantIds,
-            'ssoClientId' => $ssoProviderClientIds[$ssoEnabledProviders[0] ?? ''] ?? '',
-            'hasSsoClientSecret' => !empty($ssoProviderClientSecrets[$ssoEnabledProviders[0] ?? ''] ?? ''),
-            'ssoTenantId' => $ssoProviderTenantIds[$ssoEnabledProviders[0] ?? ''] ?? '',
-            'ssoRedirectUrl' => $ssoProviderUrls[$ssoEnabledProviders[0] ?? ''] ?? '',
+            'ssoEnabledProviders' => SsoSettings::enabledProviders(),
         ]);
     }
 
@@ -1124,8 +1302,41 @@ class AdminDashboardController extends Controller
         return redirect()->route('admin.settings', ['tab' => 'site'])->with('success', 'Contact message deleted.');
     }
 
+    public function toggleS3Plugin(Request $request): RedirectResponse
+    {
+        abort_unless(Auth::user()?->isSuperAdmin(), 403);
+        $enabled = $request->boolean('enabled');
+        $back = redirect()->route('admin.settings', ['tab' => 'plugins', 'plugin' => 's3']);
+
+        if (!$enabled) {
+            // Config files stored in S3 would become unreadable.
+            $analysis = $this->analyzeStorageMigrationDirection('s3_to_local');
+            if (($analysis['files_pending_migration'] ?? 0) > 0) {
+                return redirect()
+                    ->route('admin.settings', ['tab' => 'migration'])
+                    ->withErrors(['s3_enabled' => 'Before disabling S3 Storage, migrate the files stored in S3 back to local storage here.'])
+                    ->with('migration_analysis', $analysis)
+                    ->with('migration_direction', 's3_to_local');
+            }
+            $this->setEnvironmentValues(['S3_ENABLED' => 'false']);
+            AdminSetting::putValue('storage', 's3_enabled', 'false');
+        }
+        AdminSetting::putValue('storage', 's3_plugin_enabled', $enabled ? 'true' : 'false');
+
+        ActivityRecorder::record(Auth::id(), 'settings.s3_plugin', 'S3 Storage plugin ' . ($enabled ? 'enabled' : 'disabled'));
+
+        return $back->with('success', $enabled
+            ? 'S3 Storage is enabled. Enter the bucket and keys on the S3 Configuration tab to start using it.'
+            : 'S3 Storage is disabled. Everything is stored locally.');
+    }
+
     public function updateS3Settings(Request $request): RedirectResponse
     {
+        if (!S3Settings::pluginEnabled()) {
+            return redirect()->route('admin.settings', ['tab' => 'plugins', 'plugin' => 's3'])
+                ->withErrors(['s3' => 'Enable S3 Storage in the Plugins tab first.']);
+        }
+
         $currentlyEnabled = $this->isFeatureEnabledSetting('s3_enabled', $this->isS3Enabled());
 
         $validated = $request->validate([
@@ -1136,7 +1347,8 @@ class AdminDashboardController extends Controller
             's3_bucket' => ['required', 'string', 'max:255'],
         ]);
 
-        $requestedEnabled = $request->boolean('s3_enabled');
+        // On/off is the S3 Storage plugin; saving the keys here puts S3 to use.
+        $requestedEnabled = true;
         $runtimeCredentials = $this->resolveS3RuntimeCredentials();
         $resolvedSecret = trim((string) ($validated['s3_secret_key'] ?? ''));
 
@@ -1180,7 +1392,6 @@ class AdminDashboardController extends Controller
             'AWS_URL' => $s3StorageBaseUrl,
             'LOCAL_STORAGE_BASE_URL' => $localStorageBaseUrl,
             'S3_STORAGE_BASE_URL' => $s3StorageBaseUrl,
-            'VERSION' => (string) config('app.version', '0.1.0'),
         ]);
 
         AdminSetting::putValue('storage', 's3_enabled', $requestedEnabled ? 'true' : 'false');
@@ -1218,62 +1429,71 @@ class AdminDashboardController extends Controller
 
     public function updateBackupRestoreSettings(Request $request): RedirectResponse
     {
-        $validated = $request->validate([
-            'backup_restore_enabled' => ['nullable', 'boolean'],
-            'backup_config_to_s3' => ['nullable', 'boolean'],
-            'backup_portal_to_s3' => ['nullable', 'boolean'],
-            'backup_config_cron' => ['nullable', Rule::in(['hourly', 'every_six_hours', 'every_twelve_hours', 'daily', 'weekly', 'monthly'])],
-            'backup_portal_cron' => ['nullable', Rule::in(['daily', 'weekly', 'monthly'])],
-        ]);
+        $rules = ['backup_restore_enabled' => ['nullable', 'boolean']];
+        foreach (BackupSettings::TYPES as $type) {
+            $rules += [
+                "backup_{$type}_enabled" => ['nullable', 'boolean'],
+                "backup_{$type}_frequency" => ['nullable', Rule::in(array_merge(array_keys(BackupSettings::FREQUENCIES), [BackupSettings::CUSTOM]))],
+                "backup_{$type}_cron_expression" => ['nullable', 'string', 'max:100'],
+                "backup_{$type}_to_s3" => ['nullable', 'boolean'],
+                "backup_{$type}_to_local" => ['nullable', 'boolean'],
+                "backup_{$type}_keep_s3" => ['nullable', 'integer', 'min:1', 'max:' . BackupSettings::MAX_KEEP],
+                "backup_{$type}_keep_local" => ['nullable', 'integer', 'min:1', 'max:' . BackupSettings::MAX_KEEP],
+            ];
+        }
+        $validated = $request->validate($rules);
 
         $backupRestoreEnabled = $request->boolean('backup_restore_enabled');
-        $backupConfigToS3 = $request->boolean('backup_config_to_s3');
-        $backupPortalToS3 = $request->boolean('backup_portal_to_s3');
+        $sections = [];
+        $errors = [];
 
-        if (!$backupRestoreEnabled) {
-            $backupConfigToS3 = false;
-            $backupPortalToS3 = false;
+        foreach (BackupSettings::TYPES as $type) {
+            $label = BackupSettings::LABELS[$type];
+            $values = [
+                'enabled' => $backupRestoreEnabled && $request->boolean("backup_{$type}_enabled"),
+                'frequency' => (string) ($validated["backup_{$type}_frequency"] ?? ''),
+                'cron_expression' => trim((string) ($validated["backup_{$type}_cron_expression"] ?? '')),
+                'to_s3' => $request->boolean("backup_{$type}_to_s3"),
+                'to_local' => $request->boolean("backup_{$type}_to_local"),
+                'keep_s3' => (int) ($validated["backup_{$type}_keep_s3"] ?? BackupSettings::DEFAULT_KEEP),
+                'keep_local' => (int) ($validated["backup_{$type}_keep_local"] ?? BackupSettings::DEFAULT_KEEP),
+            ];
+
+            if ($values['enabled']) {
+                if ($values['frequency'] === '') {
+                    $errors["backup_{$type}_frequency"] = "Select how often to run the {$label}.";
+                } elseif ($values['frequency'] === BackupSettings::CUSTOM && !BackupSettings::isValidCron($values['cron_expression'])) {
+                    $errors["backup_{$type}_cron_expression"] = "Enter a valid 5-field cron expression for the {$label}, for example 30 2 * * *.";
+                }
+
+                if (!$values['to_s3'] && !$values['to_local']) {
+                    $errors["backup_{$type}_to_local"] = "Choose where to keep the {$label}: local copies, S3, or both.";
+                }
+            }
+
+            if ($values['to_s3'] && $backupRestoreEnabled && !$this->isS3Enabled()) {
+                $errors["backup_{$type}_to_s3"] = 'Enable S3 on the S3 tab first, or keep local copies only.';
+            }
+
+            $sections[$type] = $values;
         }
 
-        $backupConfigCron = $backupConfigToS3
-            ? $this->normalizeCronFrequency((string) ($validated['backup_config_cron'] ?? ''))
-            : '';
-        $backupPortalCron = $backupPortalToS3
-            ? $this->normalizeCronFrequency((string) ($validated['backup_portal_cron'] ?? ''))
-            : '';
-
-        if ($backupConfigToS3 && $backupConfigCron === '') {
-            return back()
-                ->withErrors(['backup_config_cron' => 'Select cron frequency for configuration files backup.'])
-                ->withInput();
-        }
-
-        if ($backupPortalToS3 && $backupPortalCron === '') {
-            return back()
-                ->withErrors(['backup_portal_cron' => 'Select cron frequency for portal backup.'])
-                ->withInput();
-        }
-
-        if (($backupConfigToS3 || $backupPortalToS3) && !$this->isS3Enabled()) {
-            return back()
-                ->withErrors(['backup_restore_enabled' => 'Enable S3 configuration first to schedule S3 backups.'])
-                ->withInput();
+        if ($errors !== []) {
+            return back()->withErrors($errors)->withInput();
         }
 
         AdminSetting::putValue('storage', 'backup_restore_enabled', $backupRestoreEnabled ? 'true' : 'false');
-        AdminSetting::putValue('storage', 'backup_config_to_s3', $backupConfigToS3 ? 'true' : 'false');
-        AdminSetting::putValue('storage', 'backup_portal_to_s3', $backupPortalToS3 ? 'true' : 'false');
-        AdminSetting::putValue('storage', 'backup_config_cron', $backupConfigCron);
-        AdminSetting::putValue('storage', 'backup_portal_cron', $backupPortalCron);
-        AdminSetting::putValue('storage', 'configuration_file_base_location', $backupConfigToS3 ? 's3' : 'local');
+        foreach ($sections as $type => $values) {
+            BackupSettings::save($type, $values);
+        }
+
+        // Where newly uploaded configuration files are stored follows the files backup's S3 choice, as before.
+        $configToS3 = $sections[BackupSettings::TYPE_CONFIG]['enabled'] && $sections[BackupSettings::TYPE_CONFIG]['to_s3'];
+        AdminSetting::putValue('storage', 'configuration_file_base_location', $configToS3 ? 's3' : 'local');
 
         $this->setEnvironmentValues([
-            'CONFIGURATION_FILES_BASE_DISK' => $backupConfigToS3 ? 's3' : 'local',
+            'CONFIGURATION_FILES_BASE_DISK' => $configToS3 ? 's3' : 'local',
             'BACKUP_RESTORE_ENABLED' => $backupRestoreEnabled ? 'true' : 'false',
-            'BACKUP_CONFIG_TO_S3' => $backupConfigToS3 ? 'true' : 'false',
-            'BACKUP_PORTAL_TO_S3' => $backupPortalToS3 ? 'true' : 'false',
-            'BACKUP_CONFIG_CRON' => $backupConfigCron,
-            'BACKUP_PORTAL_CRON' => $backupPortalCron,
         ]);
 
         return redirect()
@@ -1509,122 +1729,157 @@ class AdminDashboardController extends Controller
         return redirect()->route('admin.settings', ['tab' => 'email'])->with('success', 'Mail settings saved successfully.');
     }
 
+    public function toggleSsoPlugin(Request $request): RedirectResponse
+    {
+        abort_unless(Auth::user()?->isSuperAdmin(), 403);
+        $enabled = $request->boolean('enabled');
+
+        $this->setEnvironmentValues(['SSO_ENABLED' => $enabled ? 'true' : 'false']);
+        AdminSetting::putValue('sso', 'sso_enabled', $enabled ? 'true' : 'false');
+        if (!$enabled) {
+            // Without SSO, users must be able to register and reset passwords by email again.
+            AdminSetting::putValue('sso', 'disable_email_registration', 'false');
+        }
+
+        ActivityRecorder::record(Auth::id(), 'settings.sso_plugin', 'SSO Login plugin ' . ($enabled ? 'enabled' : 'disabled'));
+
+        return redirect()->route('admin.settings', ['tab' => 'plugins', 'plugin' => 'sso'])->with('success', $enabled
+            ? 'SSO Login is enabled. Set up at least one provider on the SSO tab.'
+            : 'SSO Login is disabled. The login page shows email and password only.');
+    }
+
     public function updateSsoSettings(Request $request): RedirectResponse
     {
-        $providerOptions = config('sso.providers', []);
-        $providerKeys = array_keys($providerOptions);
+        if (!SsoSettings::enabled()) {
+            return redirect()->route('admin.settings', ['tab' => 'plugins', 'plugin' => 'sso'])
+                ->withErrors(['sso' => 'Enable SSO Login in the Plugins tab first.']);
+        }
 
-        $validated = $request->validate([
-            'sso_enabled' => ['nullable', 'boolean'],
+        $catalog = SsoProviders::all();
+        $request->validate([
             'disable_email_registration' => ['nullable', 'boolean'],
             'sso_enabled_providers' => ['nullable', 'array'],
-            'sso_enabled_providers.*' => [Rule::in($providerKeys)],
-            'sso_provider_urls' => ['nullable', 'array'],
-            'sso_provider_urls.*' => ['nullable', 'url', 'max:2048'],
-            'sso_provider_client_ids' => ['nullable', 'array'],
-            'sso_provider_client_ids.*' => ['nullable', 'string', 'max:255'],
-            'sso_provider_client_secrets' => ['nullable', 'array'],
-            'sso_provider_client_secrets.*' => ['nullable', 'string', 'max:255'],
-            'sso_provider_tenant_ids' => ['nullable', 'array'],
-            'sso_provider_tenant_ids.*' => ['nullable', 'string', 'max:255'],
-            'sso_client_id' => ['nullable', 'string', 'max:255'],
-            'sso_client_secret' => ['nullable', 'string', 'max:255'],
-            'sso_tenant_id' => ['nullable', 'string', 'max:255'],
-            'sso_redirect_url' => ['nullable', 'url', 'max:2048'],
+            'sso_enabled_providers.*' => [Rule::in(array_keys($catalog))],
+            'sso_config' => ['nullable', 'array'],
+            'sso_config.*' => ['array'],
+            'sso_config.*.*' => ['nullable', 'string', 'max:2048'],
+            'sso_secret' => ['nullable', 'array'],
+            'sso_secret.*' => ['nullable', 'string', 'max:1024'],
+            'sso_clear_secret' => ['nullable', 'array'],
         ]);
 
-        $enabledProviders = collect($request->input('sso_enabled_providers', []))
-            ->map(fn ($provider) => strtolower(trim((string) $provider)))
-            ->filter(fn ($provider) => in_array($provider, $providerKeys, true))
-            ->unique()
-            ->values()
-            ->all();
+        $enabledProviders = array_values(array_unique(array_intersect((array) $request->input('sso_enabled_providers', []), array_keys($catalog))));
 
-        $effectiveSsoEnabled = $request->boolean('sso_enabled');
-
-        if ($effectiveSsoEnabled && empty($enabledProviders)) {
-            return back()->withErrors([
-                'sso_enabled_providers' => 'Select at least one SSO provider when SSO is enabled.',
-            ])->withInput();
-        }
-
-        $providerUrls = collect($request->input('sso_provider_urls', []))
-            ->mapWithKeys(function ($url, $provider) use ($providerKeys) {
-                $provider = strtolower(trim((string) $provider));
-                if (!in_array($provider, $providerKeys, true)) {
-                    return [];
-                }
-
-                return [$provider => trim((string) $url)];
-            })
-            ->all();
-
-        $providerClientIds = collect($request->input('sso_provider_client_ids', []))
-            ->mapWithKeys(function ($clientId, $provider) use ($providerKeys) {
-                $provider = strtolower(trim((string) $provider));
-                if (!in_array($provider, $providerKeys, true)) {
-                    return [];
-                }
-
-                return [$provider => trim((string) $clientId)];
-            })
-            ->all();
-
-        $providerTenantIds = collect($request->input('sso_provider_tenant_ids', []))
-            ->mapWithKeys(function ($tenantId, $provider) use ($providerKeys) {
-                $provider = strtolower(trim((string) $provider));
-                if (!in_array($provider, $providerKeys, true)) {
-                    return [];
-                }
-
-                return [$provider => trim((string) $tenantId)];
-            })
-            ->all();
-
-        $existingProviderClientSecrets = [];
-        foreach ($providerKeys as $providerKey) {
-            $existingProviderClientSecrets[$providerKey] = $this->getSecretEnvValue($this->providerEnvKeyPrefix($providerKey) . '_CLIENT_SECRET', '');
-        }
-        $providerClientSecrets = [];
-        foreach ($providerKeys as $providerKey) {
-            $incomingSecret = trim((string) $request->input("sso_provider_client_secrets.$providerKey", ''));
-            if ($incomingSecret !== '') {
-                $providerClientSecrets[$providerKey] = $incomingSecret;
+        // Everything entered is saved, even when a provider has errors, so a secret is never lost;
+        // only providers without errors are enabled. Unticked providers keep their settings.
+        $config = SsoProviders::savedConfig();
+        $secrets = SsoProviders::secrets();
+        $errors = [];
+        foreach ($catalog as $provider => $definition) {
+            $input = (array) $request->input('sso_config.' . $provider, []);
+            $submitted = $input !== [] || $request->has('sso_secret.' . $provider);
+            $selected = in_array($provider, $enabledProviders, true);
+            if (!$submitted && !$selected) {
                 continue;
             }
 
-            $existingSecret = trim((string) ($existingProviderClientSecrets[$providerKey] ?? ''));
-            if ($existingSecret !== '') {
-                $providerClientSecrets[$providerKey] = $existingSecret;
+            if ($submitted) {
+                $values = ['client_id' => trim((string) ($input['client_id'] ?? ''))];
+                foreach ($definition['fields'] ?? [] as $field => $meta) {
+                    $values[$field] = ($meta['type'] ?? 'text') === 'checkbox'
+                        ? (!empty($input[$field]) ? 'true' : 'false')
+                        : trim((string) ($input[$field] ?? ''));
+                }
+                $config[$provider] = $values;
+            } else {
+                $values = ['client_id' => SsoProviders::clientId($provider)];
+                foreach (array_keys($definition['fields'] ?? []) as $field) {
+                    $values[$field] = SsoProviders::value($provider, $field);
+                }
+                $secrets[$provider] ??= SsoProviders::clientSecret($provider);
+            }
+
+            $secret = trim((string) $request->input('sso_secret.' . $provider, ''));
+            if ($secret !== '') {
+                $secrets[$provider] = $secret;
+            } elseif ($request->boolean('sso_clear_secret.' . $provider)) {
+                unset($secrets[$provider]);
+            }
+
+            if (in_array($provider, $enabledProviders, true)) {
+                $label = $definition['label'];
+                foreach ($this->ssoProviderErrors($provider, $values, $secrets[$provider] ?? '') as $message) {
+                    $errors['sso_config.' . $provider][] = $label . ': ' . $message;
+                }
             }
         }
 
-        $envUpdates = [
-            'SSO_ENABLED' => $effectiveSsoEnabled ? 'true' : 'false',
-            'SSO_ENABLED_PROVIDERS' => implode(',', $enabledProviders),
-        ];
+        $readyProviders = array_values(array_filter($enabledProviders, fn ($provider) => !isset($errors['sso_config.' . $provider])));
+        // Without a working provider, turning off email registration would leave no way to sign up.
+        $disableEmailRegistration = $request->boolean('disable_email_registration') && $readyProviders !== [];
 
-        foreach ($providerKeys as $providerKey) {
-            $prefix = $this->providerEnvKeyPrefix($providerKey);
-            $envUpdates[$prefix . '_URL'] = (string) ($providerUrls[$providerKey] ?? '');
-            $envUpdates[$prefix . '_CLIENT_ID'] = (string) ($providerClientIds[$providerKey] ?? '');
-            $envUpdates[$prefix . '_CLIENT_SECRET'] = $this->encryptSecretForEnvironment((string) ($providerClientSecrets[$providerKey] ?? ''));
-            $envUpdates[$prefix . '_TENANT_ID'] = (string) ($providerTenantIds[$providerKey] ?? '');
+        AdminSetting::putValue('sso', 'sso_provider_config', $config);
+        AdminSetting::putValue('sso', 'sso_provider_client_secrets', $secrets, true);
+        AdminSetting::putValue('sso', 'sso_enabled_providers', $readyProviders);
+        AdminSetting::putValue('sso', 'disable_email_registration', $disableEmailRegistration ? 'true' : 'false');
+        $this->setEnvironmentValues(['SSO_ENABLED_PROVIDERS' => implode(',', $readyProviders)]);
+
+        $labels = fn (array $keys) => implode(', ', array_map(fn ($key) => $catalog[$key]['label'], $keys));
+        ActivityRecorder::record(Auth::id(), 'settings.sso_updated', 'Updated SSO providers: ' . ($readyProviders === [] ? 'none enabled' : $labels($readyProviders)));
+
+        $redirect = redirect()->route('admin.settings', ['tab' => 'sso']);
+        if ($errors !== []) {
+            $notReady = array_values(array_diff($enabledProviders, $readyProviders));
+
+            return $redirect
+                ->withErrors(collect($errors)->map(fn ($messages) => implode(' ', $messages))->all())
+                ->withInput($request->except('sso_secret'))
+                ->with('success', 'Saved. ' . $labels($notReady) . ' stays disabled until the fields below are fixed; saved secrets are kept.');
         }
 
-        $this->setEnvironmentValues($envUpdates);
-        AdminSetting::putValue('sso', 'sso_enabled', $effectiveSsoEnabled ? 'true' : 'false');
-        AdminSetting::putValue('sso', 'sso_enabled_providers', $enabledProviders);
-        AdminSetting::putValue('sso', 'sso_provider_urls', $providerUrls);
-        AdminSetting::putValue('sso', 'sso_provider_client_ids', $providerClientIds);
-        AdminSetting::putValue('sso', 'sso_provider_client_secrets', $providerClientSecrets, true);
-        AdminSetting::putValue('sso', 'sso_provider_tenant_ids', $providerTenantIds);
+        return $redirect->with('success', $readyProviders === []
+            ? 'SSO settings saved. No provider is enabled yet.'
+            : 'SSO settings saved. Sign out and try the new button on the login page.');
+    }
 
-        if ($effectiveSsoEnabled) {
-            AdminSetting::putValue('sso', 'disable_email_registration', $request->boolean('disable_email_registration') ? 'true' : 'false');
+    /** @return array<int, string> what is wrong with one provider's settings */
+    private function ssoProviderErrors(string $provider, array $values, string $secret): array
+    {
+        $definition = SsoProviders::definition($provider);
+        $errors = [];
+        if ($values['client_id'] === '') {
+            $errors[] = ($definition['client_id_label'] ?? 'Client ID') . ' is required.';
+        }
+        if ($secret === '') {
+            $errors[] = ($definition['client_secret_label'] ?? 'Client secret') . ' is required.';
+        }
+        foreach ($definition['fields'] ?? [] as $field => $meta) {
+            $value = (string) ($values[$field] ?? '');
+            if (($meta['required'] ?? false) && $value === '') {
+                $errors[] = $meta['label'] . ' is required.';
+                continue;
+            }
+            if ($value !== '' && ($meta['type'] ?? 'text') === 'url') {
+                if (filter_var($value, FILTER_VALIDATE_URL) === false || !str_starts_with(strtolower($value), 'https://')) {
+                    $errors[] = $meta['label'] . ' must be an https:// address.';
+                }
+            }
         }
 
-        return redirect()->route('admin.settings', ['tab' => 'sso'])->with('success', 'SSO settings saved successfully.');
+        if ($provider === 'microsoft' && in_array(strtolower($values['tenant_id'] ?? ''), SsoProviders::RESERVED_MICROSOFT_TENANTS, true)) {
+            $errors[] = 'Use your own Directory (tenant) ID, not common, organizations or consumers.';
+        }
+        if ($provider === 'auth0' && ($values['domain'] ?? '') !== '' && !preg_match('/^(https:\/\/)?[a-z0-9.-]+\.[a-z]{2,}\/?$/i', $values['domain'])) {
+            $errors[] = 'Domain must look like your-tenant.us.auth0.com.';
+        }
+        if ($provider === 'okta' && ($values['auth_server'] ?? '') !== '' && !preg_match('/^[A-Za-z0-9_-]+$/', $values['auth_server'])) {
+            $errors[] = 'Authorization server ID can only contain letters, numbers, - and _.';
+        }
+        if ($provider === 'google' && ($values['allowed_domain'] ?? '') !== '' && !preg_match('/^[a-z0-9.-]+\.[a-z]{2,}$/i', $values['allowed_domain'])) {
+            $errors[] = 'Google Workspace domain must look like example.com.';
+        }
+
+        return $errors;
     }
 
     private function getJsonSetting(string $key, array $default): array
@@ -1644,160 +1899,11 @@ class AdminDashboardController extends Controller
         return is_array($decoded) ? $decoded : $default;
     }
 
-    private function resolveSsoSettingsFromEnvironment(array $providerOptions): array
-    {
-        $providerKeys = array_keys($providerOptions);
-        $storedEnabledProviders = $this->resolveStoredSsoProviders($providerKeys);
-        $enabledProviders = !empty($storedEnabledProviders)
-            ? $storedEnabledProviders
-            : $this->resolveEnabledSsoProvidersFromEnvironment($providerKeys);
-
-        $providerUrls = [];
-        $providerClientIds = [];
-        $providerClientSecrets = [];
-        $providerTenantIds = [];
-
-        foreach ($providerKeys as $providerKey) {
-            $prefix = $this->providerEnvKeyPrefix($providerKey);
-            $providerUrls[$providerKey] = $this->resolveStoredOrEnvValue('sso_provider_urls', $providerKey, $this->getEnvValue($prefix . '_URL', ''));
-            $providerClientIds[$providerKey] = $this->resolveStoredOrEnvValue('sso_provider_client_ids', $providerKey, $this->getEnvValue($prefix . '_CLIENT_ID', ''));
-            $providerClientSecrets[$providerKey] = $this->resolveStoredOrEnvSecret($providerKey, $this->getSecretEnvValue($prefix . '_CLIENT_SECRET', ''));
-            $providerTenantIds[$providerKey] = $this->resolveStoredOrEnvValue('sso_provider_tenant_ids', $providerKey, $this->getEnvValue($prefix . '_TENANT_ID', ''));
-        }
-
-        $storedSsoEnabled = AdminSetting::getValue('sso_enabled', null);
-        $ssoEnabledSource = $storedSsoEnabled !== null ? (string) $storedSsoEnabled : $this->getEnvValue('SSO_ENABLED', 'false');
-        $ssoEnabled = filter_var($ssoEnabledSource, FILTER_VALIDATE_BOOL) || !empty($enabledProviders);
-
-        return [
-            'enabled' => $ssoEnabled,
-            'enabled_providers' => $enabledProviders,
-            'provider_urls' => $providerUrls,
-            'provider_client_ids' => $providerClientIds,
-            'provider_client_secrets' => $providerClientSecrets,
-            'provider_tenant_ids' => $providerTenantIds,
-        ];
-    }
-
-    private function resolveEnabledSsoProvidersFromEnvironment(array $providerKeys): array
-    {
-        $raw = $this->getEnvValue('SSO_ENABLED_PROVIDERS', '');
-        if ($raw === '') {
-            return [];
-        }
-
-        return collect(explode(',', $raw))
-            ->map(fn (string $provider) => strtolower(trim($provider)))
-            ->filter(fn (string $provider) => in_array($provider, $providerKeys, true))
-            ->unique()
-            ->values()
-            ->all();
-    }
-
-    private function resolveStoredSsoProviders(array $providerKeys): array
-    {
-        $storedValue = AdminSetting::getValue('sso_enabled_providers', null);
-        if ($storedValue === null || $storedValue === '') {
-            return [];
-        }
-
-        if (is_array($storedValue)) {
-            $providers = $storedValue;
-        } else {
-            $providers = json_decode((string) $storedValue, true);
-            if (!is_array($providers)) {
-                $providers = array_map('trim', explode(',', (string) $storedValue));
-            }
-        }
-
-        return collect($providers)
-            ->map(fn (string $provider) => strtolower(trim($provider)))
-            ->filter(fn (string $provider) => in_array($provider, $providerKeys, true))
-            ->unique()
-            ->values()
-            ->all();
-    }
-
-    private function resolveStoredOrEnvValue(string $settingKey, string $providerKey, string $fallback): string
-    {
-        $storedValue = AdminSetting::getValue($settingKey, null);
-        if ($storedValue === null) {
-            return $fallback;
-        }
-
-        $decoded = $this->decodeProviderSettingValue($storedValue);
-
-        return array_key_exists($providerKey, $decoded) ? (string) $decoded[$providerKey] : '';
-    }
-
-    private function resolveStoredOrEnvSecret(string $providerKey, string $fallback): string
-    {
-        $storedValue = AdminSetting::getValue('sso_provider_client_secrets', null);
-        if ($storedValue === null) {
-            return $fallback;
-        }
-
-        $decoded = $this->decodeProviderSettingValue($storedValue);
-
-        return array_key_exists($providerKey, $decoded) ? (string) $decoded[$providerKey] : '';
-    }
-
-    private function decodeProviderSettingValue(mixed $storedValue): array
-    {
-        if (is_array($storedValue)) {
-            return $storedValue;
-        }
-
-        $decoded = json_decode((string) $storedValue, true);
-        return is_array($decoded) ? $decoded : [];
-    }
-
-    private function providerEnvKeyPrefix(string $provider): string
-    {
-        $normalized = strtoupper((string) preg_replace('/[^A-Za-z0-9]+/', '_', strtolower(trim($provider))));
-        $normalized = trim($normalized, '_');
-
-        return 'SSO_' . $normalized;
-    }
-
     private function isFeatureEnabledSetting(string $key, bool $default = false): bool
     {
         $raw = (string) AdminSetting::getValue($key, $default ? 'true' : 'false');
 
         return filter_var($raw, FILTER_VALIDATE_BOOL);
-    }
-
-    private function normalizeCronFrequency(string $frequency): string
-    {
-        $normalized = strtolower(trim($frequency));
-
-        return in_array($normalized, ['hourly', 'every_six_hours', 'every_twelve_hours', 'daily', 'weekly', 'monthly'], true) ? $normalized : '';
-    }
-
-    private function cronFrequencyLabel(string $frequency): string
-    {
-        return match ($this->normalizeCronFrequency($frequency)) {
-            'hourly' => 'Every hour',
-            'every_six_hours' => 'Every six hours',
-            'every_twelve_hours' => 'Every 12 hours',
-            'daily' => 'Every day',
-            'weekly' => 'Every week',
-            'monthly' => 'Every month',
-            default => 'Not configured',
-        };
-    }
-
-    private function cronFrequencyExpression(string $frequency): string
-    {
-        return match ($this->normalizeCronFrequency($frequency)) {
-            'hourly' => '0 0 * * * *',
-            'every_six_hours' => '0 0 */6 * * *',
-            'every_twelve_hours' => '0 0 */12 * * *',
-            'daily' => '0 0 0 * * *',
-            'weekly' => '0 0 0 * * 0',
-            'monthly' => '0 0 0 1 * *',
-            default => '* * * * * *',
-        };
     }
 
     private function resolveStorageDisk(): string
@@ -1915,7 +2021,6 @@ class AdminDashboardController extends Controller
         $this->setEnvironmentValues([
             'LOCAL_STORAGE_BASE_URL' => $localStorageBaseUrl,
             'S3_STORAGE_BASE_URL' => $s3StorageBaseUrl,
-            'VERSION' => (string) config('app.version', '0.1.0'),
         ]);
 
         AdminSetting::putValue('storage', 'site_url', $siteUrl);
@@ -2420,5 +2525,31 @@ class AdminDashboardController extends Controller
         }
 
         return sprintf('https://%s.s3.%s.amazonaws.com/%s', $bucket, $region, ltrim($path, '/'));
+    }
+
+    public function updateMcpSettings(Request $request): RedirectResponse
+    {
+        abort_unless(Auth::user()?->isSuperAdmin(), 403);
+
+        $enabled = $request->validate(['enabled' => 'required|boolean'])['enabled'];
+        $enabled = filter_var($enabled, FILTER_VALIDATE_BOOLEAN);
+
+        McpControl::setEnabled($enabled);
+        $error = McpControl::apply($enabled);
+
+        ActivityRecorder::record(
+            Auth::id(),
+            'settings.mcp_updated',
+            'MCP turned ' . ($enabled ? 'on' : 'off') . ($error !== null ? ' (container not changed: ' . $error . ')' : ''),
+            $error === null ? ActivityRecorder::SUCCESS : ActivityRecorder::FAILURE
+        );
+
+        $redirect = redirect()->route('admin.settings', ['tab' => 'plugins', 'plugin' => 'mcp']);
+
+        if ($error !== null) {
+            return $redirect->withErrors(['mcp' => 'MCP turned ' . ($enabled ? 'on' : 'off') . ', but the MCP container was not ' . ($enabled ? 'started' : 'stopped') . ': ' . $error]);
+        }
+
+        return $redirect->with('success', $enabled ? 'MCP Server is enabled and running. Users now see the MCP link in the top bar.' : 'MCP Server is disabled and stopped.');
     }
 }
