@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasColumn('personal_access_tokens', 'token_encrypted')) {
+            return;
+        }
+
         Schema::table('personal_access_tokens', function (Blueprint $table) {
             $table->longText('token_encrypted')->nullable()->after('token');
         });

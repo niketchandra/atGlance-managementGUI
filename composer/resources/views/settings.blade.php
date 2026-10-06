@@ -1,52 +1,49 @@
 @extends('app')
 
-@section('title', 'Settings - AtGlance')
+@section('title', 'Settings - ' . $brandName)
 
 @section('dashboard-content')
 <div style="padding: 40px;">
+    @if (session('success'))
+        <div style="margin-bottom: 16px; padding: 12px 14px; border-radius: 12px; background: #d1e7dd; border: 1px solid #badbcc; color: #0f5132;">
+            <i class="fas fa-check-circle"></i> {{ session('success') }}
+        </div>
+    @endif
+
+    @if ($errors->any())
+        <div style="margin-bottom: 16px; padding: 12px 14px; border-radius: 12px; background: #fdecec; border: 1px solid #f1aeb5; color: #842029;">
+            <i class="fas fa-times-circle"></i> {{ $errors->first() }}
+        </div>
+    @endif
+
     <!-- Page Header -->
     <div style="margin-bottom: 30px;">
-        <h1 style="font-size: 32px; font-weight: bold; color: #333; margin-bottom: 10px;">Settings</h1>
-        <p style="color: #666;">Configure your account and application preferences</p>
+        <h1 style="font-size: 30px; font-weight: 500; color: var(--ag-text); margin-bottom: 10px;">Settings</h1>
+        <p style="color: var(--ag-muted);">Configure your account and application preferences</p>
     </div>
 
     <!-- Settings Tabs -->
-    <div style="display: flex; gap: 10px; border-bottom: 2px solid #e0e0e0; margin-bottom: 30px;">
-        <button class="settings-tab active" onclick="switchSettingsTab('account', this)">
+    <div class="ag-tabs">
+        <button class="ag-tab settings-tab active" onclick="switchSettingsTab('account', this)">
             <i class="fas fa-user-cog"></i> Account
         </button>
-        <button class="settings-tab" onclick="switchSettingsTab('security', this)">
+        <button class="ag-tab settings-tab" onclick="switchSettingsTab('security', this)">
             <i class="fas fa-shield-alt"></i> Security
         </button>
-        <button class="settings-tab" onclick="switchSettingsTab('notifications', this)">
-            <i class="fas fa-bell"></i> Notifications
+        <button class="ag-tab settings-tab" onclick="switchSettingsTab('preferences', this)">
+            <i class="fas fa-sliders-h"></i> Preferences
         </button>
-        <button class="settings-tab" onclick="switchSettingsTab('billing', this)">
-            <i class="fas fa-credit-card"></i> Billing
-        </button>
-        <button class="settings-tab" onclick="switchSettingsTab('api', this)">
+        <button class="ag-tab settings-tab" onclick="switchSettingsTab('api', this)">
             <i class="fas fa-plug"></i> API Keys
         </button>
+        @if($notificationWorkspaces->isNotEmpty())
+            <button class="ag-tab settings-tab" onclick="switchSettingsTab('notifications', this)">
+                <i class="fas fa-bell"></i> Notifications
+            </button>
+        @endif
     </div>
 
     <style>
-        .settings-tab {
-            padding: 12px 20px;
-            background: none;
-            border: none;
-            cursor: pointer;
-            font-size: 14px;
-            font-weight: 600;
-            color: #999;
-            border-bottom: 3px solid transparent;
-            margin-bottom: -2px;
-            transition: all 0.3s ease;
-        }
-
-        .settings-tab.active {
-            color: #667eea;
-            border-bottom-color: #667eea;
-        }
 
         .settings-content {
             display: none;
@@ -69,10 +66,10 @@
         }
 
         .settings-card {
-            background: white;
+            background: var(--ag-card);
             padding: 30px;
-            border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            border-radius: 16px;
+            box-shadow: var(--ag-shadow);
             margin-bottom: 20px;
         }
 
@@ -83,24 +80,24 @@
         .settings-form-group label {
             display: block;
             margin-bottom: 8px;
-            font-weight: 600;
-            color: #333;
+            font-weight: 500;
+            color: var(--ag-text);
         }
 
         .settings-form-group input,
         .settings-form-group select {
             width: 100%;
             padding: 12px;
-            border: 1px solid #ddd;
-            border-radius: 6px;
+            border: 1px solid var(--ag-line);
+            border-radius: 12px;
             font-size: 14px;
         }
 
         .settings-form-group input:focus,
         .settings-form-group select:focus {
             outline: none;
-            border-color: #667eea;
-            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+            border-color: var(--ag-mint);
+            box-shadow: 0 0 0 4px rgba(113, 247, 212, 0.3);
         }
 
         .toggle-switch {
@@ -108,8 +105,8 @@
             align-items: center;
             gap: 15px;
             padding: 20px;
-            background: #f8f9fa;
-            border-radius: 6px;
+            background: var(--ag-surface);
+            border-radius: 12px;
             margin-bottom: 15px;
         }
 
@@ -117,14 +114,14 @@
             position: relative;
             width: 50px;
             height: 30px;
-            background: #ccc;
-            border-radius: 15px;
+            background: var(--ag-line);
+            border-radius: 20px;
             cursor: pointer;
             transition: background 0.3s ease;
         }
 
         .toggle.active {
-            background: #667eea;
+            background: var(--ag-teal);
         }
 
         .toggle::after {
@@ -132,7 +129,7 @@
             position: absolute;
             width: 26px;
             height: 26px;
-            background: white;
+            background: var(--ag-card);
             border-radius: 50%;
             top: 2px;
             left: 2px;
@@ -144,40 +141,40 @@
         }
 
         .btn-save {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
+            background: var(--ag-gradient);
+            color: var(--ag-ink);
             padding: 12px 30px;
             border: none;
-            border-radius: 6px;
-            font-weight: 600;
+            border-radius: 999px;
+            font-weight: 500;
             cursor: pointer;
-            transition: transform 0.3s ease;
+            transition: all 0.3s ease;
         }
 
         .btn-save:hover {
-            transform: translateY(-2px);
+            background: #2f2f2f;
         }
 
         .btn-secondary {
-            background: #f0f0f0;
-            color: #333;
+            background: var(--ag-line);
+            color: var(--ag-text);
             padding: 12px 30px;
-            border: none;
-            border-radius: 6px;
-            font-weight: 600;
+            border: 1px solid var(--ag-line);
+            border-radius: 999px;
+            font-weight: 500;
             cursor: pointer;
             margin-left: 10px;
             transition: all 0.3s ease;
         }
 
         .btn-secondary:hover {
-            background: #e0e0e0;
+            background: #b6b6b6;
         }
 
         .api-key-item {
-            background: #f8f9fa;
+            background: var(--ag-surface);
             padding: 15px;
-            border-radius: 6px;
+            border-radius: 12px;
             margin-bottom: 15px;
             display: flex;
             justify-content: space-between;
@@ -185,12 +182,12 @@
         }
 
         .api-key-display {
-            font-family: 'Courier New', monospace;
-            color: #333;
+            color: var(--ag-text);
             font-size: 13px;
-            background: white;
+            background: var(--ag-card);
             padding: 10px;
             border-radius: 4px;
+            border: 1px solid var(--ag-line);
         }
 
         .status-badge {
@@ -201,20 +198,52 @@
         }
 
         .status-active {
-            background: #d4edda;
-            color: #155724;
+            background: var(--ag-success-soft);
+            color: var(--ag-success);
         }
 
         .status-inactive {
-            background: #f8d7da;
-            color: #721c24;
+            background: var(--ag-danger-soft);
+            color: var(--ag-danger);
+        }
+
+        .pin-row {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 4px;
+        }
+
+        .pin-box {
+            width: 52px;
+            height: 54px;
+            text-align: center;
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--ag-text);
+            border: 2px solid var(--ag-line);
+            border-radius: 16px;
+            background: var(--ag-card);
+            transition: all 0.2s ease;
+        }
+
+        .pin-box:focus {
+            outline: none;
+            border-color: var(--ag-mint);
+            box-shadow: 0 0 0 4px rgba(113, 247, 212, 0.3);
+            transform: translateY(-1px);
+        }
+
+        .pin-help-text {
+            margin-top: 6px;
+            color: var(--ag-muted);
+            font-size: 12px;
         }
     </style>
 
     <!-- ACCOUNT SETTINGS -->
     <div class="settings-content active" id="account">
         <div class="settings-card">
-            <h2 style="font-size: 20px; font-weight: bold; margin-bottom: 25px;"><i class="fas fa-user"></i> Account Information</h2>
+            <h2 style="font-size: 20px; font-weight: 500; margin-bottom: 25px;"><i class="fas fa-user"></i> Account Information</h2>
 
             <form method="POST" action="{{ route('settings.update') }}">
                 @csrf
@@ -270,10 +299,10 @@
     <!-- SECURITY SETTINGS -->
     <div class="settings-content" id="security">
         <div class="settings-card">
-            <h2 style="font-size: 20px; font-weight: bold; margin-bottom: 25px;"><i class="fas fa-shield-alt"></i> Security Settings</h2>
+            <h2 style="font-size: 20px; font-weight: 500; margin-bottom: 25px;"><i class="fas fa-shield-alt"></i> Security Settings</h2>
 
             <div style="margin-bottom: 30px;">
-                <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 15px;">Change Password</h3>
+                <h3 style="font-size: 16px; font-weight: 500; margin-bottom: 15px;">Change Password</h3>
                 <form method="POST" action="{{ route('password.update') }}">
                     @csrf
                     <div class="settings-form-group">
@@ -295,135 +324,176 @@
                 </form>
             </div>
 
-            <div style="border-top: 1px solid #e0e0e0; padding-top: 30px;">
-                <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 15px;">Two-Factor Authentication</h3>
+            <div style="border-top: 1px solid var(--ag-line); padding-top: 30px;">
+                <h3 style="font-size: 16px; font-weight: 500; margin-bottom: 15px;">Two-Factor Authentication</h3>
                 <div class="toggle-switch">
                     <div>
-                        <strong>Enable 2FA</strong>
-                        <p style="color: #666; font-size: 13px; margin-top: 5px;">Enhance your account security with two-factor authentication</p>
+                        <strong>Two-factor authentication</strong>
+                        <p style="color: var(--ag-muted); font-size: 13px; margin-top: 5px;">Coming soon.</p>
                     </div>
-                    <div class="toggle" onclick="this.classList.toggle('active')"></div>
+                    <span class="status-badge" style="background: var(--ag-surface); color: var(--ag-muted);">Coming soon</span>
                 </div>
             </div>
 
-            <div style="border-top: 1px solid #e0e0e0; padding-top: 30px; margin-top: 30px;">
-                <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 15px;">Active Sessions</h3>
-                <div class="api-key-item">
-                    <div>
-                        <strong>Current Session</strong>
-                        <p style="color: #666; font-size: 13px; margin-top: 5px;">Chrome on Windows • Last active 2 minutes ago</p>
+            <div style="border-top: 1px solid var(--ag-line); padding-top: 30px; margin-top: 30px;">
+                <h3 style="font-size: 16px; font-weight: 500; margin-bottom: 15px;"><i class="fas fa-key"></i> Reset PIN</h3>
+                <p style="color: var(--ag-muted); font-size: 13px; margin-bottom: 15px;">
+                    Set a new 5-digit PIN for your account. When you click Reset PIN, an authentication popup will appear.
+                </p>
+
+                <form method="POST" action="{{ route('settings.pin.reset') }}" id="resetPinForm">
+                    @csrf
+                    <input type="hidden" id="reset_pin_password" name="current_password" value="">
+
+                    <div style="display: grid; grid-template-columns: 1fr; gap: 16px; max-width: 380px;">
+                        <div>
+                            <label style="display: block; margin-bottom: 8px; font-weight: 600; color: var(--ag-text);">New 5-digit PIN</label>
+                            <div class="pin-row" data-target="settings_pin"></div>
+                            <input type="hidden" name="pin" id="settings_pin" value="">
+                            <div class="pin-help-text">Enter exactly 5 digits</div>
+                        </div>
+                        <div>
+                            <label style="display: block; margin-bottom: 8px; font-weight: 600; color: var(--ag-text);">Confirm New PIN</label>
+                            <div class="pin-row" data-target="settings_pin_confirmation"></div>
+                            <input type="hidden" name="pin_confirmation" id="settings_pin_confirmation" value="">
+                            <div class="pin-help-text">Re-enter the same 5 digits</div>
+                        </div>
                     </div>
-                    <span class="status-badge status-active">Active</span>
-                </div>
+
+                    <button type="button" class="btn-save" style="margin-top: 16px;" onclick="openResetPinAuthModal()"><i class="fas fa-sync"></i> Reset PIN</button>
+                </form>
+            </div>
+
+            <div id="active-sessions" style="border-top: 1px solid var(--ag-line); padding-top: 30px; margin-top: 30px;">
+                <h3 style="font-size: 16px; font-weight: 500; margin-bottom: 6px;">Active Sessions</h3>
+                <p style="color: var(--ag-muted); font-size: 13px; margin-bottom: 15px;">Browsers signed in to your account. Sign out any you do not recognise, then change your password.</p>
+
+                @if(!$sessionsListed)
+                    <p style="color: var(--ag-muted); font-size: 13px;">Session listing needs <code>SESSION_DRIVER=database</code>. Ask your administrator.</p>
+                @else
+                    @foreach($webSessions as $webSession)
+                        <div class="api-key-item">
+                            <div>
+                                <strong>{{ $webSession['device'] }}</strong>
+                                @if($webSession['current'])
+                                    <span class="status-badge status-active" style="margin-left: 6px;">This device</span>
+                                @endif
+                                <p style="color: var(--ag-muted); font-size: 13px; margin-top: 5px;">
+                                    {{ $webSession['ip'] ?: 'Unknown IP' }} &bull; Last active {{ $webSession['last_active']->diffForHumans() }}
+                                </p>
+                            </div>
+                            @unless($webSession['current'])
+                                <form method="POST" action="{{ route('settings.sessions.end', ['session' => $webSession['id']]) }}">
+                                    @csrf
+                                    @method('DELETE')
+                                    <button type="submit" class="ag-btn ag-btn--ghost btn-save"><i class="fas fa-sign-out-alt"></i> Sign out</button>
+                                </form>
+                            @endunless
+                        </div>
+                    @endforeach
+
+                    @if($webSessions->where('current', false)->isNotEmpty())
+                        <form method="POST" action="{{ route('settings.sessions.others') }}" style="margin-top: 16px; display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end;">
+                            @csrf
+                            <div class="settings-form-group" style="margin-bottom: 0; flex: 1; min-width: 220px;">
+                                <label for="sessions_password">Current password or PIN</label>
+                                <input type="password" id="sessions_password" name="password" autocomplete="current-password" placeholder="Password">
+                            </div>
+                            <div class="settings-form-group" style="margin-bottom: 0; width: 140px;">
+                                <label for="sessions_pin">&nbsp;</label>
+                                <input type="password" id="sessions_pin" name="pin" inputmode="numeric" maxlength="5" placeholder="or 5-digit PIN">
+                            </div>
+                            <button type="submit" class="btn-save"><i class="fas fa-user-slash"></i> Sign out all other sessions</button>
+                        </form>
+                    @endif
+                @endif
             </div>
         </div>
     </div>
 
-    <!-- NOTIFICATIONS -->
-    <div class="settings-content" id="notifications">
+    <!-- PREFERENCES -->
+    <div class="settings-content" id="preferences">
         <div class="settings-card">
-            <h2 style="font-size: 20px; font-weight: bold; margin-bottom: 25px;"><i class="fas fa-bell"></i> Notification Settings</h2>
-
-            <form>
-                <div class="toggle-switch">
-                    <div>
-                        <strong>Email Notifications</strong>
-                        <p style="color: #666; font-size: 13px; margin-top: 5px;">Receive important alerts via email</p>
+            <h2 style="font-size: 20px; font-weight: 500; margin-bottom: 25px;"><i class="fas fa-sliders-h"></i> Preferences</h2>
+            @php
+                $prefs = \App\Support\UserPreferences::all(auth()->user());
+                $prefTimezone = old('timezone', $prefs['timezone']);
+            @endphp
+            <form method="POST" action="{{ route('settings.preferences') }}">
+                @csrf
+                <h3 style="font-size: 16px; font-weight: 500; margin-bottom: 15px;">Dates and times</h3>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px;">
+                    <div class="settings-form-group">
+                        <label for="pref_timezone">Time zone</label>
+                        <select id="pref_timezone" name="timezone">
+                            <option value="" {{ $prefTimezone ? '' : 'selected' }}>Server default ({{ config('app.timezone') }})</option>
+                            @foreach(\DateTimeZone::listIdentifiers() as $zone)
+                                <option value="{{ $zone }}" {{ $prefTimezone === $zone ? 'selected' : '' }}>{{ str_replace('_', ' ', $zone) }}</option>
+                            @endforeach
+                        </select>
                     </div>
-                    <div class="toggle active" onclick="this.classList.toggle('active')"></div>
+                    <div class="settings-form-group">
+                        <label for="pref_date_format">Date format</label>
+                        <select id="pref_date_format" name="date_format">
+                            @foreach(\App\Support\UserPreferences::DATE_FORMATS as $formatKey => $formatMeta)
+                                <option value="{{ $formatKey }}" {{ old('date_format', $prefs['date_format']) === $formatKey ? 'selected' : '' }}>{{ $formatMeta[2] }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div class="settings-form-group">
+                        <label for="pref_per_page">Rows per page</label>
+                        <select id="pref_per_page" name="per_page">
+                            @foreach(\App\Support\UserPreferences::PAGE_SIZES as $size)
+                                <option value="{{ $size }}" {{ (int) old('per_page', $prefs['per_page']) === $size ? 'selected' : '' }}>{{ $size }}</option>
+                            @endforeach
+                        </select>
+                        <p style="color: var(--ag-muted); font-size: 12px; margin-top: 5px;">Systems Registered and Configuration Backups.</p>
+                    </div>
                 </div>
 
-                <div class="toggle-switch">
-                    <div>
-                        <strong>API Failures Alert</strong>
-                        <p style="color: #666; font-size: 13px; margin-top: 5px;">Get notified when your APIs fail</p>
-                    </div>
-                    <div class="toggle active" onclick="this.classList.toggle('active')"></div>
-                </div>
+                <h3 style="font-size: 16px; font-weight: 500; margin: 15px 0;">Email me about my account</h3>
+                @unless(\App\Support\NotificationSettings::mailConfigured())
+                    <p style="color: var(--ag-warning); background: var(--ag-warning-soft); border-radius: 12px; padding: 8px 10px; font-size: 13px; margin-bottom: 12px;">Email is not set up on this server yet, so no alerts are sent. Ask your administrator to complete the Email Configuration.</p>
+                @endunless
+                @foreach(\App\Support\UserPreferences::ALERTS as $alertKey => $alertMeta)
+                    <label class="toggle-switch" style="cursor: {{ $alertMeta[2] ? 'pointer' : 'default' }};">
+                        <div>
+                            <strong>{{ $alertMeta[0] }}</strong>
+                            <p style="color: var(--ag-muted); font-size: 13px; margin-top: 5px;">{{ $alertMeta[1] }}</p>
+                        </div>
+                        @if($alertMeta[2])
+                            <input type="hidden" name="alerts[{{ $alertKey }}]" value="0">
+                            <input type="checkbox" name="alerts[{{ $alertKey }}]" value="1" {{ $prefs['alerts'][$alertKey] ? 'checked' : '' }} style="width: 20px; height: 20px;">
+                        @else
+                            <input type="checkbox" checked disabled style="width: 20px; height: 20px;" aria-label="Always on">
+                        @endif
+                    </label>
+                @endforeach
 
-                <div class="toggle-switch">
-                    <div>
-                        <strong>High Response Time Alert</strong>
-                        <p style="color: #666; font-size: 13px; margin-top: 5px;">Alert when response time exceeds threshold</p>
-                    </div>
-                    <div class="toggle active" onclick="this.classList.toggle('active')"></div>
-                </div>
-
-                <div class="toggle-switch">
-                    <div>
-                        <strong>Weekly Summary</strong>
-                        <p style="color: #666; font-size: 13px; margin-top: 5px;">Receive weekly performance summary</p>
-                    </div>
-                    <div class="toggle" onclick="this.classList.toggle('active')"></div>
-                </div>
-
-                <div style="margin-top: 30px;">
-                    <button type="button" class="btn-save"><i class="fas fa-save"></i> Save Preferences</button>
+                <div style="margin-top: 20px;">
+                    <button type="submit" class="btn-save"><i class="fas fa-save"></i> Save Preferences</button>
                 </div>
             </form>
         </div>
     </div>
 
-    <!-- BILLING -->
-    <div class="settings-content" id="billing">
-        <div class="settings-card">
-            <h2 style="font-size: 20px; font-weight: bold; margin-bottom: 25px;"><i class="fas fa-credit-card"></i> Billing & Subscription</h2>
-
-            <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 25px; border-radius: 8px; margin-bottom: 25px;">
-                <h3 style="font-size: 16px; margin-bottom: 10px;">Current Plan</h3>
-                <p style="font-size: 28px; font-weight: bold; margin-bottom: 10px;">Professional</p>
-                <p style="opacity: 0.9;">$49/month • Renewal on March 15, 2026</p>
-            </div>
-
-            <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 15px;">Payment Method</h3>
-            <div style="background: white; padding: 15px; border: 1px solid #e0e0e0; border-radius: 6px; margin-bottom: 20px;">
-                <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <div>
-                        <strong><i class="fas fa-credit-card"></i> Visa ending in 4242</strong>
-                        <p style="color: #666; font-size: 13px; margin-top: 5px;">Expires 12/2028</p>
-                    </div>
-                    <button type="button" class="btn-secondary">Update</button>
-                </div>
-            </div>
-
-            <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 15px;">Recent Invoices</h3>
-            <table style="width: 100%; border-collapse: collapse;">
-                <thead>
-                    <tr style="background: #f8f9fa; border-bottom: 1px solid #e0e0e0;">
-                        <th style="padding: 12px; text-align: left; color: #666; font-weight: 600; font-size: 12px;">Date</th>
-                        <th style="padding: 12px; text-align: left; color: #666; font-weight: 600; font-size: 12px;">Amount</th>
-                        <th style="padding: 12px; text-align: left; color: #666; font-weight: 600; font-size: 12px;">Status</th>
-                        <th style="padding: 12px; text-align: left; color: #666; font-weight: 600; font-size: 12px;">Action</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr style="border-bottom: 1px solid #e0e0e0;">
-                        <td style="padding: 12px;">February 15, 2026</td>
-                        <td style="padding: 12px;">$49.00</td>
-                        <td style="padding: 12px;"><span class="status-badge status-active">Paid</span></td>
-                        <td style="padding: 12px;"><a href="#" style="color: #667eea;">Download</a></td>
-                    </tr>
-                    <tr style="border-bottom: 1px solid #e0e0e0;">
-                        <td style="padding: 12px;">January 15, 2026</td>
-                        <td style="padding: 12px;">$49.00</td>
-                        <td style="padding: 12px;"><span class="status-badge status-active">Paid</span></td>
-                        <td style="padding: 12px;"><a href="#" style="color: #667eea;">Download</a></td>
-                    </tr>
-                </tbody>
-            </table>
+    <!-- NOTIFICATIONS -->
+    @if($notificationWorkspaces->isNotEmpty())
+        <div class="settings-content" id="notifications">
+            @include('partials.notification-preferences')
         </div>
-    </div>
+    @endif
 
     <!-- API KEYS -->
     <div class="settings-content" id="api">
         <div class="settings-card">
-            <h2 style="font-size: 20px; font-weight: bold; margin-bottom: 25px;"><i class="fas fa-plug"></i> API Keys</h2>
+            <h2 style="font-size: 20px; font-weight: 500; margin-bottom: 25px;"><i class="fas fa-plug"></i> API Keys</h2>
 
             <div style="margin-bottom: 25px;">
                 <button type="button" class="btn-save" onclick="openCreateKeyModal()"><i class="fas fa-plus"></i> Create New Key</button>
             </div>
 
-            <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 15px;">Your API Keys</h3>
+            <h3 style="font-size: 16px; font-weight: 500; margin-bottom: 15px;">Your API Keys</h3>
             <div id="apiKeysList">
                 @forelse($apiKeys as $apiKey)
                     <div class="api-key-item" id="key-{{ $apiKey->id }}">
@@ -434,11 +504,11 @@
                                     {{ ucfirst($apiKey->status) }}
                                 </span>
                             </div>
-                            <div id="token-display-{{ $apiKey->id }}" class="api-key-display">{{ substr($apiKey->token, 0, 16) }}...</div>
-                            <div style="display: flex; gap: 10px; margin-top: 8px; font-size: 12px; color: #666;">
-                                <span><i class="fas fa-calendar"></i> Created {{ $apiKey->created_at?->format('F j, Y') }}</span>
+                            <div id="token-display-{{ $apiKey->id }}" class="api-key-display" style="max-width: 50%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;">{{ substr($apiKey->token, 0, 16) }}...</div>
+                            <div style="display: flex; gap: 10px; margin-top: 8px; font-size: 12px; color: var(--ag-muted);">
+                                <span><i class="fas fa-calendar"></i> Created {{ \App\Support\UserPreferences::date($apiKey->created_at) }}</span>
                                 @if($apiKey->expires_at)
-                                    <span><i class="fas fa-hourglass-end"></i> Expires {{ $apiKey->expires_at->format('F j, Y') }}</span>
+                                    <span><i class="fas fa-hourglass-end"></i> Expires {{ \App\Support\UserPreferences::date($apiKey->expires_at) }}</span>
                                 @else
                                     <span><i class="fas fa-infinity"></i> No expiry</span>
                                 @endif
@@ -446,24 +516,66 @@
                         </div>
                         <div style="display: flex; gap: 10px;">
                             <button type="button" class="btn-secondary" onclick="openPasswordModal('view', {{ $apiKey->id }}, '{{ $apiKey->name }}')" style="margin: 0;">View</button>
-                            <button type="button" class="btn-secondary" onclick="openPasswordModal('revoke', {{ $apiKey->id }}, '{{ $apiKey->name }}')" style="margin: 0; background: #f8d7da; color: #721c24;">Revoke</button>
+                            <button type="button" class="btn-secondary" onclick="openPasswordModal('revoke', {{ $apiKey->id }}, '{{ $apiKey->name }}')" style="margin: 0; background: #fdecec; color: #721c24;">Revoke</button>
                         </div>
                     </div>
                 @empty
                     <div class="api-key-item">
-                        <div style="flex: 1; color: #666;">No API keys found.</div>
+                        <div style="flex: 1; color: var(--ag-muted);">No API keys found.</div>
                     </div>
                 @endforelse
             </div>
         </div>
     </div>
 
+    <!-- RESET PIN AUTH MODAL -->
+    <div id="resetPinAuthModal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1003; align-items: center; justify-content: center;">
+        <div class="ag-card" style="padding: 30px; width: 90%; max-width: 500px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                <h2 style="font-size: 20px; font-weight: 500; margin: 0;">Authenticate to Reset PIN</h2>
+                <button type="button" onclick="closeResetPinAuthModal()" style="background: none; border: none; font-size: 24px; cursor: pointer; color: var(--ag-muted);">&times;</button>
+            </div>
+            <p style="font-size: 13px; color: var(--ag-muted); margin-bottom: 18px;">Enter your password, or authenticate using one of the active SSO providers.</p>
+
+            <div class="settings-form-group" style="margin-bottom: 14px;">
+                <label for="resetPinModalPassword">Password</label>
+                <input type="password" id="resetPinModalPassword" placeholder="Enter your password">
+            </div>
+
+            <div style="display: flex; gap: 10px; margin-bottom: 14px;">
+                <button type="button" class="btn-save" onclick="submitResetPinWithPassword()"><i class="fas fa-check"></i> Continue with Password</button>
+                <button type="button" class="btn-secondary" onclick="closeResetPinAuthModal()" style="margin: 0;">Cancel</button>
+            </div>
+
+            @if(!empty($ssoProvidersForAuth ?? []))
+                <div style="border-top: 1px solid var(--ag-line); padding-top: 14px;">
+                    <p style="font-size: 12px; color: var(--ag-muted); margin-bottom: 10px; font-weight: 600;">OR authenticate using SSO</p>
+                    <div style="display: grid; grid-template-columns: 1fr; gap: 8px;">
+                        @foreach($ssoProvidersForAuth as $ssoProvider)
+                            <button type="button" class="btn-secondary" style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; text-decoration: none; margin: 0;" onclick="startSsoPinReset('{{ $ssoProvider['key'] }}')">
+                                <i class="{{ $ssoProvider['icon'] }}"></i>
+                                <span>Authenticate with {{ $ssoProvider['label'] }} and Reset PIN</span>
+                            </button>
+                        @endforeach
+                    </div>
+                </div>
+            @endif
+        </div>
+    </div>
+
+    <form id="ssoPinResetForm" method="POST" action="{{ route('settings.pin.reset.sso') }}" style="display: none;">
+        @csrf
+        <input type="hidden" name="provider" id="sso_pin_provider" value="">
+        <input type="hidden" name="pin" id="sso_pin_value" value="">
+        <input type="hidden" name="pin_confirmation" id="sso_pin_confirmation_value" value="">
+    </form>
+
     <!-- CREATE KEY MODAL -->
     <div id="createKeyModal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center;">
-        <div style="background: white; border-radius: 10px; padding: 30px; width: 90%; max-width: 500px; box-shadow: 0 10px 40px rgba(0,0,0,0.3);">
+        <div class="ag-card" style="padding: 30px; width: 90%; max-width: 500px;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                <h2 style="font-size: 20px; font-weight: bold; margin: 0;">Create New API Key</h2>
-                <button type="button" onclick="closeCreateKeyModal()" style="background: none; border: none; font-size: 24px; cursor: pointer; color: #999;">&times;</button>
+                <h2 style="font-size: 20px; font-weight: 500; margin: 0;">Create New API Key</h2>
+                <button type="button" onclick="closeCreateKeyModal()" style="background: none; border: none; font-size: 24px; cursor: pointer; color: var(--ag-muted);">&times;</button>
             </div>
 
             <form id="createKeyForm" method="POST" action="{{ route('settings.api-keys.create') }}" onsubmit="handleCreateKeySubmit(event)">
@@ -499,28 +611,43 @@
         </div>
     </div>
 
-    <!-- PASSWORD CONFIRMATION MODAL -->
+    <!-- AUTHENTICATION CONFIRMATION MODAL -->
     <div id="passwordModal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1001; align-items: center; justify-content: center;">
-        <div style="background: white; border-radius: 10px; padding: 30px; width: 90%; max-width: 450px; box-shadow: 0 10px 40px rgba(0,0,0,0.3);">
+        <div class="ag-card" style="padding: 30px; width: 90%; max-width: 450px;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                <h2 id="passwordModalTitle" style="font-size: 20px; font-weight: bold; margin: 0;">Confirm Password</h2>
-                <button type="button" onclick="closePasswordModal()" style="background: none; border: none; font-size: 24px; cursor: pointer; color: #999;">&times;</button>
+                <h2 id="passwordModalTitle" style="font-size: 20px; font-weight: 500; margin: 0;">Confirm Authentication</h2>
+                <button type="button" onclick="closePasswordModal()" style="background: none; border: none; font-size: 24px; cursor: pointer; color: var(--ag-muted);">&times;</button>
             </div>
 
-            <p id="passwordModalDesc" style="color: #666; margin-bottom: 20px;">Enter your password to continue.</p>
+            <p id="passwordModalDesc" style="color: var(--ag-muted); margin-bottom: 20px;">Enter your password or PIN to continue.</p>
 
             <form id="passwordForm" onsubmit="handlePasswordSubmit(event)">
                 @csrf
                 <input type="hidden" id="passwordAction" name="action" value="">
                 <input type="hidden" id="passwordKeyId" name="key_id" value="">
 
-                <div class="settings-form-group">
+                <!-- Authentication Type Selector -->
+                <div class="ag-tabs">
+                    <button type="button" class="ag-tab active" id="authTypePasswordBtn" onclick="switchAuthType('password')">Password</button>
+                    <button type="button" class="ag-tab" id="authTypePinBtn" onclick="switchAuthType('pin')">PIN</button>
+                </div>
+
+                <!-- Password Input -->
+                <div id="passwordAuthGroup" class="settings-form-group">
                     <label for="api_key_password">Password</label>
-                    <input type="password" id="api_key_password" name="password" placeholder="Enter your password" required autofocus>
+                    <input type="password" id="api_key_password" name="password" placeholder="Enter your password" autofocus>
+                </div>
+
+                <!-- PIN Input (5 independent boxes) -->
+                <div id="pinAuthGroup" style="display: none;" class="settings-form-group">
+                    <label>Enter your 5-digit PIN</label>
+                    <div class="pin-row" data-target="api_key_pin_input"></div>
+                    <input type="hidden" name="pin" id="api_key_pin_input" value="">
+                    <div class="pin-help-text">Enter exactly 5 digits</div>
                 </div>
 
                 <div id="viewKeyContent" style="display: none; margin-top: 15px; margin-bottom: 20px;">
-                    <p style="color: #999; font-size: 12px; margin-bottom: 8px;">API Key:</p>
+                    <p style="color: var(--ag-muted); font-size: 12px; margin-bottom: 8px;">API Key:</p>
                     <div class="api-key-display" id="fullKeyDisplay" style="word-break: break-all;"></div>
                 </div>
 
@@ -533,7 +660,7 @@
     </div>
 
     <!-- NEW TOKEN DISPLAY ALERT -->
-    <div id="newTokenAlert" style="display: none; position: fixed; top: 20px; right: 20px; background: #d4edda; color: #155724; border: 1px solid #c3e6cb; padding: 20px; border-radius: 8px; box-shadow: 0 5px 15px rgba(0,0,0,0.2); z-index: 1002; max-width: 400px;">
+    <div id="newTokenAlert" style="display: none; position: fixed; top: 20px; right: 20px; background: #f4f6f8; color: var(--ag-text); padding: 20px; border-radius: 12px; box-shadow: var(--ag-shadow); z-index: 1002; max-width: 400px;">
         <div style="display: flex; justify-content: space-between; align-items: start; gap: 15px;">
             <div>
                 <h4 style="margin: 0 0 10px 0;"><i class="fas fa-check-circle"></i> API Key Created!</h4>
@@ -541,7 +668,7 @@
                 <div class="api-key-display" id="newTokenValue" style="margin-bottom: 10px;"></div>
                 <button type="button" onclick="copyToClipboard(document.getElementById('newTokenValue').textContent)" class="btn-save" style="padding: 8px 16px; font-size: 13px;"><i class="fas fa-copy"></i> Copy</button>
             </div>
-            <button type="button" onclick="closeNewTokenAlert()" style="background: none; border: none; font-size: 20px; cursor: pointer; color: #155724; padding: 0;">&times;</button>
+            <button type="button" onclick="closeNewTokenAlert()" style="background: none; border: none; font-size: 20px; cursor: pointer; color: var(--ag-text); padding: 0;">&times;</button>
         </div>
     </div>
 
@@ -551,6 +678,17 @@
     let currentAction = '';
     let currentKeyId = '';
     let currentKeyName = '';
+
+    // Open the tab named in the URL hash, e.g. /settings#api from the profile page.
+    document.addEventListener('DOMContentLoaded', function () {
+        const tabName = window.location.hash.slice(1);
+        const button = /^[a-z-]+$/.test(tabName)
+            ? document.querySelector('.settings-tab[onclick*="\'' + tabName + '\'"]')
+            : null;
+        if (button && document.getElementById(tabName)) {
+            switchSettingsTab(tabName, button);
+        }
+    });
 
     function switchSettingsTab(tabName, buttonEl) {
         document.querySelectorAll('.settings-content').forEach(tab => {
@@ -597,8 +735,8 @@
 
         const modalTitle = action === 'view' ? 'View API Key' : 'Revoke API Key';
         const modalDesc = action === 'view' 
-            ? 'Enter your password to view this API key.'
-            : 'Enter your password to revoke this API key. This action cannot be undone.';
+            ? 'Enter your password or PIN to view this API key.'
+            : 'Enter your password or PIN to revoke this API key. This action cannot be undone.';
         const btnText = action === 'view' ? 'View Key' : 'Revoke Key';
         const btnClass = action === 'view' ? 'btn-save' : 'btn-secondary';
         const btnStyle = action === 'view' ? '' : 'background: #f8d7da; color: #721c24;';
@@ -612,13 +750,24 @@
         document.getElementById('passwordAction').value = action;
         document.getElementById('passwordKeyId').value = keyId;
         document.getElementById('api_key_password').value = '';
-        document.getElementById('api_key_password').focus();
+        document.getElementById('api_key_pin_input').value = '';
+        
+        // Clear PIN boxes
+        document.querySelectorAll('[data-target="api_key_pin_input"] .pin-box').forEach(box => {
+            box.value = '';
+        });
+        
+        // Reset to password tab
+        switchAuthType('password');
+        
         document.getElementById('passwordModal').style.display = 'flex';
     }
 
     function closePasswordModal() {
         document.getElementById('passwordModal').style.display = 'none';
         document.getElementById('passwordForm').reset();
+        // Reset to password tab
+        switchAuthType('password');
     }
 
     function handleCreateKeySubmit(event) {
@@ -677,15 +826,15 @@
                                 <strong>${data.name}</strong>
                                 <span class="status-badge status-active">Active</span>
                             </div>
-                            <div id="token-display-${data.key_id}" class="api-key-display">${data.token}</div>
-                            <div style="display: flex; gap: 10px; margin-top: 8px; font-size: 12px; color: #666;">
+                            <div id="token-display-${data.key_id}" class="api-key-display" style="max-width: 50%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;">${data.token}</div>
+                            <div style="display: flex; gap: 10px; margin-top: 8px; font-size: 12px; color: var(--ag-muted);">
                                 <span><i class="fas fa-calendar"></i> Created Today</span>
                                 ${data.expires_at ? `<span><i class="fas fa-hourglass-end"></i> Expires ${data.expires_at}</span>` : '<span><i class="fas fa-infinity"></i> No expiry</span>'}
                             </div>
                         </div>
                         <div style="display: flex; gap: 10px;">
                             <button type="button" class="btn-secondary" onclick="openPasswordModal('view', ${data.key_id}, '${data.name}')" style="margin: 0;">View</button>
-                            <button type="button" class="btn-secondary" onclick="openPasswordModal('revoke', ${data.key_id}, '${data.name}')" style="margin: 0; background: #f8d7da; color: #721c24;">Revoke</button>
+                            <button type="button" class="btn-secondary" onclick="openPasswordModal('revoke', ${data.key_id}, '${data.name}')" style="margin: 0; background: #fdecec; color: #721c24;">Revoke</button>
                         </div>
                     </div>
                 `;
@@ -696,6 +845,8 @@
                     emptyMsg.parentElement.remove();
                 }
                 apiKeysList.insertAdjacentHTML('afterbegin', newKeyHtml);
+            } else if (data.message) {
+                alert(data.message);
             }
         })
         .catch(error => console.error('Error:', error));
@@ -707,9 +858,21 @@
         const action = document.getElementById('passwordAction').value;
         const keyId = document.getElementById('passwordKeyId').value;
         const password = document.getElementById('api_key_password').value;
+        const pin = document.getElementById('api_key_pin_input').value;
+
+        // Validate at least one is filled
+        if (!password && !pin) {
+            alert('Please enter your password or PIN');
+            return;
+        }
 
         const data = new FormData();
-        data.append('password', password);
+        if (password) {
+            data.append('password', password);
+        }
+        if (pin) {
+            data.append('pin', pin);
+        }
         data.append('key_id', keyId);
         data.append('_token', document.querySelector('[name="_token"]').value);
 
@@ -735,10 +898,96 @@
                     }
                 }
             } else {
-                alert('Error: ' + (data.message || 'Invalid password'));
+                alert('Error: ' + (data.message || 'Invalid password or PIN'));
             }
         })
         .catch(error => console.error('Error:', error));
+    }
+
+    function switchAuthType(type) {
+        const passwordGroup = document.getElementById('passwordAuthGroup');
+        const pinGroup = document.getElementById('pinAuthGroup');
+        const passwordBtn = document.getElementById('authTypePasswordBtn');
+        const pinBtn = document.getElementById('authTypePinBtn');
+
+        if (type === 'password') {
+            passwordGroup.style.display = 'block';
+            pinGroup.style.display = 'none';
+            passwordBtn.classList.add('active');
+            pinBtn.classList.remove('active');
+            document.getElementById('api_key_password').focus();
+            // Clear PIN field
+            document.getElementById('api_key_pin_input').value = '';
+            document.querySelectorAll('[data-target="api_key_pin_input"] .pin-box').forEach(box => {
+                box.value = '';
+            });
+        } else {
+            passwordGroup.style.display = 'none';
+            pinGroup.style.display = 'block';
+            passwordBtn.classList.remove('active');
+            pinBtn.classList.add('active');
+            const firstBox = document.querySelector('[data-target="api_key_pin_input"] .pin-box');
+            if (firstBox) {
+                firstBox.focus();
+            }
+            // Clear password field
+            document.getElementById('api_key_password').value = '';
+        }
+    }
+
+    // Initialize PIN boxes for API key authentication
+    document.addEventListener('DOMContentLoaded', function () {
+        const row = document.querySelector('[data-target="api_key_pin_input"]');
+        if (!row) return;
+
+        const hiddenInput = document.getElementById('api_key_pin_input');
+        if (!hiddenInput) return;
+
+        for (let i = 0; i < 5; i++) {
+            const input = document.createElement('input');
+            input.type = 'password';
+            input.inputMode = 'numeric';
+            input.maxLength = 1;
+            input.className = 'pin-box';
+            input.autocomplete = 'off';
+
+            input.addEventListener('paste', function (event) {
+                event.preventDefault();
+                const pasted = (event.clipboardData || window.clipboardData).getData('text').replace(/\D/g, '').slice(0, 5);
+                const boxes = row.querySelectorAll('.pin-box');
+                pasted.split('').forEach((digit, index) => {
+                    if (boxes[index]) {
+                        boxes[index].value = digit;
+                    }
+                });
+                syncApiKeyPin(row, hiddenInput);
+                const nextIndex = Math.min(pasted.length, 4);
+                if (boxes[nextIndex]) {
+                    boxes[nextIndex].focus();
+                }
+            });
+
+            input.addEventListener('input', function () {
+                this.value = this.value.replace(/\D/g, '').slice(0, 1);
+                syncApiKeyPin(row, hiddenInput);
+
+                if (this.value && this.nextElementSibling) {
+                    this.nextElementSibling.focus();
+                }
+            });
+
+            input.addEventListener('keydown', function (event) {
+                if (event.key === 'Backspace' && !this.value && this.previousElementSibling) {
+                    this.previousElementSibling.focus();
+                }
+            });
+
+            row.appendChild(input);
+        }
+    });
+
+    function syncApiKeyPin(row, hiddenInput) {
+        hiddenInput.value = Array.from(row.querySelectorAll('.pin-box')).map((box) => box.value).join('');
     }
 
     function closeNewTokenAlert() {
@@ -750,6 +999,123 @@
             alert('API key copied to clipboard!');
         });
     }
+
+    function openResetPinAuthModal() {
+        const pin = document.getElementById('settings_pin')?.value || '';
+        const pinConfirmation = document.getElementById('settings_pin_confirmation')?.value || '';
+
+        if (pin.length !== 5 || pinConfirmation.length !== 5) {
+            alert('Please enter 5 digits in both PIN fields.');
+            return;
+        }
+
+        if (pin !== pinConfirmation) {
+            alert('PIN and Confirm PIN do not match.');
+            return;
+        }
+
+        document.getElementById('reset_pin_password').value = '';
+        document.getElementById('resetPinModalPassword').value = '';
+        document.getElementById('resetPinAuthModal').style.display = 'flex';
+        document.getElementById('resetPinModalPassword').focus();
+    }
+
+    function closeResetPinAuthModal() {
+        document.getElementById('resetPinAuthModal').style.display = 'none';
+    }
+
+    function submitResetPinWithPassword() {
+        const password = document.getElementById('resetPinModalPassword').value || '';
+        if (!password.trim()) {
+            alert('Please enter your password or use SSO authentication.');
+            return;
+        }
+
+        document.getElementById('reset_pin_password').value = password;
+        document.getElementById('resetPinForm').submit();
+    }
+
+    function startSsoPinReset(providerKey) {
+        const pin = document.getElementById('settings_pin')?.value || '';
+        const pinConfirmation = document.getElementById('settings_pin_confirmation')?.value || '';
+
+        if (pin.length !== 5 || pinConfirmation.length !== 5) {
+            alert('Please enter 5 digits in both PIN fields.');
+            return;
+        }
+
+        if (pin !== pinConfirmation) {
+            alert('PIN and Confirm PIN do not match.');
+            return;
+        }
+
+        document.getElementById('sso_pin_provider').value = providerKey;
+        document.getElementById('sso_pin_value').value = pin;
+        document.getElementById('sso_pin_confirmation_value').value = pinConfirmation;
+        document.getElementById('ssoPinResetForm').submit();
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+        const pinRows = document.querySelectorAll('.pin-row');
+
+        pinRows.forEach((row) => {
+            if (row.children.length > 0) {
+                return;
+            }
+
+            const targetId = row.getAttribute('data-target');
+            const hiddenInput = document.getElementById(targetId);
+            if (!hiddenInput) {
+                return;
+            }
+
+            for (let i = 0; i < 5; i++) {
+                const input = document.createElement('input');
+                input.type = 'text';
+                input.inputMode = 'numeric';
+                input.maxLength = 1;
+                input.className = 'pin-box';
+                input.autocomplete = 'off';
+
+                input.addEventListener('paste', function (event) {
+                    event.preventDefault();
+                    const pasted = (event.clipboardData || window.clipboardData).getData('text').replace(/\D/g, '').slice(0, 5);
+                    const boxes = row.querySelectorAll('.pin-box');
+                    pasted.split('').forEach((digit, index) => {
+                        if (boxes[index]) {
+                            boxes[index].value = digit;
+                        }
+                    });
+                    syncPinRow(row, hiddenInput);
+                    const nextIndex = Math.min(pasted.length, 4);
+                    if (boxes[nextIndex]) {
+                        boxes[nextIndex].focus();
+                    }
+                });
+
+                input.addEventListener('input', function () {
+                    this.value = this.value.replace(/\D/g, '').slice(0, 1);
+                    syncPinRow(row, hiddenInput);
+
+                    if (this.value && this.nextElementSibling) {
+                        this.nextElementSibling.focus();
+                    }
+                });
+
+                input.addEventListener('keydown', function (event) {
+                    if (event.key === 'Backspace' && !this.value && this.previousElementSibling) {
+                        this.previousElementSibling.focus();
+                    }
+                });
+
+                row.appendChild(input);
+            }
+        });
+
+        function syncPinRow(row, hiddenInput) {
+            hiddenInput.value = Array.from(row.querySelectorAll('.pin-box')).map((box) => box.value).join('');
+        }
+    });
 </script>
 
 @endsection

@@ -1,0 +1,5 @@
+/.env
+
+# Claude Code project notes: local only, never pushed
+CLAUDE.local.md
+CLAUDE.md

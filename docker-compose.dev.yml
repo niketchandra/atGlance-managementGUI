@@ -1,0 +1,39 @@
+# Local development overlay. Builds from source, keeps state in the working
+# tree and uses composer/.env directly.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+#
+# Create composer/.env first (cp composer/.env.example composer/.env, then
+# php artisan key:generate or set APP_KEY by hand).
+
+x-dev-app: &dev-app
+  build:
+    context: .
+    args:
+      INSTALL_DEV: "true"
+  image: ce-atglance-app:dev
+  volumes:
+    - ./composer/storage:/app/storage
+    - ./composer/.env:/app/.env
+  environment:
+    ATGLANCE_ENV_FILE: /app/.env
+
+services:
+  app:
+    <<: *dev-app
+
+  worker:
+    <<: *dev-app
+
+  scheduler:
+    <<: *dev-app
+
+  gateway:
+    build:
+      context: ./kong
+    image: ce-atglance-gateway:dev
+
+  mcp:
+    build:
+      context: ./mcp
+    image: ce-atglance-mcp:dev

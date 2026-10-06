@@ -10,6 +10,36 @@ use Illuminate\Http\Request;
 class TokenValidationController extends Controller
 {
     /**
+     * Build a consistent user payload for token validation responses.
+     */
+    private function buildUserPayload(User $user): array
+    {
+        $user->loadMissing('workspaces');
+
+        return [
+            'id' => $user->id,
+            'org_id' => $user->org_id,
+            'name' => $user->name,
+            'email' => $user->email,
+            'dob' => $user->dob,
+            'status' => $user->status,
+            'created_at' => $user->created_at,
+            'updated_at' => $user->updated_at,
+            'workspaces' => $user->workspaces->map(function ($workspace) {
+                return [
+                    'id' => $workspace->id,
+                    'name' => $workspace->name,
+                    'description' => $workspace->description,
+                    'status' => $workspace->status,
+                    'is_admin' => (bool) ($workspace->pivot->is_admin ?? false),
+                    'created_at' => $workspace->created_at,
+                    'updated_at' => $workspace->updated_at,
+                ];
+            })->values(),
+        ];
+    }
+
+    /**
      * Validate a PAT token
      * Returns user info if token is valid and user is active
      */
@@ -78,16 +108,7 @@ class TokenValidationController extends Controller
         return response()->json([
             'message' => 'Token is valid',
             'is_valid' => true,
-            'user' => [
-                'id' => $user->id,
-                'org_id' => $user->org_id,
-                'name' => $user->name,
-                'email' => $user->email,
-                'dob' => $user->dob,
-                'status' => $user->status,
-                'created_at' => $user->created_at,
-                'updated_at' => $user->updated_at,
-            ],
+            'user' => $this->buildUserPayload($user),
             'token_info' => [
                 'id' => $patToken->id,
                 'name' => $patToken->name,
@@ -174,16 +195,7 @@ class TokenValidationController extends Controller
         return response()->json([
             'message' => 'Token is valid',
             'is_valid' => true,
-            'user' => [
-                'id' => $user->id,
-                'org_id' => $user->org_id,
-                'name' => $user->name,
-                'email' => $user->email,
-                'dob' => $user->dob,
-                'status' => $user->status,
-                'created_at' => $user->created_at,
-                'updated_at' => $user->updated_at,
-            ],
+            'user' => $this->buildUserPayload($user),
             'token_info' => [
                 'id' => $patToken->id,
                 'name' => $patToken->name,

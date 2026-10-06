@@ -60,12 +60,24 @@ class ActivityLogger
                 return $response;
             }
 
+            // The controller already recorded a readable event for this request.
+            if ($request->attributes->get(\App\Support\ActivityRecorder::REQUEST_FLAG)) {
+                return $response;
+            }
+
             if (!$this->shouldLog($request)) {
                 return $response;
             }
 
             $user = $request->user();
-            $payload = $request->except(['password', 'password_confirmation']);
+            $payload = $request->except([
+                'password',
+                'password_confirmation',
+                'current_password',
+                'pin',
+                'pin_confirmation',
+                'ai_api_key',
+            ]);
 
             ActivityLog::create([
                 'user_id' => $user?->id,

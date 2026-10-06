@@ -11,6 +11,11 @@ class ActivityLog extends Model
 
     protected $fillable = [
         'user_id',
+        'workspace_id',
+        'system_register_id',
+        'event',
+        'description',
+        'outcome',
         'method',
         'path',
         'status_code',

@@ -17,5 +17,8 @@ class DatabaseSeeder extends Seeder
     {
         // Seed default admin user
         $this->call(AdminUserSeeder::class);
+        
+        // Seed default workspaces
+        $this->call(WorkspaceSeeder::class);
     }
 }

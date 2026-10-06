@@ -3,12 +3,116 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\ActivityLog;
 use App\Models\PatToken;
 use App\Models\SystemRegister;
+use App\Models\User;
+use App\Models\Workspace;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Hash;
 
 class SystemRegisterController extends Controller
 {
+    /**
+     * Require either password or PIN for sensitive system state changes.
+     */
+    private function validatePasswordOrPin(Request $request)
+    {
+        $user = $request->user();
+
+        if (!$user) {
+            return response()->json([
+                'message' => 'Unauthenticated'
+            ], 401);
+        }
+
+        $password = trim((string) $request->input('password', ''));
+        $pin = trim((string) $request->input('pin', ''));
+
+        if ($password === '' && $pin === '') {
+            return response()->json([
+                'message' => 'Either password or pin is required'
+            ], 422);
+        }
+
+        $passwordHash = $user->password_hash ?? $user->password;
+        $pinHash = $user->pin;
+
+        $passwordValid = $password !== '' && !empty($passwordHash) && Hash::check($password, $passwordHash);
+        $pinValid = $pin !== '' && !empty($pinHash) && Hash::check($pin, $pinHash);
+
+        if (!$passwordValid && !$pinValid) {
+            return response()->json([
+                'message' => 'Invalid password or pin'
+            ], 422);
+        }
+
+        return null;
+    }
+
+    /**
+     * Validate actor by email and password/pin for force endpoints.
+     * Returns [User|null, \Illuminate\Http\JsonResponse|null]
+     */
+    private function resolveForceActor(Request $request): array
+    {
+        $email = trim((string) $request->input('email', ''));
+        $password = trim((string) $request->input('password', ''));
+        $pin = trim((string) $request->input('pin', ''));
+
+        if ($email === '') {
+            return [null, response()->json([
+                'message' => 'email is required',
+            ], 422)];
+        }
+
+        if ($password === '' && $pin === '') {
+            return [null, response()->json([
+                'message' => 'Either password or pin is required',
+            ], 422)];
+        }
+
+        $user = User::where('email', $email)->first();
+        if (!$user) {
+            return [null, response()->json([
+                'message' => 'Invalid credentials',
+            ], 401)];
+        }
+
+        $passwordHash = $user->password_hash ?? $user->password;
+        $pinHash = $user->pin;
+
+        $passwordValid = $password !== '' && !empty($passwordHash) && Hash::check($password, $passwordHash);
+        $pinValid = $pin !== '' && !empty($pinHash) && Hash::check($pin, $pinHash);
+
+        if (!$passwordValid && !$pinValid) {
+            return [null, response()->json([
+                'message' => 'Invalid credentials',
+            ], 401)];
+        }
+
+        return [$user, null];
+    }
+
+    private function logForceSystemAction(Request $request, User $actor, int $systemId, string $action): void
+    {
+        ActivityLog::create([
+            'user_id' => $actor->id,
+            'method' => strtoupper((string) $request->method()),
+            'path' => (string) $request->path(),
+            'status_code' => 200,
+            'ip_address' => (string) $request->ip(),
+            'user_agent' => (string) ($request->userAgent() ?? ''),
+            'request_payload' => json_encode([
+                'system_id' => $systemId,
+                'action' => $action,
+                'performed_by' => $actor->name ?: ('user_' . $actor->id),
+                'performed_by_user_id' => $actor->id,
+                'performed_by_email' => $actor->email,
+            ]),
+        ]);
+    }
+
     /**
      * Get all system registers for the authenticated user
      */
@@ -101,6 +205,22 @@ class SystemRegisterController extends Controller
             'system_name' => ['required', 'string', 'max:255'],
             'os_type' => ['required', 'string', 'max:100'],
             'ip_address' => ['required', 'string', 'max:45'],
+            'workspace_id' => [
+                'nullable',
+                'integer',
+                'min:0',
+                function (string $attribute, mixed $value, \Closure $fail): void {
+                    $workspaceId = (int) $value;
+                    if ($workspaceId > 0 && !Workspace::query()->whereKey($workspaceId)->exists()) {
+                        $fail('The selected workspace is invalid.');
+                    }
+                },
+            ],
+            'public_ip' => ['nullable', 'string', 'max:45'],
+            'public_facing' => ['nullable', 'boolean'],
+            'description' => ['nullable', 'string'],
+            'distro' => ['nullable', 'string', 'max:100'],
+            'version' => ['nullable', 'string', 'max:100'],
             'tags' => ['nullable', 'string', 'max:512'],
             'metadata' => ['nullable', 'string'],
             'validation_hash' => ['nullable', 'string', 'max:255'],
@@ -120,14 +240,29 @@ class SystemRegisterController extends Controller
         }
 
         $resolvedOrgId = $user->org_id ?? $patToken->user?->org_id;
+        $sessionWorkspaceId = null;
+        if ($request->hasSession()) {
+            $sessionWorkspaceId = $request->session()->has('selected_workspace_id')
+                ? (int) $request->session()->get('selected_workspace_id')
+                : null;
+        }
+        $resolvedWorkspaceId = isset($data['workspace_id']) && $data['workspace_id'] !== ''
+            ? (int) $data['workspace_id']
+            : (($sessionWorkspaceId !== null && $sessionWorkspaceId > 0) ? $sessionWorkspaceId : 0);
 
         $system = SystemRegister::create([
             'pat_token_id' => $patToken->id,
             'user_id' => $user->id,
             'org_id' => $resolvedOrgId,
+            'workspace_id' => $resolvedWorkspaceId,
             'system_name' => $data['system_name'],
             'os_type' => $data['os_type'],
             'ip_address' => $data['ip_address'],
+            'public_ip' => $data['public_ip'] ?? null,
+            'public_facing' => (bool) ($data['public_facing'] ?? false),
+            'description' => $data['description'] ?? null,
+            'distro' => $data['distro'] ?? null,
+            'version' => $data['version'] ?? null,
             'tags' => $data['tags'] ?? null,
             'metadata' => $data['metadata'] ?? null,
             'validation_hash' => $data['validation_hash'] ?? null,
@@ -140,9 +275,16 @@ class SystemRegisterController extends Controller
                 'pat_token_id' => $system->pat_token_id,
                 'user_id' => $system->user_id,
                 'org_id' => $system->org_id,
+                'workspace_id' => $system->workspace_id,
                 'system_name' => $system->system_name,
                 'os_type' => $system->os_type,
                 'ip_address' => $system->ip_address,
+                'public_ip' => $system->public_ip,
+                'public_facing' => $system->public_facing,
+                'description' => $system->description,
+                'distro' => $system->distro,
+                'version' => $system->version,
+                'is_locked' => $system->is_locked,
                 'tags' => $system->tags,
                 'metadata' => $system->metadata,
                 'validation_hash' => $system->validation_hash,
@@ -169,6 +311,11 @@ class SystemRegisterController extends Controller
         }
         
         $user = $request->user();
+
+        $credentialError = $this->validatePasswordOrPin($request);
+        if ($credentialError) {
+            return $credentialError;
+        }
         
         // Find the system by ID
         $system = SystemRegister::find($systemId);
@@ -214,7 +361,10 @@ class SystemRegisterController extends Controller
             ], 400);
         }
 
-        $user = $request->user();
+        [$actor, $errorResponse] = $this->resolveForceActor($request);
+        if ($errorResponse) {
+            return $errorResponse;
+        }
         
         // Find the system by ID
         $system = SystemRegister::find($systemId);
@@ -229,9 +379,11 @@ class SystemRegisterController extends Controller
         $system->status = 'inactive';
         $system->save();
 
+        $this->logForceSystemAction($request, $actor, (int) $system->id, 'inactivate');
+
         return response()->json([
             'message' => 'System force deregistered successfully',
-            'deregistered_by_user_id' => $user->id,
+            'deregistered_by_user_id' => $actor->id,
             'system_id' => $system->id,
             'system_user_id' => $system->user_id,
             'status' => $system->status,
@@ -256,6 +408,11 @@ class SystemRegisterController extends Controller
         }
         
         $user = $request->user();
+
+        $credentialError = $this->validatePasswordOrPin($request);
+        if ($credentialError) {
+            return $credentialError;
+        }
         
         // Find the system by ID
         $system = SystemRegister::find($systemId);
@@ -310,7 +467,10 @@ class SystemRegisterController extends Controller
             ], 400);
         }
 
-        $user = $request->user();
+        [$actor, $errorResponse] = $this->resolveForceActor($request);
+        if ($errorResponse) {
+            return $errorResponse;
+        }
         
         // Find the system by ID
         $system = SystemRegister::find($systemId);
@@ -325,7 +485,7 @@ class SystemRegisterController extends Controller
         if ($system->status === 'active') {
             return response()->json([
                 'message' => 'System is already active',
-                'reactivated_by_user_id' => $user->id,
+                'reactivated_by_user_id' => $actor->id,
                 'system_id' => $system->id,
                 'system_user_id' => $system->user_id,
                 'status' => $system->status,
@@ -336,9 +496,11 @@ class SystemRegisterController extends Controller
         $system->status = 'active';
         $system->save();
 
+        $this->logForceSystemAction($request, $actor, (int) $system->id, 'reactivate');
+
         return response()->json([
             'message' => 'System force reactivated successfully',
-            'reactivated_by_user_id' => $user->id,
+            'reactivated_by_user_id' => $actor->id,
             'system_id' => $system->id,
             'system_user_id' => $system->user_id,
             'status' => $system->status,

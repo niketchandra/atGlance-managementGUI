@@ -11,16 +11,18 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('session_tokens', function (Blueprint $table) {
-            $table->id();
-            $table->unsignedBigInteger('user_id')->nullable();
-            $table->string('token', 64)->unique();
-            $table->timestamp('expires_at')->nullable();
-            $table->timestamp('last_used_at')->nullable();
-            $table->timestamps();
+        if (!Schema::hasTable('session_tokens')) {
+            Schema::create('session_tokens', function (Blueprint $table) {
+                $table->id();
+                $table->unsignedBigInteger('user_id')->nullable();
+                $table->string('token', 64)->unique();
+                $table->timestamp('expires_at')->nullable();
+                $table->timestamp('last_used_at')->nullable();
+                $table->timestamps();
 
-            $table->foreign('user_id')->references('id')->on('users')->onDelete('cascade');
-        });
+                $table->foreign('user_id')->references('id')->on('users')->onDelete('cascade');
+            });
+        }
     }
 
     /**

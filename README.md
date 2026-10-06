@@ -1,478 +1,249 @@
-# Laravel User CRUD with MySQL and Kong
+# AtGlance Management Console
 
-This project provides a complete CRUD API for a User resource using Laravel and MySQL, exposed through Kong API Gateway.
+AtGlance keeps copies of the configuration files on your Linux servers and tells you what changed and when.
 
-## Repository Branches
-- [FastAPI-with-Kong](https://github.com/niketchandra/api-gateway-testing/tree/FastAPI-with-Kong) - FastAPI implementation
-- [Laravel-with-Kong](https://github.com/niketchandra/api-gateway-testing/tree/Laravel-with-Kong) - Laravel implementation
-- [Redis-Integration](https://github.com/niketchandra/api-gateway-testing/tree/Redis-Integration) - Redis caching layer integration
+This repository is the **server side** of AtGlance:
 
-## Features
-
-### ✨ System Management & Validation
-- **System Registration**: Register systems/devices with PAT token authentication  
-- **Validation Hash Support**: Track system validation via optional `validation_hash` field  
-- **System Deregistration**: Change system status from `active` to `inactive` (deregister)
-- **Query by User/Token**: List registered systems filtered by user or PAT token
-- **Status Tracking**: Monitor active/inactive system states
-
-### ✨ Configuration File Management
-- **File Upload**: Upload configuration files with system and validation tracking
-- **Validation Hash**: Track uploaded configs via `validation_hash` for verification
-- **Filtered Listing**: List config files by `system_id` and `validation_hash`
-- **Secure Download**: Download files by ID with `system_id` validation and PAT auth
-- **Raw Data Access**: Retrieve stored file content from database
-- **Soft Delete**: Mark files inactive while preserving data
-- **Storage**: Files stored in `storage/app/private/config_files/{user_id}/` with UUID names
-- **Database**: Metadata in `configuration_files`, content in `raw_data` table
-
-### ✨ Resilience & High Availability
-This project implements production-ready resilience patterns:
-
-- **Circuit Breaker**: Automatically detects database failures and prevents cascading errors
-- **Message Queue**: Buffers write operations when database is unavailable
-- **Automatic Retry**: Failed operations retry with exponential backoff (30s, 60s, 120s, 300s, 600s)
-- **Graceful Degradation**: Returns meaningful responses even when services are down
-
-**How it works:**
-1. When database fails 3 times, circuit breaker opens
-2. Write operations are queued in Redis
-3. Queue worker processes jobs when database recovers
-4. Read operations return 503 with circuit state information
-
-See [IMPLEMENTATION.md](IMPLEMENTATION.md) for complete guide and testing instructions.
-
-## Docs
-- Main README: [README.md](README.md)
-- **API Documentation**: [API.md](API.md) - Complete API endpoint reference (Auth, Users, Products, PAT Tokens, System Registration, System Deregistration, Configuration Files, File Operations)
-- Implementation Guide (Circuit Breaker + Queue): [IMPLEMENTATION.md](IMPLEMENTATION.md)
-- Laravel API details: [LARAVEL.md](LARAVEL.md)
-- Kong config and routing: [KONG.md](KONG.md)
-- Resilience patterns (Circuit Breakers & Queues): [resilience.md](resilience.md)
-- Circuit breaker details: [CircuitBreak.md](CircuitBreak.md)
-- Queue system details: [QUEUE.md](QUEUE.md)
-- Scenario notes: [scenerio.md](scenerio.md)
-- Redis branch: https://github.com/niketchandra/api-gateway-testing/tree/Redis-Integration
-- Redis docs (branch): https://github.com/niketchandra/api-gateway-testing/blob/Redis-Integration/redis.md
-- Composer app README: [composer/README.md](composer/README.md)
-- Copilot instructions: [.github/copilot-instructions.md](.github/copilot-instructions.md)
-
-## End-to-end workflow (Laravel + Kong + MySQL + Redis + Circuit Breaker)
-High-level flow for a typical request:
-
-1. Client calls Kong (proxy port 8002).
-2. Kong routes the request to the Laravel API service.
-3. Laravel checks the circuit breaker state.
-4. If breaker is closed, Laravel runs the DB call.
-5. If the DB call fails, the breaker records failures and may open.
-6. If breaker is open:
-   - Reads return 503 with `circuit_state`.
-   - Writes are queued in Redis and return 202.
-7. Queue worker retries writes with backoff until MySQL is back.
-8. On recovery, queued jobs succeed and the breaker closes after successful calls.
-
-Workflow diagram:
+- **API** for the `atglance` CLI that runs on each server. The CLI registers the server and uploads its service configuration files (nginx, ssh, and so on) as versioned backups.
+- **Web console** for people:
+  - Admins manage users, workspaces, API keys, S3 storage, backups and restore, notifications, and branding.
+  - Users browse their servers and every version of their configuration files.
 
 ```
-Client
-  |
-  v
-Kong (8002) -> Laravel API (8000) -> Circuit Breaker
-                                     |          |
-                                     |          +-- open --> 503 (read) / 202 + Redis queue (write)
-                                     |
-                                     +-- closed --> MySQL
-                                                       |
-                                                       +-- success -> response
-                                                       +-- failure -> breaker counts failure
+Linux servers (atglance CLI) ──HTTPS──▶ API ─┐
+                                              ├─ Laravel app ── MySQL + Redis
+Browser (admins, users) ─────────────▶ Web ──┘        │
+                                                       └── S3 (optional: files, backups)
 ```
 
-```mermaid
-flowchart LR
-  A[Client] --> B[Kong :8002]
-  B --> C[Laravel API :8000]
-  C --> D{Circuit Breaker}
-  D -->|open| E[503 for reads]
-  D -->|open| F[202 + queue write]
-  F --> G[Redis]
-  G --> H[Queue Worker]
-  H --> I[MySQL]
-  D -->|closed| I[MySQL]
-  I --> J[Response]
-```
+## What you get
 
-## Docker Compose (API + MySQL + Redis + Kong + Queue Worker)
-1. Start everything:
+- **Configuration backups**: every upload is kept as a version, per server and service.
+- **Workspaces and roles**: super admin, admins (workspace managers), and users.
+- **Storage**: local disk by default; S3 optional, with one-click migration between the two.
+- **Scheduled backups and restore**: of configuration files and of the whole portal, to S3. See [scheduled-backups.md](docs/scheduled-backups.md).
+- **Notifications**: Email, Microsoft Teams, Slack, n8n, Telegram, webhooks and SMS, set up per workspace. See [notifications.md](docs/notifications.md).
+- **White-label**: your organization's name and logo, plus About, Features, FAQ, Support and Contact pages.
+- **Resilience**: if MySQL goes down, writes are queued in Redis and replayed when it comes back.
+
+## Installation and update
+
+> [!IMPORTANT]
+> **Choose how to deploy.** Both ways use the same images from Docker Hub. Full steps: **[INSTALLATION-UPDATE.md](INSTALLATION-UPDATE.md)**.
+>
+> | | **Part A: VM** | **Part B: Container service** |
+> |---|---|---|
+> | Where | Any Linux server: EC2, Azure VM, VPS, bare metal | AWS ECS (Fargate/EC2), Kubernetes, Azure Container Apps, Cloud Run |
+> | MySQL and Redis | Included, as containers | Managed services (RDS, ElastiCache, and so on) |
+> | Effort | One command | Task definitions or manifests, load balancer, shared storage |
+> | Guide | [Part A](INSTALLATION-UPDATE.md#part-a-deploy-on-a-vm) | [Part B](INSTALLATION-UPDATE.md#part-b-deploy-on-a-container-service) |
+
+### Part A: Deploy on a VM
+
+Run one command on a Linux server (amd64; arm64 images are not published yet). Docker is installed for you if it is missing.
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose-kong.yml up -d
+curl -fsSL https://app.atglance.live/console/atglance-installer.sh | sudo bash
 ```
 
-2. Build containers when code changes:
+Or from a clone of this repository (the installer and updater are in `scripts/`):
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose-kong.yml up -d --build
+git clone https://github.com/niketchandra/atGlance-managementGUI.git
+sudo bash atGlance-managementGUI/scripts/atglance-installer.sh
 ```
 
-3. Run migrations:
+1. The installer checks the server (root, OS, CPU, disk, memory, ports) and installs Docker and Docker Compose if needed.
+2. It creates `/opt/atglance` with random database passwords, pulls the latest `atglance/ce-atglance-app`, `-gateway` and `-mcp` images and starts the containers.
+3. Open the printed URL, `http://<server-ip>:8000`, and complete the setup wizard.
+4. If you ran it from a clone, the clone is removed. It is kept when it has local changes, or with `--keep-clone`.
+
+Open ports 8000 (web console) and 8002 (API gateway for the `atglance` CLI) in the firewall. The installer always deploys the newest release (`latest` images). To update later, see [Update](#update).
+
+#### Windows (PowerShell)
+
+On Windows 10/11 or Windows Server, use `atglance-installer.ps1`. It needs [Docker Desktop](https://www.docker.com/products/docker-desktop/) running in **Linux containers** mode (the default). If Docker is missing, the script tries `winget install Docker.DockerDesktop`, then asks you to start Docker Desktop and run it again.
+
+1. Open **PowerShell as administrator** (Start menu, search PowerShell, right-click, **Run as administrator**).
+2. Download and run the installer:
+
+   ```powershell
+   irm https://app.atglance.live/console/atglance-installer.ps1 | iex
+   ```
+
+   Or, from a clone of this repository:
+
+   ```powershell
+   git clone https://github.com/niketchandra/atGlance-managementGUI.git
+   powershell -ExecutionPolicy Bypass -File .\atGlance-managementGUI\scripts\atglance-installer.ps1
+   ```
+
+3. Open the printed URL, `http://<host-ip>:8000`, and complete the setup wizard.
+
+The installer creates `C:\ProgramData\AtGlance` with random database passwords, pulls the latest `atglance/ce-atglance-app`, `-gateway` and `-mcp` images and starts the containers. Open ports 8000 and 8002 in Windows Firewall. To update later, see [Update](#update).
+
+**If PowerShell blocks the script** ("running scripts is disabled on this system"), the execution policy is too strict. Use one of these:
+
+- Run it once without changing any policy (recommended):
+
+  ```powershell
+  powershell -ExecutionPolicy Bypass -File .\atglance-installer.ps1
+  ```
+
+- Allow it for the current PowerShell window only. The policy reverts when you close the window:
+
+  ```powershell
+  Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+  .\atglance-installer.ps1
+  ```
+
+- Allow local scripts for your user permanently:
+
+  ```powershell
+  Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
+  ```
+
+- If you downloaded the file in a browser and Windows still blocks it, unblock it first: `Unblock-File .\atglance-installer.ps1`.
+
+Options (`-Dir`, `-Registry`, `-Port`, `-KeepClone`) can be passed to `atglance-installer.ps1`; it always deploys the newest release (`latest` images). When piping to `iex`, set the environment variables instead, for example `$env:ATGLANCE_DIR = "D:\atglance"` before the `irm` command.
+
+### Update
+
+The update scripts move a VM install to the newest release and keep your data, passwords and settings:
+
+1. Back up the database, the app key and the compose files.
+2. Compare the running images with the newest release. If nothing changed, stop ("already up to date").
+3. Update every container. Database migrations run when the app starts.
+4. Check health: containers, web console, gateway, migrations, queue worker, scheduler, app log.
+5. Compare the database with the backup: every table present, no rows lost.
+
+Linux:
 
 ```bash
-docker compose exec api php artisan migrate --force
+curl -fsSL https://raw.githubusercontent.com/niketchandra/atGlance-managementGUI/main/scripts/atglance_update.sh | sudo bash -s -- --yes
 ```
 
-4. Restart Kong after any kong/kong.yml change:
+Windows (PowerShell as administrator):
+
+```powershell
+irm https://raw.githubusercontent.com/niketchandra/atGlance-managementGUI/main/scripts/atglance_update.ps1 -OutFile atglance_update.ps1
+powershell -ExecutionPolicy Bypass -File .\atglance_update.ps1
+```
+
+Exit code `0` means updated (or already up to date). Exit code `2` means a check failed: the backup folder it prints has a `ROLLBACK.txt`. Options, the clone variant and rollback: [Updating on Linux](INSTALLATION-UPDATE.md#updating) and [Update on Windows](INSTALLATION-UPDATE.md#update-on-windows). Running the installer again also updates and keeps your data, but takes no backup and runs no checks. Container services (ECS, Kubernetes): see [Upgrade on ECS](INSTALLATION-UPDATE.md#upgrade-on-ecs).
+
+### Part B: Deploy on ECS or another container service
+
+Run the images as separate services next to managed MySQL 8.0 and Redis 7:
+
+| Service | Image | Command | Count |
+|---|---|---|---|
+| app | `atglance/ce-atglance-app` | default (port 8000, health `GET /up`) | 1 during install, then scale |
+| worker | `atglance/ce-atglance-app` | `php artisan queue:work redis --tries=5 --backoff=30,60,120,300,600 --timeout=60` | 1 or more |
+| scheduler | `atglance/ce-atglance-app` | `php artisan schedule:work` | exactly 1 |
+| gateway | `atglance/ce-atglance-gateway` | default (port 8002) | 1 or more |
+
+1. Create MySQL (database and user `atglance`), Redis and a shared file system (EFS, Azure Files, a `ReadWriteMany` volume).
+2. Mount the shared file system at `/app/storage` in the app, worker and scheduler. It holds the app key and stored files.
+3. Set `ATGLANCE_ROLE`, `DB_HOST`, `DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD`, `REDIS_HOST`, `CACHE_STORE=redis` and `QUEUE_CONNECTION=redis` on all three.
+4. Start the app first. When it is healthy, start the worker, the scheduler and the gateway.
+5. Put a load balancer with HTTPS in front: ports 443 and 8000 to the app, port 8002 to the gateway, all on one host name. The CLI needs 8000 and 8002.
+6. Open `https://<your-domain>` and complete the setup wizard.
+
+[INSTALLATION-UPDATE.md](INSTALLATION-UPDATE.md#ecs-on-fargate-step-by-step) has a full ECS Fargate walkthrough with task definitions, plus Kubernetes, Azure Container Apps and Cloud Run notes.
+
+### After installing
+
+- **Back up the app key.** It encrypts stored secrets (S3, SMTP and SSO passwords, API keys). On a VM: `docker exec ce-atglance-app grep APP_KEY /app/storage/.env`.
+- **Connect a server.** In the console, open **Settings** and create an API key (it starts with `atgla-`). On the server, run `sudo atglance --configure` and enter the gateway as the management URL: `http://<server-ip>:8002` (VM) or `https://<your-domain>:8002` (load balancer). The API is described in [api-reference.md](docs/api-reference.md).
+
+### Containers
+
+| Container | Image | What it does |
+|---|---|---|
+| `ce-atglance-app` | `atglance/ce-atglance-app` | Web console and API. Runs database migrations on start. |
+| `ce-atglance-worker` | `atglance/ce-atglance-app` | Queue worker. Replays writes that were queued while MySQL was down. |
+| `ce-atglance-scheduler` | `atglance/ce-atglance-app` | Laravel scheduler. Runs scheduled S3 backups, see [scheduled-backups.md](docs/scheduled-backups.md). |
+| `ce-atglance-db` | `mysql:8.0` | Database (VM install) |
+| `ce-atglance-redis` | `redis:7-alpine` | Cache, queue and circuit-breaker state (VM install) |
+| `ce-atglance-gateway` | `atglance/ce-atglance-gateway` | Kong API gateway, port 8002, with the AtGlance routes built in. The `atglance` CLI talks to it. |
+| `ce-atglance-mcp` | `atglance/ce-atglance-mcp` | Read-only MCP server for AI clients, at `<host>:8002/mcp`. Off by default, see [mcp.md](docs/mcp.md). |
+| `ce-atglance-controller` | `nginx:1.27-alpine` | Lets the console start and stop the MCP server. Allows only start, stop and status of `ce-atglance-mcp`. |
+
+Only the three `atglance/ce-atglance-*` images are built by this project. The others are public images.
+
+### Before going to production
+
+- Put HTTPS in front of port 8000: a reverse proxy (Caddy, nginx, Traefik) on a VM, or the load balancer on a container service.
+- [#5](https://github.com/niketchandra/atGlance-managementGUI/issues/5): keep settings only in the database, not in `.env`.
+- [#8](https://github.com/niketchandra/atGlance-managementGUI/issues/8): production web server.
+
+## Development
+
+The Laravel app lives in `composer/`. The dev overlay builds the images from source, bind-mounts `composer/storage` and uses `composer/.env`:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose-kong.yml restart kong
+cp .env.example .env                    # compose settings (ports, DB passwords)
+cp composer/.env.example composer/.env  # then set APP_KEY
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
 ```
 
-2. Services:
-- **api**: Laravel application
-- **mysql**: MySQL 8.0 database
-- **redis**: Redis 7 for caching and queue
-- **queue-worker**: Laravel queue worker for background jobs
-- **kong**: Kong API Gateway 3.6
-- **phpmyadmin**: Database admin interface
+This starts the app (port 8000), worker, scheduler, MySQL, Redis and the Kong API gateway (port 8002).
 
-3. Endpoints:
-- API (direct): http://localhost:8000
-- Kong proxy: http://localhost:8002
-- Kong admin: http://localhost:8001
-- phpMyAdmin: http://localhost:8080 (user root, password empty)
-- Redis: localhost:6379
-
-The Laravel application lives in composer/ and is served by the api container.
-
-## Kong API description
-Kong runs in DB-less mode and loads kong/kong.yml at startup. The config defines:
-- A users service with a /users route for all CRUD methods.
-- An auth service with /auth/login and /auth/logout.
-- A rate-limiting plugin on the users service.
-
-Details: [KONG.md](KONG.md)
-
-## CRUD commands (via Kong)
-## File Storage Location
-
-Configuration files uploaded via `/config-files/upload` are stored at:
-
-**In Docker**: 
-```
-/app/storage/app/private/config_files/{user_id}/{uuid}.{extension}
-```
-
-**On Host Machine**:
-```
-composer/storage/app/private/config_files/{user_id}/{uuid}.{extension}
-```
-
-**Example**: 
-- Docker: `/app/storage/app/private/config_files/3/8c399352-2c65-41e7-8480-4ac4d3200bc2.conf`
-- Host: `composer/storage/app/private/config_files/3/8c399352-2c65-41e7-8480-4ac4d3200bc2.conf`
-
-Files are also stored in the database:
-- **Metadata**: `configuration_files` table (file_name, location, system_id, service_name, validation_hash, status)
-- **Content**: `raw_data` table (file_data, validation_hash, status)
-
-## API Endpoints Quick Reference
-
-### Authentication (Session & PAT Tokens)
-- `POST /auth/register` - Register new user
-- `POST /auth/login` - Get session token
-- `POST /auth/logout` - Logout user
-- `GET /auth/validate-token` - Validate PAT via header
-- `POST /auth/validate-token` - Validate PAT via body
-- `POST /auth/pat-tokens` - Create new PAT token
-- `GET /auth/pat-tokens` - List PAT tokens
-
-### System Management (PAT Required)
-- `POST /system-register` - Register system with optional validation_hash
-- `GET /system-register` - List user's systems
-- `GET /system-register/pat/{id}` - Get systems by PAT token
-- `GET /system-register/user/{id}` - Get systems by user
-- `POST /system-deregister` - Deregister system (change to inactive)
-
-### Configuration File Management (PAT Required)
-- `POST /config-files/upload` - Upload config file (system_id, service_name, validation_hash)
-- `GET /config-files` - List all active configs
-- `GET /config-files/filter?system_id=...&validation_hash=...` - Filter configs by system + hash
-- `GET /config-files/{id}` - Download config file by ID
-- `GET /config-files/download/{id}?system_id=...` - Download with system_id validation
-- `GET /config-files/{id}/raw-data` - Get file content from database
-- `DELETE /config-files/{id}` - Soft delete config (mark inactive)
-
-### File Operations (PAT Required)
-- `POST /files/upload` - Upload generic file
-- `GET /files/{id}` - Download generic file
-
-### User Management (Session Required)
-- `GET /users` - List users
-- `GET /users/{id}` - Get user by ID
-- `POST /users` - Create user
-- `PUT /users/{id}` - Update user
-- `DELETE /users/{id}` - Delete user
-
-These examples use a default test user. If it does not exist, create it first.
-
-Default test credentials:
-- Email: user001@example.com
-- Password: Secret123!
-
-Create user:
+Run the tests in a container (no local PHP needed):
 
 ```bash
-curl -X POST http://localhost:8002/users \
-  -H "Content-Type: application/json" \
-  -d "{\"name\":\"User001\",\"email\":\"user001@example.com\",\"password\":\"Secret123!\"}"
+docker run --rm -e VIEW_COMPILED_PATH=/tmp/views -v "$(pwd)/composer:/app" -w /app --entrypoint php ce-atglance-app:dev artisan test
 ```
 
-List users:
+`VIEW_COMPILED_PATH` keeps the test run from writing compiled views into the storage folder that the running app shares.
+
+### Publish images
+
+Before a release, set the version in `composer/config/app.php` (`'version'`, shown in the console sidebar and sent to the licence server) and in `mcp/pyproject.toml` and `mcp/src/atglance_mcp/__init__.py`. The current release is `2.0.0`.
+
+Images are published for `linux/amd64` only. Tag every release with its version and with `latest`, because the installer and the update scripts always deploy `latest`:
 
 ```bash
-curl http://localhost:8002/users
+docker buildx build --platform linux/amd64 \
+  -t atglance/ce-atglance-app:2.0.0 -t atglance/ce-atglance-app:latest --push .
+docker buildx build --platform linux/amd64 \
+  -t atglance/ce-atglance-gateway:2.0.0 -t atglance/ce-atglance-gateway:latest --push kong
+docker buildx build --platform linux/amd64 \
+  -t atglance/ce-atglance-mcp:2.0.0 -t atglance/ce-atglance-mcp:latest --push mcp
 ```
 
-Get user:
+## Documentation
 
-```bash
-curl http://localhost:8002/users/1
-```
+> [!TIP]
+> **Start here.** These documents cover most needs:
+>
+> | Document | Read it to |
+> |---|---|
+> | **[INSTALLATION-UPDATE.md](INSTALLATION-UPDATE.md)** | Install and update AtGlance on a VM or on ECS, Kubernetes and other container services |
+> | **[docs/api-reference.md](docs/api-reference.md)** | Connect the `atglance` CLI or your own client: every API endpoint, with requests and responses |
+> | **[docs/web-console.md](docs/web-console.md)** | Find your way around the web console: pages, roles, white-label pages |
+> | **[docs/scheduled-backups.md](docs/scheduled-backups.md)** | Set up scheduled S3 backups and restore the portal |
+> | **[docs/api-keys.md](docs/api-keys.md)** | Create, view and revoke the `atgla-` API keys that servers use |
 
-Update user:
+All documents are in the [docs](docs/) folder:
 
-```bash
-curl -X PUT http://localhost:8002/users/1 \
-  -H "Content-Type: application/json" \
-  -d "{\"name\":\"User001 Updated\"}"
-```
-
-Delete user:
-
-```bash
-curl -X DELETE http://localhost:8002/users/1
-```
-
-## Products CRUD (via Kong)
-Create product:
-
-```bash
-curl -X POST http://localhost:8002/products \
-  -H "Content-Type: application/json" \
-  -d "{\"name\":\"Widget\",\"sku\":\"WID-001\",\"price_cents\":1200}"
-```
-
-List products:
-
-```bash
-curl http://localhost:8002/products
-```
-
-Get product:
-
-```bash
-curl http://localhost:8002/products/1
-```
-
-Update product:
-
-```bash
-curl -X PUT http://localhost:8002/products/1 \
-  -H "Content-Type: application/json" \
-  -d "{\"price_cents\":1500}"
-```
-
-Delete product:
-
-```bash
-curl -X DELETE http://localhost:8002/products/1
-```
-
-## Login and logout (via Kong)
-Register:
-
-```bash
-curl -X POST http://localhost:8002/auth/register \
-  -H "Content-Type: application/json" \
-  -d "{\"name\":\"User001\",\"email\":\"user001@example.com\",\"password\":\"Secret123!\",\"password_confirmation\":\"Secret123!\"}"
-```
-
-Login (returns a temporary session token):
-
-```bash
-curl -X POST http://localhost:8002/auth/login \
-  -H "Content-Type: application/json" \
-  -d "{\"email\":\"user001@example.com\",\"password\":\"Secret123!\"}"
-```
-
-Retrieve session token from login response:
-
-```bash
-curl -s -X POST http://localhost:8002/auth/login \
-  -H "Content-Type: application/json" \
-  -d "{\"email\":\"user001@example.com\",\"password\":\"Secret123!\"}" | python -c "import sys, json; print(json.load(sys.stdin)['access_token'])"
-```
-
-Create PAT token (permanent, format atgla-xxxxxxxxxxxxxxxxxxx):
-
-```bash
-curl -X POST "http://localhost:8002/auth/pat-tokens?name=my_pat_1&expires_at=2099-12-31" \
-  -H "Authorization: Bearer <session_token>"
-```
-
-View all PAT tokens for the current user:
-
-```bash
-curl -X GET http://localhost:8002/auth/pat-tokens \
-  -H "Authorization: Bearer <session_token>"
-```
-
-Logout (invalidates the session token):
-
-```bash
-curl -X POST http://localhost:8002/auth/logout \
-  -H "Authorization: Bearer <token>"
-```
-
-## File upload and download (via Kong)
-Upload (requires PAT token):
-
-```bash
-curl -X POST http://localhost:8002/files/upload \
-  -H "Authorization: Bearer <pat_token>" \
-  -H "Content-Type: application/json" \
-  -d "{\"file_name\":\"sample.txt\",\"file_data\":\"<raw-or-base64>\"}"
-```
-
-Download (requires PAT token, use file id from upload response):
-
-```bash
-curl -X GET http://localhost:8002/files/<file_id> \
-  -H "Authorization: Bearer <pat_token>"
-```
-
-## System register (via Kong)
-Register a system using a PAT token (CLI tool passes PAT only):
-
-```bash
-curl -X POST http://localhost:8002/system-register \
-  -H "Authorization: Bearer <pat_token>" \
-  -H "Content-Type: application/json" \
-  -d "{\"system_name\":\"dev\",\"os_type\":\"Windows\",\"ip_address\":\"192.168.1.10\",\"org_id\":null,\"tags\":\"cli,dev\",\"metadata\":\"{\\\"cpu\\\":\\\"i7\\\"}\"}"
-```
-
-## Configuration File Management (via Kong)
-
-### Upload Configuration File
-Upload a config file with system_id, service_name, and optional validation_hash:
-
-```bash
-curl -X POST http://localhost:8002/config-files/upload \
-  -H "Authorization: Bearer <pat_token>" \
-  -F "file=@app.config" \
-  -F "system_register_id=1093719686" \
-  -F "service_name=myService" \
-  -F "validation_hash=abc123def456"
-```
-
-### List All Configuration Files
-List all active config files for authenticated user:
-
-```bash
-curl -X GET http://localhost:8002/config-files \
-  -H "Authorization: Bearer <pat_token>"
-```
-
-### Filter Configuration Files
-Filter config files by system_id and validation_hash:
-
-```bash
-curl -X GET "http://localhost:8002/config-files/filter?system_id=1093719686&validation_hash=abc123def456" \
-  -H "Authorization: Bearer <pat_token>"
-```
-
-### Download Configuration File
-Download a config file by ID (simple):
-
-```bash
-curl -X GET http://localhost:8002/config-files/12 \
-  -H "Authorization: Bearer <pat_token>" \
-  -o downloaded-app.config
-```
-
-### Download Configuration File by ID with System Validation
-Download a config file by ID, requires system_id validation:
-
-```bash
-curl -X GET "http://localhost:8002/config-files/download/12?system_id=1093719686" \
-  -H "Authorization: Bearer <pat_token>" \
-  -o downloaded-app.config
-```
-
-### Get Raw File Data
-Get stored file content from database:
-
-```bash
-curl -X GET http://localhost:8002/config-files/12/raw-data \
-  -H "Authorization: Bearer <pat_token>"
-```
-
-### Delete (Soft Delete) Configuration File
-Mark a config file as inactive:
-
-```bash
-curl -X DELETE http://localhost:8002/config-files/12 \
-  -H "Authorization: Bearer <pat_token>"
-```
-
-### Deregister System
-Change system status from active to inactive:
-
-```bash
-curl -X POST "http://localhost:8002/system-deregister?systemId=1093719686" \
-  -H "Authorization: Bearer <pat_token>" \
-  -H "Content-Type: application/json"
-```
-
-## Auth flow diagram (Session + PAT)
-
-```mermaid
-flowchart LR
-  A[add_user] --> B[login]
-  B --> C[Using Session Create PAT]
-  C --> D[view all PAT]
-  D --> E[Logout]
-```
-
-## Laravel migrations
-Run migrations inside the api container:
-
-```bash
-docker compose exec api php artisan migrate --force
-```
-
-## Database tables (core)
-- users: application users (name, email, password_hash, dob)
-- personal_access_tokens: PAT tokens (user_id, token, abilities, expires_at, last_used_at)
-- sessions: temporary session tokens for login (user_id, token, expires_at, last_used_at)
-- system_register: registered systems (pat_token_id, user_id, org_id nullable, system_name, os_type, ip_address, tags, metadata)
-- configuration_files: uploaded file metadata (user_id, file_name, file_location)
-- raw_data: uploaded file contents (file_id, user_id, file_data)
-
-## Database tables (updated with validation_hash)
-- users: application users (id, name, email, password_hash, dob, status, created_at, updated_at)
-- personal_access_tokens: PAT tokens (id, user_id, token, abilities, expires_at, last_used_at, created_at)
-- sessions: temporary session tokens (id, user_id, token, expires_at, last_used_at, created_at)
-- system_register: registered systems (id, pat_token_id, user_id, system_name, os_type, ip_address, org_id, tags, metadata, **validation_hash**, status, created_at, updated_at)
-- configuration_files: uploaded file metadata (id, user_id, system_register_id, file_name, service_name, file_location, **validation_hash**, status, created_at, updated_at)
-- raw_data: uploaded file contents (id, file_id, user_id, system_register_id, file_name, service_name, file_data, **validation_hash**, status, created_at, updated_at)
-
-**Key Notes**:
-- `validation_hash` (optional): Tracks validation status across system_register, configuration_files, and raw_data tables
-- `status`: Tracks active/inactive state for systems and files
-- Configuration files stored in both file system (`storage/app/private/config_files/{user_id}/`) and database
-
-## Troubleshooting
-- Kong says "no Route matched": restart Kong after editing kong/kong.yml.
-  - docker compose -f docker-compose.yml -f docker-compose-kong.yml restart kong
-- 500 error for "Unknown column users.password_hash": run the migration.
-- Docker network not found: bring stack down and up again.
+| Area | Document | What it covers |
+|---|---|---|
+| Install | [INSTALLATION-UPDATE.md](INSTALLATION-UPDATE.md) | VM installer and update scripts (`scripts/`), ECS Fargate walkthrough, Kubernetes and other platforms |
+| Use | [web-console.md](docs/web-console.md) | Web console layout, pages and white-label pages |
+| Use | [notifications.md](docs/notifications.md) | Notification channels (Email, Teams, Slack, n8n, Telegram, webhooks, SMS) and events |
+| Use | [ai-connect.md](docs/ai-connect.md) | Connecting an AI provider, per-provider setup |
+| Use | [licence.md](docs/licence.md) | Licence key, verification, and what an unlicensed instance blocks |
+| Use | [custom-domain.md](docs/custom-domain.md) | Custom domain and HTTPS after install, the built-in proxy, own certificates |
+| Operate | [scheduled-backups.md](docs/scheduled-backups.md) | Scheduled S3 backups, restore, the scheduler container |
+| Operate | [queue.md](docs/queue.md) | Queue worker, retries and monitoring |
+| Operate | [api-gateway.md](docs/api-gateway.md) | Kong API gateway used by the CLI: routes, rate limits, adding routes |
+| Integrate | [api-reference.md](docs/api-reference.md) | Every API endpoint, with requests and responses |
+| Integrate | [api-keys.md](docs/api-keys.md) | API key (PAT) flow for the `atglance` CLI |
+| Develop | [project-overview.md](docs/project-overview.md) | Features, branches, curl examples, table layouts |
+| Develop | [backend-guide.md](docs/backend-guide.md) | Backend code layout, request flow, authentication, CRUD walkthrough |
+| Develop | [resilience-patterns.md](docs/resilience-patterns.md) | Circuit breaker and message queue patterns explained |
+| Develop | [resilience-implementation.md](docs/resilience-implementation.md) | How the circuit breaker and queue are built in this code |
+| Develop | [circuit-breaker.md](docs/circuit-breaker.md) | Circuit breaker code and request workflow |
+| Develop | [tested-scenarios.md](docs/tested-scenarios.md) | Failure scenarios tested (MySQL down, breaker open, misconfiguration) |

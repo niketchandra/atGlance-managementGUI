@@ -1,0 +1,340 @@
+# AtGlance GUI - Modern Web Interface
+
+## Overview
+
+The AtGlance application now features a modern, responsive single-page application (SPA) style web interface with a **20:80 layout** design. This document describes the new frontend structure, components, and how to use them.
+
+## Architecture
+
+### 20:80 Layout Split
+
+- **Left Sidebar (20%)**: Contains authentication forms and navigation menu
+  - Before login: Login, Registration, and Forgot Password tabs
+  - After login: Dashboard navigation menu with quick links
+  
+- **Right Content Area (80%)**: Displays the main application content
+  - Before login: Welcome section with features, screenshots, and contact form
+  - After login: Dashboard, settings, profile, and products management pages
+
+### Design
+
+- **Color Scheme**: Modern gradient (Purple to Pink) - `#667eea` to `#764ba2`
+- **Font**: Segoe UI, Tahoma, Geneva (system fonts)
+- **Icons**: FontAwesome 6.4.0
+- **Framework**: Tailwind CSS (via CDN)
+
+## Pages & Views
+
+### 1. **Main Layout** (`resources/views/app.blade.php`)
+The master template that handles the entire UI structure.
+
+**Features:**
+- Responsive 20:80 layout
+- Dynamic sidebar that shows auth forms or dashboard nav
+- Header with navigation (public) or user info (authenticated)
+- Public content area with welcome, features, screenshots, and contact sections
+- Modern CSS with gradients and animations
+- Mobile responsive design
+
+**Routes:**
+- `GET /` - Main entry point (shows login form or dashboard)
+
+### 2. **Dashboard** (`resources/views/dashboard.blade.php`)
+Main dashboard showing API statistics and metrics.
+
+**Features:**
+- Welcome card with personalized greeting
+- 4-column stats grid (Requests, Success Rate, Response Time, Active APIs)
+- Quick actions buttons
+- Recent activity table
+- Performance chart placeholder
+
+**Route:**
+- `GET /dashboard` - Dashboard (authenticated users only)
+
+### 3. **Settings** (`resources/views/settings.blade.php`)
+Comprehensive settings management with 5 tabs.
+
+**Tabs:**
+- **Account**: Update profile information (name, email, company, phone, timezone)
+- **Security**: Change password, 2FA setup, active sessions
+- **Notifications**: Email notification preferences
+- **Billing**: Subscription info, payment methods, invoices
+- **API Keys**: Create and manage API keys
+
+**Route:**
+- `GET /settings` - Settings page (authenticated users only)
+
+### MCP setup page (`resources/views/mcp-connect.blade.php`)
+Linked as **MCP** in the top bar for every user while the MCP Server plugin is enabled (Site Setting > Plugins). Setup steps for connecting
+AI clients to the read-only MCP server, with the user's own API key. See `docs/mcp.md`.
+
+**Route:**
+- `GET /connect-ai` - MCP setup page (authenticated; 404 while MCP is off)
+
+### 4. **Profile** (`resources/views/profile.blade.php`)
+User profile and account overview.
+
+**Features:**
+- Profile banner with avatar
+- Account statistics (Active APIs, Requests, Uptime, Response Time)
+- Account information display
+- Recent activity timeline
+- Security & Privacy panel
+- Preferences section
+
+**Route:**
+- `GET /profile` - Profile page (authenticated users only)
+
+### 5. **Products** (`resources/views/products.blade.php`)
+API and product management page.
+
+**Features:**
+- Search and filter functionality
+- 2-column product card grid
+- Each card shows:
+  - API name and version
+  - Status badge (Active/Maintenance)
+  - Description
+  - Stats (Requests, Uptime, Response Time)
+  - View Details and Edit buttons
+- Pagination controls
+
+**Route:**
+- `GET /products` - Products/APIs page (authenticated users only)
+
+## Form Features
+
+### Login Form
+- Email and password fields
+- Remember me checkbox
+- Form validation with error display
+
+### Registration Form
+- Full name, email, password, and confirmation fields
+- Form validation
+- Password confirmation required
+
+### Forgot Password Form
+- Email input
+- Sends password reset link
+- Status message display
+
+### Contact Form
+- Name, email, subject, and message fields on the public Contact page (`/contact`)
+- Shown only when the contact form is turned on in Site Configuration
+- Submissions are stored in `contact_submissions` and listed on the Site Configuration tab, where admins can delete them
+- Rate-limited to 5 submissions per minute per IP
+
+## White-label and Public Pages
+
+The **Site Configuration** tab (`/admin/settings?tab=site`) holds the organization's profile:
+
+- **Organization name**: saved to `organizations` row `id=200`. It replaces "AtGlance" in the page title, headers, welcome text, logo alt text, and page titles. "AtGlance" is the fallback when no name is set.
+- **Organization logo**: uploaded to the `public` disk (`storage/app/public/branding/`) and served through `GET /site-logo/{path}`. It is used in the sidebar and as the favicon. It can be removed.
+- **Site description**: shown under the welcome title on the home page.
+- **Public pages**: About (Markdown), Features (one per line, `Title: description`), FAQ (question and Markdown answer rows), Support (contact person, email, phone, hours, request guide link, Markdown steps), Contact (on/off and Markdown intro).
+
+Each page with content is served at `/about`, `/features`, `/faq`, `/support` or `/contact` and listed in the home page **Quick Links**. A page with no content returns 404 and is not listed. Markdown is rendered with raw HTML stripped and unsafe links removed.
+
+The footer is not white-labelled. It always shows "© AtGlance" and links to the AtGlance product pages (https://atglance.live/about, /contact, /faq), from `resources/views/partials/product-footer.blade.php`.
+
+The values are read per request by `App\Support\SiteProfile` and shared with every view as `$brandName`, `$siteLogoUrl`, `$siteDescription` and `$publicPages`.
+
+## Custom Domain & HTTPS
+
+- **Plugins tab** (`/admin/settings?tab=plugins`): a scrolling list with a search box at the top. Each plugin is one bar with its icon, name, a one-line summary, an Enabled/Disabled badge, its action button, **Info** and **Enable/Disable** (super admin only). A dot next to the name means the details need attention.
+  - **Info** opens the plugin's details below its bar. `?plugin=<key>` opens one directly, for example `?tab=plugins&plugin=custom-domain`.
+  - Plugins: **Custom Domain & HTTPS**, **SSO Login**, **S3 Storage** and **MCP Server (AI tools)**. S3 Storage works like SSO Login: enabling it shows the **S3 Configuration** tab (`POST /admin/settings/s3/plugin`, super admin); S3 is in use once the bucket and keys are saved there. Disabling is refused while files are still stored in S3 (move them back with the Migration tab first). Installs that already used S3 keep the plugin on. SSO Login is switched on and off here (`POST /admin/settings/sso/plugin`, super admin); providers are set up on the **SSO Configuration** tab, which only appears while the plugin is enabled (`?tab=sso` falls back to Plugins). Disabling SSO also turns email registration back on, so users are never left without a way to sign up or reset a password.
+  - The list comes from `App\Support\PluginRegistry`. To add a plugin, add an entry there (key, name, icon, summary, search keywords, enabled, toggle route, action) and a details partial in `resources/views/admin/plugins/`.
+- **Custom Domain & HTTPS plugin**: the action button is "Set the domain on the Site tab" once it is enabled. Its details (`admin/plugins/custom-domain.blade.php`) show:
+  - Setup steps for VM (the built-in proxy), ECS, Azure Container Apps and Kubernetes.
+  - The detected proxy status.
+- **Site Configuration tab**: the **Access URL** section, with domain, server IP, the HTTPS option, certificate upload, Check DNS, and the DNS and hosts-file lines to copy.
+  - It is greyed out until the plugin is enabled.
+  - Admins (101) see it read-only.
+- **Info tab**: shows the access URL, server IP and HTTPS option.
+
+See [custom-domain.md](custom-domain.md).
+
+## Workspace settings
+
+The workspace page (`/admin/workspaces/{id}`) has tabs: General, Members, System Tags,
+Vulnerability Checks, Backups and Notifications. Settings > Notifications lets each
+member choose their workspace emails. See `docs/workspace-settings.md`.
+
+## Controllers
+
+### `AuthController` (Web)
+Handles web-based authentication and form submissions.
+
+**Methods:**
+- `register(Request $request)` - User registration
+- `login(Request $request)` - User login with session
+- `logout(Request $request)` - User logout
+- `sendPasswordResetLink(Request $request)` - Password reset email
+- `storeContact(Request $request)` - Contact form submission
+
+### `DashboardController`
+Handles dashboard and settings pages.
+
+**Methods:**
+- `index()` - Show dashboard
+- `settings()` - Show settings page
+- `updateSettings(Request $request)` - Update user settings
+- `updatePassword(Request $request)` - Update password
+- `profile()` - Show profile page
+- `products()` - Show products page
+
+## Routes
+
+```php
+// Public routes (accessible without authentication)
+GET  / - Home page with auth forms
+POST /login - Handle login
+POST /register - Handle registration
+POST /logout - Handle logout
+POST /password/email - Send password reset email
+POST /contact - Submit contact form
+
+// Protected routes (require authentication)
+GET  /dashboard - Dashboard page
+GET  /connect-ai - MCP setup page (only while MCP is on)
+GET  /settings - Settings page
+POST /settings/update - Update settings
+POST /password/update - Update password
+GET  /profile - Profile page
+GET  /products - Products/APIs page
+```
+
+## Key Features
+
+### 1. **Responsive Design**
+- Works on desktop and mobile devices
+- Layout adapts for smaller screens
+- Touch-friendly buttons and forms
+
+### 2. **Modern Styling**
+- Gradient backgrounds
+- Smooth animations and transitions
+- Card-based layout
+- Consistent color scheme
+
+### 3. **Form Validation**
+- Client and server-side validation
+- Error message display
+- Success notifications
+
+### 4. **Tab Navigation**
+- Smooth tab switching
+- Active state indicators
+- Fade-in animations
+
+### 5. **Interactive Elements**
+- Hover effects on buttons and links
+- Smooth scrolling
+- Toggle switches for preferences
+- Status badges
+
+### 6. **Accessibility**
+- Semantic HTML
+- Form labels
+- Icon descriptions
+- Keyboard navigation support
+
+## Styling
+
+All styling is embedded in the main layout file using:
+- **Inline CSS** for structure
+- **Tailwind CSS** (via CDN) for utilities
+- **FontAwesome** for icons
+- **CSS Variables** for consistency
+
+### Color Variables
+
+```css
+Primary Gradient: #667eea to #764ba2
+Success: #4caf50
+Warning: #ff9800
+Error: #f44336
+Info: #2196f3
+```
+
+## Database
+
+The application uses Laravel's authentication with the User model. The password field is synced with `password_hash` for API compatibility.
+
+### User Model
+- `id` - Primary key
+- `name` - User's full name
+- `email` - User's email (unique)
+- `password` - Hashed password
+- `password_hash` - API compatibility field
+- `dob` - Date of birth (optional)
+- `email_verified_at` - Email verification timestamp
+- `status` - User status (active/inactive)
+- `created_at`, `updated_at` - Timestamps
+
+## Migration Required
+
+Run the migration to add the password column:
+
+```bash
+php artisan migrate
+```
+
+This will add the `password` column to the users table while maintaining the existing `password_hash` column.
+
+## Usage
+
+### For End Users
+
+1. **Register**: Click "Register" tab, fill in details, and submit
+2. **Login**: Click "Login" tab, enter credentials, and submit
+3. **Access Dashboard**: After login, you'll see the dashboard
+4. **Manage Settings**: Go to Settings to update profile, security, notifications, etc.
+5. **View Profile**: Check your profile information and activity
+6. **Manage APIs**: View and manage your API integrations
+
+### For Developers
+
+1. Add new pages by creating a Blade template in `resources/views/`
+2. Create corresponding controller methods
+3. Add routes in `routes/web.php`
+4. Use the app.blade.php layout with `@extends('app')`
+5. Define page content in the `@section('dashboard-content')` section
+
+## JavaScript Features
+
+### Tab Switching
+```javascript
+switchTab(tabName) - Switches between login/register/forgot tabs
+switchSettingsTab(tabName) - Switches between settings tabs
+```
+
+### Other Features
+- Smooth scroll for navigation links
+- Dynamic visibility toggles
+- Form validation helpers
+
+## Future Enhancements
+
+- [ ] Real-time API analytics charts (Chart.js integration)
+- [ ] Email verification process
+- [ ] Two-factor authentication implementation
+- [ ] OAuth integration
+- [ ] Dark theme toggle
+- [ ] Multi-language support
+- [ ] Advanced filtering for products
+- [ ] Activity log storage and display
+- [ ] File upload for avatar
+- [ ] Real API statistics from database
+
+## Notes
+
+- All forms currently submit to route handlers that validate and process data
+- The contact form needs email configuration in `.env`
+- Password reset functionality needs email configuration
+- The API keys section displays mock data - connect to actual API tokens table
+- Chart placeholders should be replaced with actual JavaScript charts
+- Settings updates should be connected to database models

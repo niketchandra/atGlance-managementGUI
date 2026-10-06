@@ -3,488 +3,272 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>@yield('title', 'AtGlance - API Gateway')</title>
+    <title>@yield('title', $brandName)</title>
+    <link rel="icon" href="{{ $siteFaviconUrl ?? asset('branding/favicon.ico') }}">
+    <link rel="apple-touch-icon" href="{{ asset('branding/apple-touch-icon.png') }}">
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: #f8f9fa;
-        }
-
-        .main-container {
-            display: flex;
-            height: 100vh;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        }
-
-        .sidebar {
-            width: 20%;
-            padding: 40px 30px;
-            display: flex;
-            flex-direction: column;
-            justify-content: flex-start;
-            overflow-y: auto;
-            background: rgba(255, 255, 255, 0.95);
-            box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
-        }
-
-        .content {
-            width: 80%;
-            padding: 0;
-            overflow-y: auto;
-            background: white;
-        }
-
-        .sidebar-logo {
-            font-size: 24px;
-            font-weight: bold;
-            color: #667eea;
-            margin-bottom: 40px;
-            text-align: center;
-        }
-
-        .sidebar-logo i {
-            margin-right: 8px;
-        }
-
-        .form-container {
-            display: flex;
-            flex-direction: column;
-            gap: 20px;
-        }
-
-        .tab-buttons {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 20px;
-            border-bottom: 2px solid #e0e0e0;
-        }
-
-        .tab-btn {
-            padding: 10px 20px;
-            background: none;
-            border: none;
-            cursor: pointer;
-            font-size: 14px;
-            font-weight: 600;
-            color: #999;
-            border-bottom: 3px solid transparent;
-            transition: all 0.3s ease;
-            margin-bottom: -2px;
-        }
-
-        .tab-btn.active {
-            color: #667eea;
-            border-bottom-color: #667eea;
-        }
-
-        .tab-content {
-            display: none;
-        }
-
-        .tab-content.active {
-            display: block;
-            animation: fadeIn 0.3s ease;
-        }
-
-        @keyframes fadeIn {
-            from {
-                opacity: 0;
-                transform: translateY(10px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-
-        .form-group {
-            display: flex;
-            flex-direction: column;
-        }
-
-        .form-group label {
-            margin-bottom: 8px;
-            font-weight: 500;
-            color: #333;
-            font-size: 14px;
-        }
-
-        .form-group input,
-        .form-group select {
-            padding: 12px;
-            border: 1px solid #ddd;
-            border-radius: 6px;
-            font-size: 14px;
-            transition: border-color 0.3s ease;
-            font-family: inherit;
-        }
-
-        .form-group input:focus,
-        .form-group select:focus {
-            outline: none;
-            border-color: #667eea;
-            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
-        }
-
-        .btn {
-            padding: 12px 20px;
-            border: none;
-            border-radius: 6px;
-            font-size: 14px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-
-        .btn-primary {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            width: 100%;
-        }
-
-        .btn-primary:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.3);
-        }
-
-        .btn-secondary {
-            background: #f0f0f0;
-            color: #333;
-            width: 100%;
-        }
-
-        .btn-secondary:hover {
-            background: #e0e0e0;
-        }
-
-        .divider {
-            text-align: center;
-            margin: 20px 0;
-            position: relative;
-            color: #999;
-            font-size: 13px;
-        }
-
-        .divider::before,
-        .divider::after {
-            content: '';
-            position: absolute;
-            top: 50%;
-            width: 40%;
-            height: 1px;
-            background: #ddd;
-        }
-
-        .divider::before {
-            left: 0;
-        }
-
-        .divider::after {
-            right: 0;
-        }
-
-        .remember-forgot {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            font-size: 13px;
-            margin-top: 10px;
-        }
-
-        .remember-forgot a {
-            color: #667eea;
-            text-decoration: none;
-            transition: color 0.3s ease;
-        }
-
-        .remember-forgot a:hover {
-            color: #764ba2;
-        }
-
-        .header {
-            background: white;
-            border-bottom: 1px solid #e0e0e0;
-            padding: 20px 40px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .header-left {
-            display: flex;
-            align-items: center;
-            gap: 20px;
-        }
-
-        .header-logo {
-            font-size: 24px;
-            font-weight: bold;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-        }
-
-        .header-logo i {
-            margin-right: 8px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-        }
-
-        .header-nav {
-            display: flex;
-            gap: 30px;
-            align-items: center;
-        }
-
-        .header-nav a {
-            color: #333;
-            text-decoration: none;
-            font-weight: 500;
-            transition: color 0.3s ease;
-            font-size: 14px;
-        }
-
-        .header-nav a:hover {
-            color: #667eea;
-        }
-
-        .header-right {
-            display: flex;
-            gap: 20px;
-            align-items: center;
-        }
-
-        .welcome-section {
-            padding: 60px 40px;
-            text-align: center;
-            background: linear-gradient(135deg, rgba(102, 126, 234, 0.05) 0%, rgba(118, 75, 162, 0.05) 100%);
-        }
-
-        .welcome-title {
-            font-size: 48px;
-            font-weight: bold;
-            color: #333;
-            margin-bottom: 20px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-        }
-
-        .welcome-subtitle {
-            font-size: 18px;
-            color: #666;
-            margin-bottom: 40px;
-            line-height: 1.6;
-        }
-
-        .features-section {
-            padding: 60px 40px;
-        }
-
-        .section-title {
-            font-size: 32px;
-            font-weight: bold;
-            color: #333;
-            margin-bottom: 40px;
-            text-align: center;
-        }
-
-        .features-grid {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 30px;
-            margin-bottom: 60px;
-        }
-
-        .feature-card {
-            padding: 30px;
-            background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
-            border-radius: 10px;
-            border: 1px solid rgba(102, 126, 234, 0.2);
-            transition: transform 0.3s ease, box-shadow 0.3s ease;
-            text-align: center;
-        }
-
-        .feature-card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 10px 30px rgba(102, 126, 234, 0.2);
-        }
-
-        .feature-icon {
-            font-size: 40px;
-            color: #667eea;
-            margin-bottom: 15px;
-        }
-
-        .feature-title {
-            font-size: 18px;
-            font-weight: 600;
-            color: #333;
-            margin-bottom: 10px;
-        }
-
-        .feature-desc {
-            color: #666;
-            font-size: 14px;
-            line-height: 1.6;
-        }
-
-        .screenshots-section {
-            padding: 60px 40px;
-            background: #f8f9fa;
-        }
-
-        .screenshot-placeholder {
-            width: 100%;
-            height: 300px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            border-radius: 10px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: white;
-            font-size: 24px;
-            font-weight: bold;
-            margin-bottom: 20px;
-        }
-
-        .contact-section {
-            padding: 60px 40px;
-        }
-
-        .contact-form {
-            max-width: 600px;
-            margin: 0 auto;
-        }
-
-        .contact-form .form-group {
-            margin-bottom: 20px;
-        }
-
-        .contact-form textarea {
-            padding: 12px;
-            border: 1px solid #ddd;
-            border-radius: 6px;
-            font-size: 14px;
-            font-family: inherit;
-            resize: vertical;
-            min-height: 120px;
-        }
-
-        .contact-form textarea:focus {
-            outline: none;
-            border-color: #667eea;
-            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
-        }
-
-        .alert {
-            padding: 15px;
-            border-radius: 6px;
-            margin-bottom: 20px;
-            display: flex;
-            gap: 10px;
-            align-items: center;
-            font-size: 14px;
-        }
-
-        .alert-success {
-            background: #d4edda;
-            color: #155724;
-            border: 1px solid #c3e6cb;
-        }
-
-        .alert-error {
-            background: #f8d7da;
-            color: #721c24;
-            border: 1px solid #f5c6cb;
-        }
-
-        .alert i {
-            font-size: 16px;
-        }
-
-        .hidden {
-            display: none;
-        }
-
-        @media (max-width: 1024px) {
-            .main-container {
-                flex-direction: column;
-            }
-
-            .sidebar {
-                width: 100%;
-                height: auto;
-                border-bottom: 1px solid #e0e0e0;
-                padding: 20px;
-            }
-
-            .content {
-                width: 100%;
-                height: auto;
-            }
-
-            .features-grid {
-                grid-template-columns: 1fr;
-            }
-
-            .header-nav {
-                gap: 15px;
-                font-size: 13px;
-            }
-        }
-
-        .logout-btn {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 10px 20px;
-            border-radius: 6px;
-            border: none;
-            cursor: pointer;
-            font-weight: 600;
-        }
-
-        .logout-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.3);
-        }
-    </style>
+    @php $agCssPath = public_path('css/atglance.css'); @endphp
+    <link href="{{ asset('css/atglance.css') }}?v={{ is_file($agCssPath) ? filemtime($agCssPath) : '1' }}" rel="stylesheet">
 </head>
-<body>
-    <div class="main-container">
-        <!-- LEFT SIDEBAR (20%) -->
-        <div class="sidebar">
-            <div class="sidebar-logo">
-                <i class="fas fa-gate"></i> AtGlance
+<body class="ag-body">
+    @php
+        $agDefaultLogoUrl = asset('branding/atglance-logo.png');
+        $agLogoUrl = !empty($siteLogoUrl) ? $siteLogoUrl : $agDefaultLogoUrl;
+        // The default wordmark already reads "AtGlance"; only add the organisation
+        // name beside it when the organisation is called something else.
+        $agShowBrandName = $agLogoUrl !== $agDefaultLogoUrl || strcasecmp(trim((string) $brandName), 'AtGlance') !== 0;
+    @endphp
+    <div class="ag-frame">
+    @if(auth()->check())
+        @php
+            $agUser = auth()->user();
+            $agRole = (int) $agUser->rbac_id;
+            $agIsAdmin = in_array($agRole, [100, 101], true);
+            $agIsSuperAdmin = $agRole === 100;
+            $requiresProfileSetup = !$agUser->dob || !$agUser->pin;
+
+            // One pill per page; `active` lists the route names that light it up.
+            $agNavItems = [];
+            if (!$requiresProfileSetup) {
+                $agNavItems[] = ['label' => 'Dashboard', 'icon' => 'fa-chart-line', 'url' => route('dashboard'), 'active' => ['dashboard', 'admin.dashboard', 'live-service-monitoring', 'vulnerabilities-identified']];
+                $agNavItems[] = ['label' => 'Systems', 'icon' => 'fa-server', 'url' => route('systems-registered'), 'active' => ['systems-registered*']];
+                $agNavItems[] = ['label' => 'Config Backups', 'icon' => 'fa-file-code', 'url' => route('configuration-backups'), 'active' => ['configuration-backups*']];
+                if ($agIsAdmin) {
+                    $agNavItems[] = ['label' => 'Users', 'icon' => 'fa-users', 'url' => route('admin.users'), 'active' => ['admin.users*']];
+                    $agNavItems[] = ['label' => 'Workspace', 'icon' => 'fa-sitemap', 'url' => $agIsSuperAdmin ? route('enterprise.console') : route('admin.workspaces'), 'active' => $agIsSuperAdmin ? ['__none__'] : ['admin.workspaces*', 'workspace.*']];
+                    $agNavItems[] = ['label' => 'Notifications', 'icon' => 'fa-bell', 'url' => route('admin.notifications'), 'active' => ['admin.notifications*']];
+                }
+                if ($agIsSuperAdmin) {
+                    $agNavItems[] = ['label' => 'Site Settings', 'icon' => 'fa-sliders-h', 'url' => route('admin.settings'), 'active' => ['admin.settings*']];
+                    $agNavItems[] = ['label' => 'Enterprise Console', 'icon' => 'fa-building', 'url' => route('enterprise.console'), 'active' => ['enterprise.*', 'admin.workspaces*', 'workspace.*']];
+                }
+                // A user-role account can still be workspace admin of some workspaces.
+                if (!$agIsAdmin && \Illuminate\Support\Facades\DB::table('workspace_user')->where('user_id', $agUser->id)->where('is_admin', true)->exists()) {
+                    $agNavItems[] = ['label' => 'Workspace', 'icon' => 'fa-sitemap', 'url' => route('admin.workspaces'), 'active' => ['admin.workspaces*']];
+                }
+                $agNavItems[] = ['label' => 'Settings', 'icon' => 'fa-cog', 'url' => route('settings'), 'active' => ['settings*']];
+            }
+            $agNavItems[] = ['label' => 'Profile', 'icon' => 'fa-user-circle', 'url' => route('profile'), 'active' => ['profile*']];
+        @endphp
+
+        <header class="ag-topbar ag-topbar--app">
+            <button type="button" class="ag-icon-btn" id="agNavToggle" aria-controls="agNav" aria-expanded="false" title="Menu">
+                <i class="fas fa-bars"></i>
+            </button>
+            <a href="{{ route('dashboard') }}" class="ag-brand {{ $agLogoUrl === $agDefaultLogoUrl ? 'ag-brand--wordmark' : '' }}" title="{{ $brandName }}">
+                <img src="{{ $agLogoUrl }}" alt="{{ $brandName }} Logo">
+                @if($agShowBrandName)
+                    <span class="ag-brand-name">{{ $brandName }}</span>
+                @endif
+            </a>
+
+            @if(!$requiresProfileSetup && \App\Support\McpControl::enabled())
+                @php $agMcpActive = request()->routeIs('mcp.connect'); @endphp
+                <nav class="ag-nav ag-nav--app" aria-label="Quick links">
+                    <div class="ag-nav-track">
+                        <a href="{{ route('mcp.connect') }}" class="ag-nav-link {{ $agMcpActive ? 'is-active' : '' }}" title="Connect AI tools (MCP)" @if($agMcpActive) aria-current="page" @endif>
+                            <i class="fas fa-plug"></i> MCP
+                        </a>
+                    </div>
+                </nav>
+            @endif
+
+            <div class="ag-topbar-right">
+                @if(!empty($workspaceSelectorOptions) && count($workspaceSelectorOptions) > 0)
+                    <form method="POST" action="{{ route('workspace.select') }}" class="ag-workspace">
+                        @csrf
+                        <span>Workspace</span>
+                        <label for="workspace_selector" class="sr-only">Workspace</label>
+                        <select id="workspace_selector" name="workspace_id" onchange="this.form.submit()">
+                            @foreach($workspaceSelectorOptions as $workspaceOption)
+                                <option value="{{ $workspaceOption->id }}" {{ ($workspaceOption->id === null ? $selectedWorkspaceId === null : $selectedWorkspaceId !== null && (int) $selectedWorkspaceId === (int) $workspaceOption->id) ? 'selected' : '' }}>
+                                    {{ $workspaceOption->name }}
+                                </option>
+                            @endforeach
+                        </select>
+                    </form>
+                @endif
+
+                <div class="ag-user">
+                    <button type="button" class="ag-user-chip" id="agUserToggle" aria-haspopup="true" aria-expanded="false">
+                        <x-user-avatar :user="$agUser" size="36" />
+                        <span class="ag-user-meta">
+                            <small>{{ $agUser->email }}</small>
+                            <span>{{ $agUser->name }}</span>
+                        </span>
+                        <i class="fas fa-chevron-down"></i>
+                    </button>
+                    <div class="ag-menu hidden" id="agUserMenu" role="menu">
+                        <a href="{{ route('profile') }}" role="menuitem"><i class="fas fa-user-circle"></i> Profile</a>
+                        @if(!$requiresProfileSetup)
+                            <a href="{{ route('settings') }}" role="menuitem"><i class="fas fa-cog"></i> Settings</a>
+                        @endif
+                        <form id="logoutForm" method="POST" action="{{ route('logout') }}">
+                            @csrf
+                            <button type="submit" role="menuitem"><i class="fas fa-sign-out-alt"></i> Logout</button>
+                        </form>
+                        <div class="ag-menu-meta">Version {{ $appVersion ?? config('app.version') }}</div>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <div class="ag-shell">
+            <aside class="ag-sidebar">
+
+                <nav class="ag-side-nav" id="agNav" aria-label="Main">
+                    @foreach($agNavItems as $agItem)
+                        @php $agActive = request()->routeIs(...$agItem['active']); @endphp
+                        <a href="{{ $agItem['url'] }}" class="ag-side-link {{ $agActive ? 'is-active' : '' }}" @if($agActive) aria-current="page" @endif>
+                            <i class="fas {{ $agItem['icon'] }}"></i> <span>{{ $agItem['label'] }}</span>
+                        </a>
+                    @endforeach
+                </nav>
+
+                @if($agIsSuperAdmin)
+                @php
+                    $agLicence = \App\Support\License::summary();
+                    $agLicenceActivated = \App\Support\License::date($agLicence['activated_at']);
+                    $agLicenceExpiry = \App\Support\License::expiry($agLicence['expires_at']);
+                @endphp
+                <div class="ag-licence-card {{ $agLicence['active'] ? '' : 'is-missing' }}">
+                    <div class="ag-licence-head">
+                        <span class="ag-card-icon"><i class="fas fa-key"></i></span>
+                        <span>Licence</span>
+                        <span class="ag-badge {{ $agLicence['active'] ? 'ag-badge--success' : 'ag-badge--warning' }}">
+                            {{ $agLicence['active'] ? 'Active' : 'Not licensed' }}
+                        </span>
+                    </div>
+                    @if($agLicence['active'])
+                        <div class="ag-licence-plan">{{ $agLicence['plan'] !== '' ? ucfirst($agLicence['plan']) : 'Community Edition' }}</div>
+                        <div class="ag-licence-line">Activated On {{ $agLicenceActivated !== '' ? $agLicenceActivated : '-' }}</div>
+                        <div class="ag-licence-line" @if($agLicenceExpiry['days_left'] !== null && $agLicenceExpiry['days_left'] <= 30) style="color: var(--ag-warning);" @endif>{{ $agLicenceExpiry['text'] }}</div>
+                    @else
+                        <div class="ag-licence-line">New users and API keys stay locked until a licence is added.</div>
+                    @endif
+                    @if($agLicence['active'])
+                        <a href="{{ \App\Support\License::portalUrl() }}" target="_blank" rel="noopener" class="ag-btn ag-btn--sm ag-licence-btn">
+                            <i class="fas fa-arrow-up-right-dots"></i> Upgrade
+                        </a>
+                    @else
+                        <a href="{{ route('admin.settings', ['tab' => 'licence']) }}" class="ag-btn ag-btn--sm ag-licence-btn">
+                            <i class="fas fa-key"></i> Add licence
+                        </a>
+                    @endif
+                </div>
+                @endif
+
+                <div class="ag-sidebar-meta">Version {{ $appVersion ?? config('app.version') }}</div>
+            </aside>
+
+            <div class="ag-shell-main">
+
+                @if($requiresProfileSetup)
+                    <div class="ag-notice"><i class="fas fa-lock"></i> Complete mandatory profile setup to unlock all pages.</div>
+                @endif
+
+                <main class="ag-main">
+                    <div class="ag-content" id="dashboardContent">
+                        @yield('dashboard-content')
+                    </div>
+                </main>
+
+                <footer class="ag-footer">
+                    @include('partials.product-footer')
+                </footer>
+            </div>
+        </div>
+    @else
+        @php
+            $disableEmailRegistration = (bool) ($disableEmailRegistration ?? false);
+            $showSsoAuthOptions = (bool) ($ssoEnabled ?? false) && !empty($ssoProvidersForAuth ?? []);
+            $quickLinkIcons = ['about' => 'fa-lightbulb', 'features' => 'fa-rocket', 'faq' => 'fa-comments', 'support' => 'fa-life-ring', 'contact' => 'fa-paper-plane'];
+        @endphp
+
+        <header class="ag-topbar">
+            <a href="{{ route('home') }}" class="ag-brand {{ $agLogoUrl === $agDefaultLogoUrl ? 'ag-brand--wordmark' : '' }}" title="{{ $brandName }}">
+                <img src="{{ $agLogoUrl }}" alt="{{ $brandName }} Logo">
+            </a>
+
+            <button type="button" class="ag-icon-btn" id="agNavToggle" aria-controls="agNav" aria-expanded="false" title="Menu">
+                <i class="fas fa-bars"></i>
+            </button>
+
+            <nav class="ag-nav" id="agNav" aria-label="Quick links">
+                <div class="ag-nav-track">
+                    <a href="{{ route('home') }}" class="ag-nav-link {{ request()->routeIs('home') ? 'is-active' : '' }}">
+                        <i class="fas fa-home"></i> Home
+                    </a>
+                    @foreach($publicPages as $publicPage => $publicPageTitle)
+                        @php $agActive = request()->routeIs('public.page') && request()->route('page') === $publicPage; @endphp
+                        <a href="{{ route('public.page', ['page' => $publicPage]) }}" class="ag-nav-link {{ $agActive ? 'is-active' : '' }}">
+                            <i class="fas {{ $quickLinkIcons[$publicPage] ?? 'fa-file-alt' }}"></i> {{ $publicPageTitle }}
+                        </a>
+                    @endforeach
+                </div>
+            </nav>
+        </header>
+
+        <main class="ag-main ag-public">
+            <div>
+                @hasSection('public-content')
+                    <div class="ag-content">
+                        @yield('public-content')
+                    </div>
+                @else
+                    <section class="ag-hero">
+                        <h1>Welcome to {{ $brandName }}</h1>
+                        <p>
+                            @if($siteDescription !== '')
+                                {{ $siteDescription }}
+                            @else
+                                {{ $brandName }} is a Configuration Files Backup as a Service platform built for Linux environments.
+                                Securely back up critical server configuration files, monitor service health, and restore faster with centralized management.
+                            @endif
+                        </p>
+                    </section>
+
+                    @php $homeFeatures = \App\Support\SiteProfile::current()->features(); @endphp
+                    @php
+                        $homeFeatures = !empty($homeFeatures) ? $homeFeatures : [
+                        ['title' => 'Lightning Fast', 'description' => 'Optimized performance with sub-millisecond latency', 'icon' => 'fa-bolt'],
+                        ['title' => 'Secure', 'description' => 'Enterprise-grade security with encryption and auth', 'icon' => 'fa-shield-alt'],
+                        ['title' => 'Analytics', 'description' => 'Real-time monitoring and comprehensive analytics', 'icon' => 'fa-chart-bar'],
+                        ['title' => 'Configuration', 'description' => 'Easy setup with intuitive configuration options', 'icon' => 'fa-cogs'],
+                        ['title' => 'Scalability', 'description' => 'Seamlessly scale from startup to enterprise', 'icon' => 'fa-expand'],
+                        ['title' => 'Support', 'description' => '24/7 dedicated support team ready to help', 'icon' => 'fa-headset'],
+                    ];
+                    @endphp
+                    <section class="ag-feature-grid" id="features">
+                        @foreach($homeFeatures as $feature)
+                            <div class="ag-feature">
+                                <span class="ag-feature-icon"><i class="fas {{ $feature['icon'] ?? 'fa-check' }}"></i></span>
+                                <h3>{{ $feature['title'] }}</h3>
+                                <p>{{ $feature['description'] }}</p>
+                            </div>
+                        @endforeach
+                    </section>
+                @endif
             </div>
 
-            <div class="form-container" id="authForm">
-                <!-- Auth Tabs -->
-                <div class="tab-buttons">
-                    <button class="tab-btn active" onclick="switchTab('login')">
-                        <i class="fas fa-sign-in-alt"></i> Login
-                    </button>
-                    <button class="tab-btn" onclick="switchTab('register')">
-                        <i class="fas fa-user-plus"></i> Register
-                    </button>
-                    <button class="tab-btn" onclick="switchTab('forgot')">
-                        <i class="fas fa-key"></i> Forgot
-                    </button>
-                </div>
+            <aside class="ag-auth-card">
+                <div class="form-container" id="authForm">
+                    <div class="tab-buttons">
+                        <button class="tab-btn active" data-tab="login" onclick="switchTab('login', event)">
+                            <i class="fas fa-sign-in-alt"></i> Login
+                        </button>
+                        <button class="tab-btn" data-tab="register" onclick="switchTab('register', event)" {{ $disableEmailRegistration ? 'disabled' : '' }}>
+                            <i class="fas fa-user-plus"></i> Register
+                        </button>
+                        <button class="tab-btn" data-tab="forgot" onclick="switchTab('forgot', event)" {{ $disableEmailRegistration ? 'disabled' : '' }}>
+                            <i class="fas fa-key"></i> Forgot
+                        </button>
+                    </div>
 
                 <!-- LOGIN FORM -->
                 <div class="tab-content active" id="login">
@@ -494,6 +278,13 @@
                         <div class="alert alert-error">
                             <i class="fas fa-exclamation-circle"></i>
                             <span>{{ $errors->first('login') }}</span>
+                        </div>
+                        @endif
+
+                        @if (session('inactive_user'))
+                        <div class="alert alert-error">
+                            <i class="fas fa-user-slash"></i>
+                            <span>{{ session('inactive_user') }}</span>
                         </div>
                         @endif
 
@@ -517,6 +308,18 @@
                         <button type="submit" class="btn btn-primary">
                             <i class="fas fa-sign-in-alt"></i> Login
                         </button>
+
+                        @if($showSsoAuthOptions)
+                            <div class="divider">Or continue with SSO</div>
+                            <div class="sso-grid">
+                                @foreach($ssoProvidersForAuth as $ssoProvider)
+                                    <a class="btn btn-secondary btn-sso" href="{{ route('auth.sso.redirect', ['provider' => $ssoProvider['key'], 'context' => 'login']) }}">
+                                        <i class="{{ $ssoProvider['icon'] }}"></i>
+                                        <span>Continue with {{ $ssoProvider['label'] }}</span>
+                                    </a>
+                                @endforeach
+                            </div>
+                        @endif
                     </form>
                 </div>
 
@@ -531,29 +334,50 @@
                         </div>
                         @endif
 
-                        <div class="form-group">
-                            <label for="reg_name"><i class="fas fa-user"></i> Full Name</label>
-                            <input type="text" id="reg_name" name="name" placeholder="John Doe" required value="{{ old('name') }}">
+                        @if($disableEmailRegistration)
+                        <div class="alert alert-error">
+                            <i class="fas fa-ban"></i>
+                            <span>Email registration is disabled by the administrator. Please use SSO.</span>
                         </div>
+                        @endif
 
-                        <div class="form-group">
-                            <label for="reg_email"><i class="fas fa-envelope"></i> Email Address</label>
-                            <input type="email" id="reg_email" name="email" placeholder="you@example.com" required value="{{ old('email') }}">
-                        </div>
+                        <fieldset {{ $disableEmailRegistration ? 'disabled' : '' }} style="border:0; margin:0; padding:0; {{ $disableEmailRegistration ? 'opacity:0.55;' : '' }}">
+                            <div class="form-group">
+                                <label for="reg_name"><i class="fas fa-user"></i> Full Name</label>
+                                <input type="text" id="reg_name" name="name" placeholder="John Doe" required value="{{ old('name') }}">
+                            </div>
 
-                        <div class="form-group">
-                            <label for="reg_password"><i class="fas fa-lock"></i> Password</label>
-                            <input type="password" id="reg_password" name="password" placeholder="Minimum 8 characters" required>
-                        </div>
+                            <div class="form-group">
+                                <label for="reg_email"><i class="fas fa-envelope"></i> Email Address</label>
+                                <input type="email" id="reg_email" name="email" placeholder="you@example.com" required value="{{ old('email') }}">
+                            </div>
 
-                        <div class="form-group">
-                            <label for="reg_confirm_password"><i class="fas fa-lock"></i> Confirm Password</label>
-                            <input type="password" id="reg_confirm_password" name="password_confirmation" placeholder="Confirm password" required>
-                        </div>
+                            <div class="form-group">
+                                <label for="reg_password"><i class="fas fa-lock"></i> Password</label>
+                                <input type="password" id="reg_password" name="password" placeholder="Minimum 8 characters" required>
+                            </div>
 
-                        <button type="submit" class="btn btn-primary">
-                            <i class="fas fa-user-plus"></i> Create Account
-                        </button>
+                            <div class="form-group">
+                                <label for="reg_confirm_password"><i class="fas fa-lock"></i> Confirm Password</label>
+                                <input type="password" id="reg_confirm_password" name="password_confirmation" placeholder="Confirm password" required>
+                            </div>
+
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-user-plus"></i> Create Account
+                            </button>
+                        </fieldset>
+
+                        @if($showSsoAuthOptions)
+                            <div class="divider">Or register with SSO</div>
+                            <div class="sso-grid">
+                                @foreach($ssoProvidersForAuth as $ssoProvider)
+                                    <a class="btn btn-secondary btn-sso" href="{{ route('auth.sso.redirect', ['provider' => $ssoProvider['key'], 'context' => 'register']) }}">
+                                        <i class="{{ $ssoProvider['icon'] }}"></i>
+                                        <span>Register with {{ $ssoProvider['label'] }}</span>
+                                    </a>
+                                @endforeach
+                            </div>
+                        @endif
                     </form>
                 </div>
 
@@ -561,6 +385,14 @@
                 <div class="tab-content" id="forgot">
                     <form method="POST" action="{{ route('password.email') }}">
                         @csrf
+                        @if($disableEmailRegistration)
+                        <div class="alert alert-error">
+                            <i class="fas fa-ban"></i>
+                            <span>Forgot password is disabled while email registration is off.</span>
+                        </div>
+                        @endif
+
+                        <fieldset {{ $disableEmailRegistration ? 'disabled' : '' }} style="border:0; margin:0; padding:0; {{ $disableEmailRegistration ? 'opacity:0.55;' : '' }}">
                         <p style="font-size: 13px; color: #666; margin-bottom: 20px;">
                             Enter your email address and we'll send you a link to reset your password.
                         </p>
@@ -587,227 +419,148 @@
                         <button type="submit" class="btn btn-primary">
                             <i class="fas fa-envelope"></i> Send Reset Link
                         </button>
+                        </fieldset>
                     </form>
                 </div>
-            </div>
-
-            <!-- Dashboard Nav (shown after login) -->
-            <div id="dashboardNav" class="hidden" style="margin-top: 40px; padding-top: 40px; border-top: 1px solid #e0e0e0;">
-                <div style="margin-bottom: 30px;">
-                    <p style="font-size: 12px; color: #999; margin-bottom: 10px; text-transform: uppercase; font-weight: 600;">Menu</p>
-                    <nav style="display: flex; flex-direction: column; gap: 10px;">
-                        <a href="{{ route('dashboard') }}" class="nav-link" style="padding: 10px; color: #333; text-decoration: none; border-radius: 6px; transition: all 0.3s ease;" onmouseover="this.style.background='#f0f0f0'" onmouseout="this.style.background='transparent'">
-                            <i class="fas fa-chart-line"></i> Dashboard
-                        </a>
-                        <a href="{{ route('settings') }}" class="nav-link" style="padding: 10px; color: #333; text-decoration: none; border-radius: 6px; transition: all 0.3s ease;" onmouseover="this.style.background='#f0f0f0'" onmouseout="this.style.background='transparent'">
-                            <i class="fas fa-cog"></i> Settings
-                        </a>
-                        <a href="{{ route('profile') }}" class="nav-link" style="padding: 10px; color: #333; text-decoration: none; border-radius: 6px; transition: all 0.3s ease;" onmouseover="this.style.background='#f0f0f0'" onmouseout="this.style.background='transparent'">
-                            <i class="fas fa-user-circle"></i> Profile
-                        </a>
-                    </nav>
                 </div>
+            </aside>
+        </main>
 
-                <form id="logoutForm" method="POST" action="{{ route('logout') }}" style="margin-top: 20px;">
-                    @csrf
-                    <button type="submit" class="logout-btn" style="width: 100%;">
-                        <i class="fas fa-sign-out-alt"></i> Logout
-                    </button>
-                </form>
-            </div>
-        </div>
-
-        <!-- RIGHT CONTENT (80%) -->
-        <div class="content">
-            @if(auth()->check())
-                <!-- DASHBOARD HEADER -->
-                <div class="header">
-                    <div class="header-left">
-                        <div class="header-logo">
-                            <i class="fas fa-gate"></i> AtGlance
-                        </div>
-                    </div>
-                    <div class="header-right">
-                        <span style="color: #333; font-weight: 500;">Hello, {{ auth()->user()->name }}!</span>
-                        <button type="button" onclick="submitLogoutForm()" class="logout-btn">
-                            <i class="fas fa-sign-out-alt"></i> Logout
-                        </button>
-                    </div>
-                </div>
-
-                <!-- DASHBOARD CONTENT -->
-                <div id="dashboardContent">
-                    @yield('dashboard-content')
-                </div>
-            @else
-                <!-- PUBLIC HEADER -->
-                <div class="header">
-                    <div class="header-left">
-                        <div class="header-logo">
-                            <i class="fas fa-gate"></i> AtGlance
-                        </div>
-                    </div>
-                    <div class="header-nav">
-                        <a href="#about">About</a>
-                        <a href="#features">Features</a>
-                        <a href="#faq">FAQ</a>
-                        <a href="#support">Support</a>
-                        <a href="#contact">Contact</a>
-                    </div>
-                </div>
-
-                <!-- WELCOME SECTION -->
-                <div class="welcome-section">
-                    <h1 class="welcome-title">Welcome to AtGlance</h1>
-                    <p class="welcome-subtitle">
-                        Your comprehensive API Gateway for seamless integration and management.<br>
-                        Build, deploy, and scale your applications with confidence.
-                    </p>
-                </div>
-
-                <!-- FEATURES SECTION -->
-                <div class="features-section" id="features">
-                    <h2 class="section-title">Powerful Features</h2>
-                    <div class="features-grid">
-                        <div class="feature-card">
-                            <div class="feature-icon"><i class="fas fa-bolt"></i></div>
-                            <div class="feature-title">Lightning Fast</div>
-                            <div class="feature-desc">Optimized performance with sub-millisecond latency</div>
-                        </div>
-                        <div class="feature-card">
-                            <div class="feature-icon"><i class="fas fa-shield-alt"></i></div>
-                            <div class="feature-title">Secure</div>
-                            <div class="feature-desc">Enterprise-grade security with encryption and auth</div>
-                        </div>
-                        <div class="feature-card">
-                            <div class="feature-icon"><i class="fas fa-chart-bar"></i></div>
-                            <div class="feature-title">Analytics</div>
-                            <div class="feature-desc">Real-time monitoring and comprehensive analytics</div>
-                        </div>
-                        <div class="feature-card">
-                            <div class="feature-icon"><i class="fas fa-cogs"></i></div>
-                            <div class="feature-title">Configuration</div>
-                            <div class="feature-desc">Easy setup with intuitive configuration options</div>
-                        </div>
-                        <div class="feature-card">
-                            <div class="feature-icon"><i class="fas fa-expand"></i></div>
-                            <div class="feature-title">Scalability</div>
-                            <div class="feature-desc">Seamlessly scale from startup to enterprise</div>
-                        </div>
-                        <div class="feature-card">
-                            <div class="feature-icon"><i class="fas fa-headset"></i></div>
-                            <div class="feature-title">Support</div>
-                            <div class="feature-desc">24/7 dedicated support team ready to help</div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- SCREENSHOTS SECTION -->
-                <div class="screenshots-section" id="screenshots">
-                    <h2 class="section-title">See It In Action</h2>
-                    <div class="screenshot-placeholder">
-                        <i class="fas fa-image"></i> Dashboard Screenshot
-                    </div>
-                    <div class="screenshot-placeholder">
-                        <i class="fas fa-image"></i> Analytics Screenshot
-                    </div>
-                </div>
-
-                <!-- CONTACT SECTION -->
-                <div class="contact-section" id="contact">
-                    <h2 class="section-title">Get in Touch</h2>
-                    <form class="contact-form" method="POST" action="{{ route('contact') }}">
-                        @csrf
-                        <div class="form-group">
-                            <label for="contact_name"><i class="fas fa-user"></i> Your Name</label>
-                            <input type="text" id="contact_name" name="name" placeholder="John Doe" required>
-                        </div>
-
-                        <div class="form-group">
-                            <label for="contact_email"><i class="fas fa-envelope"></i> Email Address</label>
-                            <input type="email" id="contact_email" name="email" placeholder="you@example.com" required>
-                        </div>
-
-                        <div class="form-group">
-                            <label for="contact_subject"><i class="fas fa-heading"></i> Subject</label>
-                            <input type="text" id="contact_subject" name="subject" placeholder="What is this about?" required>
-                        </div>
-
-                        <div class="form-group">
-                            <label for="contact_message"><i class="fas fa-comment"></i> Message</label>
-                            <textarea id="contact_message" name="message" placeholder="Your message here..." required></textarea>
-                        </div>
-
-                        <button type="submit" class="btn btn-primary">
-                            <i class="fas fa-paper-plane"></i> Send Message
-                        </button>
-                    </form>
-                </div>
-
-                <!-- FOOTER -->
-                <footer style="padding: 40px; background: #f8f9fa; border-top: 1px solid #e0e0e0; text-align: center; color: #666; font-size: 14px;">
-                    <p>&copy; 2026 AtGlance. All rights reserved. | <a href="#" style="color: #667eea;">Privacy Policy</a> | <a href="#" style="color: #667eea;">Terms of Service</a></p>
-                </footer>
-            @endif
-        </div>
+        <footer class="ag-footer">
+            @include('partials.product-footer')
+        </footer>
+    @endif
     </div>
 
     <script>
-        function switchTab(tabName) {
-            // Hide all tabs
-            document.querySelectorAll('.tab-content').forEach(tab => {
-                tab.classList.remove('active');
-            });
+        function switchTab(tabName, evt) {
+            const targetButton = evt && evt.target
+                ? evt.target.closest('.tab-btn')
+                : document.querySelector(`.tab-btn[data-tab="${tabName}"]`);
 
-            // Remove active class from all buttons
-            document.querySelectorAll('.tab-btn').forEach(btn => {
-                btn.classList.remove('active');
-            });
+            if (targetButton && targetButton.disabled) {
+                return;
+            }
 
-            // Show selected tab
+            document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
             document.getElementById(tabName).classList.add('active');
 
-            // Add active class to clicked button (find the closest button element)
-            const clickedButton = event.target.closest('.tab-btn');
-            if (clickedButton) {
-                clickedButton.classList.add('active');
+            if (targetButton) {
+                targetButton.classList.add('active');
             }
         }
 
-        // Toggle dashboard nav visibility when user is authenticated
-        document.addEventListener('DOMContentLoaded', function() {
-            const isAuthenticated = {{ auth()->check() ? 'true' : 'false' }};
-            const authForm = document.getElementById('authForm');
-            const dashboardNav = document.getElementById('dashboardNav');
+        function submitLogoutForm() {
+            const logoutForm = document.getElementById('logoutForm');
+            if (logoutForm) {
+                logoutForm.submit();
+            }
+        }
 
-            if (isAuthenticated) {
-                authForm.classList.add('hidden');
-                dashboardNav.classList.remove('hidden');
+        document.addEventListener('DOMContentLoaded', function () {
+            const activeButton = document.querySelector('.tab-btn.active');
+            if (activeButton && activeButton.disabled) {
+                switchTab('login');
+            }
+
+            // Mobile: the pill row collapses behind a menu button.
+            const navToggle = document.getElementById('agNavToggle');
+            const nav = document.getElementById('agNav');
+            if (navToggle && nav) {
+                navToggle.addEventListener('click', function () {
+                    const open = nav.classList.toggle('is-open');
+                    const sidebar = nav.closest('.ag-sidebar');
+                    if (sidebar) {
+                        sidebar.classList.toggle('is-open', open);
+                    }
+                    navToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+                });
+            }
+
+            // User chip menu (profile, settings, logout).
+            const userToggle = document.getElementById('agUserToggle');
+            const userMenu = document.getElementById('agUserMenu');
+            if (userToggle && userMenu) {
+                userToggle.addEventListener('click', function (event) {
+                    event.stopPropagation();
+                    const open = userMenu.classList.toggle('hidden') === false;
+                    userToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+                });
+                document.addEventListener('click', function (event) {
+                    if (!userMenu.contains(event.target)) {
+                        userMenu.classList.add('hidden');
+                        userToggle.setAttribute('aria-expanded', 'false');
+                    }
+                });
+                document.addEventListener('keydown', function (event) {
+                    if (event.key === 'Escape') {
+                        userMenu.classList.add('hidden');
+                        userToggle.setAttribute('aria-expanded', 'false');
+                    }
+                });
+            }
+
+            // Keep the active pill in view and fade whichever edge hides more pills.
+            const track = document.querySelector('.ag-nav-track');
+            const activePill = document.querySelector('.ag-nav-link.is-active');
+            if (track && activePill) {
+                track.scrollLeft = activePill.offsetLeft - (track.clientWidth - activePill.offsetWidth) / 2;
+            }
+            function updateNavFade() {
+                if (!track) {
+                    return;
+                }
+                const max = track.scrollWidth - track.clientWidth;
+                track.classList.toggle('fade-left', track.scrollLeft > 2);
+                track.classList.toggle('fade-right', max - track.scrollLeft > 2);
+            }
+            if (track) {
+                track.addEventListener('scroll', updateNavFade, { passive: true });
+                window.addEventListener('resize', updateNavFade);
+                updateNavFade();
             }
         });
 
-        // Smooth scroll for navigation links
+        // Smooth scroll for in-page links
         document.querySelectorAll('a[href^="#"]').forEach(anchor => {
             anchor.addEventListener('click', function (e) {
                 const href = this.getAttribute('href');
                 if (href !== '#') {
-                    e.preventDefault();
                     const element = document.querySelector(href);
                     if (element) {
-                        element.scrollIntoView({
-                            behavior: 'smooth'
-                        });
+                        e.preventDefault();
+                        element.scrollIntoView({ behavior: 'smooth' });
                     }
                 }
             });
         });
-    </script>
-    function submitLogoutForm() {
-        const logoutForm = document.getElementById('logoutForm');
-        if (logoutForm) {
-            logoutForm.submit();
-        }
-    }
 
+        @if (session('inactive_user'))
+            window.addEventListener('DOMContentLoaded', function () {
+                alert(@json(session('inactive_user')));
+            });
+        @endif
+    </script>
+
+    @if(auth()->check() && \App\Support\UserPreferences::get(auth()->user(), 'timezone') === null)
+        <script>
+            // First visit with no time zone set: save the browser's, so dates show in local time.
+            (function () {
+                try {
+                    const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+                    if (!zone) {
+                        return;
+                    }
+                    const body = new FormData();
+                    body.append('_token', @json(csrf_token()));
+                    body.append('timezone', zone);
+                    fetch(@json(route('settings.preferences.timezone')), { method: 'POST', body: body, credentials: 'same-origin' });
+                } catch (error) {
+                    // Keep the server default.
+                }
+            })();
+        </script>
+    @endif
 </body>
 </html>

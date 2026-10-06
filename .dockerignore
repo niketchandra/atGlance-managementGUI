@@ -1,0 +1,27 @@
+# Keep secrets, local state and host-built dependencies out of the image.
+# The published image must never contain a developer's .env or APP_KEY.
+.git
+.github
+.local-backups
+cookies.txt
+*.md
+.env
+.env.*
+
+composer/.env
+composer/.env.backup
+composer/.env.production
+composer/vendor
+composer/node_modules
+composer/public/hot
+composer/public/storage
+composer/storage/app/*
+composer/storage/framework/cache/*
+composer/storage/framework/sessions/*
+composer/storage/framework/views/*
+composer/storage/logs/*
+composer/storage/caddy/*
+composer/storage/*.key
+composer/test_view.php
+composer/cookies.txt
+composer/bootstrap/cache/*.php

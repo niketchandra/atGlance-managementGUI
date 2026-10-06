@@ -1,86 +1,198 @@
+# AtGlance Community Edition (CE)
+#
+# Production / install:   docker compose up -d
+#
+# The Kong gateway (port 8002) always runs: the atglance CLI sends its API
+# calls to <host>:8002, and to <host>:8000 for logout. The same port serves
+# the MCP server at <host>:8002/mcp.
+# Local development:       see docker-compose.dev.yml (builds from source)
+#
+# Settings come from .env next to this file (see .env.example). atglance-installer.sh
+# creates it with random passwords.
+
+name: atglance
+
+x-app-env: &app-env
+  DB_CONNECTION: mysql
+  DB_HOST: db
+  DB_PORT: 3306
+  DB_DATABASE: atglance
+  DB_USERNAME: atglance
+  DB_PASSWORD: ${DB_PASSWORD:-atglance}
+  REDIS_HOST: redis
+  REDIS_PORT: 6379
+  CACHE_STORE: redis
+  QUEUE_CONNECTION: redis
+
+x-app: &app
+  image: ${ATGLANCE_REGISTRY:-atglance}/ce-atglance-app:${ATGLANCE_VERSION:-latest}
+  restart: unless-stopped
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
+  volumes:
+    - app-storage:/app/storage
+  depends_on:
+    db:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+
 services:
-  mysql:
-    image: mysql:8.0
+  app:
+    <<: *app
+    container_name: ce-atglance-app
     environment:
-      MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
-      MYSQL_DATABASE: atglance
+      <<: *app-env
+      ATGLANCE_ROLE: app
     ports:
-      - "3306:3306"
+      - "${APP_PORT:-8000}:8000"
+
+  worker:
+    <<: *app
+    container_name: ce-atglance-worker
+    command: php artisan queue:work redis --tries=5 --backoff=30,60,120,300,600 --timeout=60 --sleep=3 --max-jobs=1000
+    environment:
+      <<: *app-env
+      ATGLANCE_ROLE: worker
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot"]
+      disable: true
+    depends_on:
+      app:
+        condition: service_healthy
+
+  scheduler:
+    <<: *app
+    container_name: ce-atglance-scheduler
+    command: php artisan schedule:work
+    environment:
+      <<: *app-env
+      ATGLANCE_ROLE: scheduler
+    healthcheck:
+      disable: true
+    depends_on:
+      app:
+        condition: service_healthy
+
+  db:
+    image: mysql:8.0
+    container_name: ce-atglance-db
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: atglance
+      MYSQL_USER: atglance
+      MYSQL_PASSWORD: ${DB_PASSWORD:-atglance}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-atglance-root}
+    volumes:
+      - db-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p\"$$MYSQL_ROOT_PASSWORD\" --silent"]
       interval: 5s
       timeout: 5s
-      retries: 10
+      retries: 20
 
   redis:
     image: redis:7-alpine
-    ports:
-      - "6379:6379"
+    container_name: ce-atglance-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 3s
       retries: 10
 
-  api:
-    build: .
-    environment:
-      APP_ENV: local
-      APP_DEBUG: "true"
-      APP_URL: http://localhost:8000
-      DB_CONNECTION: mysql
-      DB_HOST: mysql
-      DB_PORT: 3306
-      DB_DATABASE: atglance
-      DB_USERNAME: root
-      DB_PASSWORD: ""
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
-      CACHE_DRIVER: redis
-      QUEUE_CONNECTION: redis
-    ports:
-      - "8000:8000"
-    volumes:
-      - ./composer/storage:/app/storage
-    depends_on:
-      mysql:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-
-  queue-worker:
-    build: .
-    working_dir: /app
-    command: php artisan queue:work redis --tries=5 --backoff=30,60,120,300,600 --timeout=60 --sleep=3 --max-jobs=1000 --verbose
-    environment:
-      APP_ENV: local
-      APP_DEBUG: "true"
-      DB_CONNECTION: mysql
-      DB_HOST: mysql
-      DB_PORT: 3306
-      DB_DATABASE: atglance
-      DB_USERNAME: root
-      DB_PASSWORD: ""
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
-      CACHE_DRIVER: redis
-      QUEUE_CONNECTION: redis
-    depends_on:
-      mysql:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
+  gateway:
+    image: ${ATGLANCE_REGISTRY:-atglance}/ce-atglance-gateway:${ATGLANCE_VERSION:-latest}
+    container_name: ce-atglance-gateway
     restart: unless-stopped
-
-  phpmyadmin:
-    image: phpmyadmin:5.2
-    environment:
-      PMA_HOST: mysql
-      PMA_PORT: 3306
-      PMA_USER: root
-      PMA_PASSWORD: ""
     ports:
-      - "8080:80"
+      - "${GATEWAY_PORT:-8002}:8002"
+    healthcheck:
+      test: ["CMD", "kong", "health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
     depends_on:
-      mysql:
+      app:
         condition: service_healthy
+
+  # Read-only MCP server for AI clients (Claude Desktop, Claude Code, ...).
+  # Turned on and off in Site Setting > Plugins > MCP Server (off by default): the console starts and
+  # stops this container through the controller service below.
+  # No published port: clients reach it through the gateway at <host>:8002/mcp,
+  # each with their own "Authorization: Bearer atgla-..." API key. See docs/mcp.md.
+  mcp:
+    image: ${ATGLANCE_REGISTRY:-atglance}/ce-atglance-mcp:${ATGLANCE_VERSION:-latest}
+    container_name: ce-atglance-mcp
+    restart: unless-stopped
+    environment:
+      ATGLANCE_URL: http://app:8000
+      # Reached only through Kong on the internal network; Kong sends Host "mcp:8010".
+      ATGLANCE_MCP_ALLOWED_HOSTS: "mcp:8010"
+    depends_on:
+      app:
+        condition: service_healthy
+
+  # Lets the console start/stop the mcp container. Holds the Docker socket but only
+  # forwards start, stop and inspect of ce-atglance-mcp; every other call gets 403.
+  # Internal only, no published port.
+  controller:
+    image: nginx:1.27-alpine
+    container_name: ce-atglance-controller
+    restart: unless-stopped
+    volumes:
+      # DOCKER_SOCKET in .env for rootless Docker or a non-standard socket (atglance-installer.sh sets it).
+      - ${DOCKER_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock
+    configs:
+      - source: controller-nginx
+        target: /etc/nginx/nginx.conf
+
+  # Optional database admin UI. Uncomment to use: docker compose --profile tools up -d
+  # dbadmin:
+  #   image: phpmyadmin:5.2
+  #   container_name: ce-atglance-dbadmin
+  #   profiles: ["tools"]
+  #   restart: unless-stopped
+  #   environment:
+  #     PMA_HOST: db
+  #     PMA_PORT: 3306
+  #   ports:
+  #     - "127.0.0.1:${DBADMIN_PORT:-8080}:80"
+  #   depends_on:
+  #     db:
+  #       condition: service_healthy
+
+volumes:
+  app-storage:
+  db-data:
+  redis-data:
+
+configs:
+  controller-nginx:
+    content: |
+      user root;
+      worker_processes 1;
+      events { worker_connections 64; }
+      http {
+        access_log off;
+        server {
+          listen 2375;
+          # Fixed upstream paths: the client's raw path is never forwarded.
+          location = /mcp/start {
+            limit_except POST { deny all; }
+            proxy_pass http://unix:/var/run/docker.sock:/containers/ce-atglance-mcp/start;
+          }
+          location = /mcp/stop {
+            limit_except POST { deny all; }
+            proxy_pass http://unix:/var/run/docker.sock:/containers/ce-atglance-mcp/stop?t=5;
+            proxy_read_timeout 30s;
+          }
+          location = /mcp/status {
+            limit_except GET { deny all; }
+            proxy_pass http://unix:/var/run/docker.sock:/containers/ce-atglance-mcp/json;
+          }
+          location / { return 403; }
+        }
+      }
