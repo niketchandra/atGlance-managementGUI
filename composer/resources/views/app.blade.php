@@ -67,6 +67,17 @@
                 @endif
             </a>
 
+            @if(!$requiresProfileSetup && \App\Support\McpControl::enabled())
+                @php $agMcpActive = request()->routeIs('mcp.connect'); @endphp
+                <nav class="ag-nav ag-nav--app" aria-label="Quick links">
+                    <div class="ag-nav-track">
+                        <a href="{{ route('mcp.connect') }}" class="ag-nav-link {{ $agMcpActive ? 'is-active' : '' }}" title="Connect AI tools (MCP)" @if($agMcpActive) aria-current="page" @endif>
+                            <i class="fas fa-plug"></i> MCP
+                        </a>
+                    </div>
+                </nav>
+            @endif
+
             <div class="ag-topbar-right">
                 @if(!empty($workspaceSelectorOptions) && count($workspaceSelectorOptions) > 0)
                     <form method="POST" action="{{ route('workspace.select') }}" class="ag-workspace">

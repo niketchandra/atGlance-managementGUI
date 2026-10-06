@@ -15,7 +15,7 @@
     piped to iex, where parameters cannot be passed):
       -Dir DIR          install directory        (ATGLANCE_DIR, default %ProgramData%\AtGlance)
       -Version TAG      image tag for BOTH images (ATGLANCE_VERSION, default latest)
-                        atglance/ce-atglance-app:TAG and atglance/ce-atglance-gateway:TAG
+                        atglance/ce-atglance-app, -gateway and -mcp at TAG
                         e.g. -Version 1.2.1 deploys that release instead of latest
       -Registry PREFIX  image registry/namespace (ATGLANCE_REGISTRY, default atglance = Docker Hub)
       -Port PORT        web console port         (APP_PORT, default 8000)
@@ -208,8 +208,8 @@ DB_ROOT_PASSWORD=$(New-RandomSecret)
 # ---------------------------------------------------------------------------
 Step "Deploying AtGlance CE ($AtglanceVersion)"
 
-Ok "Images: $AtglanceRegistry/ce-atglance-app:$AtglanceVersion, $AtglanceRegistry/ce-atglance-gateway:$AtglanceVersion"
-foreach ($img in "$AtglanceRegistry/ce-atglance-app:$AtglanceVersion", "$AtglanceRegistry/ce-atglance-gateway:$AtglanceVersion") {
+Ok "Images: $AtglanceRegistry/ce-atglance-{app,gateway,mcp}:$AtglanceVersion"
+foreach ($img in "$AtglanceRegistry/ce-atglance-app:$AtglanceVersion", "$AtglanceRegistry/ce-atglance-gateway:$AtglanceVersion", "$AtglanceRegistry/ce-atglance-mcp:$AtglanceVersion") {
     docker pull $img
     if ($LASTEXITCODE -ne 0) { Die "Could not pull $img. Check the version tag exists." }
 }
@@ -234,6 +234,7 @@ function Wait-Healthy($Name) {
     }
 }
 Wait-Healthy ce-atglance-app
+Wait-Healthy ce-atglance-mcp
 Wait-Healthy ce-atglance-gateway
 Ok "All containers running"
 
@@ -248,6 +249,7 @@ Write-Host "AtGlance CE is running." -ForegroundColor White
 Write-Host ""
 Write-Host "  Setup wizard:  http://${hostIp}:$AppPort"
 Write-Host "  API gateway:   http://${hostIp}:$GatewayPort"
+Write-Host "  MCP server:    http://${hostIp}:$GatewayPort/mcp   (AI clients, with an API key; see docs/mcp.md)"
 Write-Host "  CLI setup:     atglance --configure   (management URL: http://${hostIp}:$GatewayPort)"
 Write-Host "  Install dir:   $AtglanceDir"
 Write-Host ""

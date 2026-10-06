@@ -15,6 +15,7 @@ use App\Models\User;
 use App\Models\Workspace;
 use App\Services\BackupService;
 use App\Support\BackupSettings;
+use App\Support\McpControl;
 use App\Support\S3Settings;
 use App\Support\SiteProfile;
 use Illuminate\Http\UploadedFile;
@@ -2592,5 +2593,31 @@ class AdminDashboardController extends Controller
         }
 
         return sprintf('https://%s.s3.%s.amazonaws.com/%s', $bucket, $region, ltrim($path, '/'));
+    }
+
+    public function updateMcpSettings(Request $request): RedirectResponse
+    {
+        abort_unless(Auth::user()?->isSuperAdmin(), 403);
+
+        $enabled = $request->validate(['enabled' => 'required|boolean'])['enabled'];
+        $enabled = filter_var($enabled, FILTER_VALIDATE_BOOLEAN);
+
+        McpControl::setEnabled($enabled);
+        $error = McpControl::apply($enabled);
+
+        ActivityRecorder::record(
+            Auth::id(),
+            'settings.mcp_updated',
+            'MCP turned ' . ($enabled ? 'on' : 'off') . ($error !== null ? ' (container not changed: ' . $error . ')' : ''),
+            $error === null ? ActivityRecorder::SUCCESS : ActivityRecorder::FAILURE
+        );
+
+        $redirect = redirect()->route('admin.settings', ['tab' => 'mcp']);
+
+        if ($error !== null) {
+            return $redirect->withErrors(['mcp' => 'MCP turned ' . ($enabled ? 'on' : 'off') . ', but the MCP container was not ' . ($enabled ? 'started' : 'stopped') . ': ' . $error]);
+        }
+
+        return $redirect->with('success', $enabled ? 'MCP turned on. The MCP server is running.' : 'MCP turned off. The MCP server is stopped.');
     }
 }

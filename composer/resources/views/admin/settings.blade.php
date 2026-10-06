@@ -43,6 +43,7 @@
         <button type="button" class="ag-tab settings-tab-btn {{ $activeTab === 'ai-connect' ? 'active' : '' }}" data-tab="ai-connect"><i class="fas fa-robot"></i> AI Connect</button>
         <button type="button" class="ag-tab settings-tab-btn {{ $activeTab === 'notification' ? 'active' : '' }}" data-tab="notification"><i class="fas fa-bell"></i> Notification</button>
         <button type="button" class="ag-tab settings-tab-btn {{ $activeTab === 'licence' ? 'active' : '' }}" data-tab="licence"><i class="fas fa-key"></i> Licence</button>
+        <button type="button" class="ag-tab settings-tab-btn {{ $activeTab === 'mcp' ? 'active' : '' }}" data-tab="mcp"><i class="fas fa-network-wired"></i> MCP</button>
     </nav>
     <div class="ag-side-content">
 
@@ -846,6 +847,71 @@
             </fieldset>
         </form>
         <script type="application/json" id="ai-provider-catalog">@json(\App\Support\AiSettings::catalogForView())</script>
+    </div>
+
+    <div id="tab-mcp" class="settings-tab-content ag-card" style="display:{{ $activeTab === 'mcp' ? 'block' : 'none' }}; padding:24px;">
+        @php
+            $mcpEnabled = \App\Support\McpControl::enabled();
+            $mcpCanEdit = (int) auth()->user()->rbac_id === 100;
+            $mcpStatus = $activeTab === 'mcp' ? \App\Support\McpControl::status() : null;
+            $mcpStatusLabel = ['running' => 'Server running', 'stopped' => 'Server stopped', 'unknown' => 'Server state unknown'][$mcpStatus] ?? null;
+            $mcpStatusStyle = ['running' => 'background: var(--ag-success-soft); color: var(--ag-success);', 'stopped' => 'background: var(--ag-surface); color: var(--ag-subtle);', 'unknown' => 'background: var(--ag-warning-soft); color: var(--ag-warning);'][$mcpStatus] ?? '';
+            $mcpMismatch = $mcpStatus !== null && $mcpStatus !== 'unknown' && ($mcpStatus === 'running') !== $mcpEnabled;
+            $mcpInfo = \App\Support\McpConnect::info(request()->getHost());
+        @endphp
+
+        <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 8px;">
+            <h2 style="font-size: 18px;">MCP</h2>
+            <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+                <span style="font-size: 12px; font-weight: 600; border-radius: 999px; padding: 3px 10px; {{ $mcpEnabled ? 'background: var(--ag-success-soft); color: var(--ag-success);' : 'background: var(--ag-surface); color: var(--ag-subtle);' }}">{{ $mcpEnabled ? 'On' : 'Off' }}</span>
+                @if($mcpStatusLabel)
+                    <span style="font-size: 12px; font-weight: 600; border-radius: 999px; padding: 3px 10px; {{ $mcpStatusStyle }}">{{ $mcpStatusLabel }}</span>
+                @endif
+            </div>
+        </div>
+        @if($mcpStatus === 'unknown')
+            <div style="margin-bottom: 12px; padding: 10px; border-radius: 12px; background: var(--ag-warning-soft); color: var(--ag-warning); font-size: 12px; line-height: 1.6;">
+                The console cannot reach <code>mcp-control</code>, so it cannot start or stop the MCP server. On Docker Compose, run <code>docker compose up -d</code> in the install folder to add it. On other platforms, start or stop the MCP service there.
+            </div>
+        @elseif($mcpMismatch)
+            <div style="margin-bottom: 12px; padding: 10px; border-radius: 12px; background: var(--ag-warning-soft); color: var(--ag-warning); font-size: 12px; line-height: 1.6;">
+                The MCP server is {{ $mcpStatus === 'running' ? 'running although MCP is off' : 'stopped although MCP is on' }}. The console corrects this within a minute.
+            </div>
+        @endif
+        <p style="font-size: 13px; color: var(--ag-muted); margin-bottom: 14px;">
+            Lets AI clients (Claude Code, Claude Desktop, VS Code, GitHub Copilot, n8n and other MCP apps) answer questions from this console's data: systems, config backups, AI reviews and vulnerabilities.
+            Read-only. Each client uses its own API key and sees only what that user can see.
+            When MCP is on, every user gets an <strong>MCP</strong> link in the top bar with the setup steps.
+        </p>
+
+        @if($mcpCanEdit)
+            <form method="POST" action="{{ route('admin.settings.mcp') }}" style="margin-bottom: 20px;">
+                @csrf
+                @method('PUT')
+                <input type="hidden" name="enabled" value="{{ $mcpEnabled ? '0' : '1' }}">
+                <button class="ag-btn {{ $mcpEnabled ? 'ag-btn--ghost' : '' }}" type="submit">{{ $mcpEnabled ? 'Turn off MCP' : 'Turn on MCP' }}</button>
+            </form>
+        @else
+            <div style="margin-bottom: 16px; padding: 10px; border-radius: 12px; background: var(--ag-surface); color: var(--ag-subtle); font-size: 13px;">Only the super admin can turn MCP on or off.</div>
+        @endif
+
+        <div style="display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 6px 14px; font-size: 13px; margin-bottom: 16px;">
+            <span style="color: var(--ag-muted);">MCP URL</span><code style="overflow-wrap: anywhere;">{{ $mcpInfo['primary'] }}</code>
+            <span style="color: var(--ag-muted);">Private IP URL</span>
+            @if($mcpInfo['fallback'])
+                <code style="overflow-wrap: anywhere;">{{ $mcpInfo['fallback'] }}</code>
+            @else
+                <span style="color: var(--ag-warning);">Unknown. Set the server's private IP in <a href="{{ route('admin.settings', ['tab' => 'site']) }}" style="color: var(--ag-teal); text-decoration: underline;">Site Configuration</a> so users get a working fallback address.</span>
+            @endif
+        </div>
+
+        @if($mcpEnabled)
+            <a href="{{ route('mcp.connect') }}" class="ag-btn ag-btn--ghost"><i class="fas fa-plug"></i> Open the MCP setup page</a>
+        @else
+            <div style="padding: 14px; border-radius: 12px; background: var(--ag-surface); color: var(--ag-subtle); font-size: 13px;">
+                MCP is off. Turn it on to start the MCP server and show the MCP setup page to users.
+            </div>
+        @endif
     </div>
 
     <div id="tab-notification" class="settings-tab-content ag-card" style="display:{{ $activeTab === 'notification' ? 'block' : 'none' }}; padding:24px;">

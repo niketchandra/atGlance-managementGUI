@@ -65,6 +65,13 @@ Comprehensive settings management with 5 tabs.
 **Route:**
 - `GET /settings` - Settings page (authenticated users only)
 
+### MCP setup page (`resources/views/mcp-connect.blade.php`)
+Linked as **MCP** in the top bar for every user while MCP is on (Site Setting > MCP). Setup steps for connecting
+AI clients to the read-only MCP server, with the user's own API key. See `docs/mcp.md`.
+
+**Route:**
+- `GET /connect-ai` - MCP setup page (authenticated; 404 while MCP is off)
+
 ### 4. **Profile** (`resources/views/profile.blade.php`)
 User profile and account overview.
 
@@ -191,6 +198,7 @@ POST /contact - Submit contact form
 
 // Protected routes (require authentication)
 GET  /dashboard - Dashboard page
+GET  /connect-ai - MCP setup page (only while MCP is on)
 GET  /settings - Settings page
 POST /settings/update - Update settings
 POST /password/update - Update password

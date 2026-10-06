@@ -1487,3 +1487,49 @@ a[style*='cursor: pointer'][style*='background']:not(.ag-btn):hover {
         height: 26px;
     }
 }
+
+/* Console top bar page link (MCP): a single gradient pill with icon, like the
+   home page's active "Home" pill. The menu button there opens the sidebar, so the
+   pill stays visible in the top bar on phones too. */
+.ag-nav.ag-nav--app .ag-nav-track {
+    padding: 0;
+    background: none;
+    box-shadow: none;
+    overflow: visible;
+}
+
+.ag-nav.ag-nav--app .ag-nav-link,
+.ag-nav.ag-nav--app .ag-nav-link:hover {
+    color: var(--ag-text);
+    font-weight: 500;
+    background: var(--ag-gradient);
+    box-shadow: 0 4px 14px rgba(76, 201, 255, 0.35);
+}
+
+.ag-nav.ag-nav--app .ag-nav-link:hover {
+    box-shadow: 0 6px 18px rgba(76, 201, 255, 0.5);
+}
+
+.ag-nav.ag-nav--app .ag-nav-link i {
+    display: inline;
+}
+
+@media (max-width: 900px) {
+    .ag-nav.ag-nav--app {
+        display: flex;
+        order: 0;
+        flex: 0 1 auto;
+        flex-basis: auto;
+    }
+
+    .ag-nav.ag-nav--app .ag-nav-track {
+        flex-direction: row;
+        width: auto;
+    }
+}
+
+@media (max-width: 560px) {
+    .ag-nav.ag-nav--app .ag-nav-link {
+        padding: 8px 12px;
+    }
+}

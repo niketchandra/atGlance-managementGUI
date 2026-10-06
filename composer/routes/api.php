@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\FileController;
+use App\Http\Controllers\Api\McpController;
 use App\Http\Controllers\Api\PatTokenController;
 use App\Http\Controllers\Api\ServiceController;
 use App\Http\Controllers\Api\SystemRegisterController;
@@ -67,3 +68,16 @@ Route::get('/system-reactivate-force', [SystemRegisterController::class, 'reacti
 // Built-in proxy (Caddy) only; see DomainTlsController::isLocal().
 Route::get('/internal/domain/tls-allowed', [DomainTlsController::class, 'allowed']);
 Route::get('/internal/domain/certificate', [DomainTlsController::class, 'certificate']);
+
+// Read-only API for the AtGlance MCP server (mcp/, docs/mcp.md). Answers as the PAT's user.
+Route::prefix('mcp')->middleware(['auth.pat', 'throttle:120,1'])->group(function () {
+    Route::get('/me', [McpController::class, 'me']);
+    Route::get('/workspaces', [McpController::class, 'workspaces']);
+    Route::get('/workspaces/{workspaceId}/ai-progress', [McpController::class, 'aiProgress'])->whereNumber('workspaceId');
+    Route::get('/systems', [McpController::class, 'systems']);
+    Route::get('/config-files', [McpController::class, 'configFiles']);
+    Route::get('/config-files/{id}', [McpController::class, 'configFile'])->whereNumber('id');
+    Route::get('/config-files/{id}/versions', [McpController::class, 'configVersions'])->whereNumber('id');
+    Route::get('/vulnerabilities', [McpController::class, 'vulnerabilities']);
+    Route::get('/dashboard', [McpController::class, 'dashboard']);
+});

@@ -6,7 +6,7 @@
 # Options (pass after "bash -s --", or as environment variables):
 #   --dir DIR          install directory              (ATGLANCE_DIR, default /opt/atglance)
 #   --version TAG      image tag for BOTH images      (ATGLANCE_VERSION, default latest)
-#                      atglance/ce-atglance-app:TAG and atglance/ce-atglance-gateway:TAG
+#                      atglance/ce-atglance-app, -gateway and -mcp at TAG
 #                      e.g. --version 1.2.1 deploys that release instead of latest
 #   --registry PREFIX  image registry/namespace       (ATGLANCE_REGISTRY, default atglance = Docker Hub)
 #   --port PORT        web console port               (APP_PORT, default 8000)
@@ -194,9 +194,10 @@ fi
 # ---------------------------------------------------------------------------
 step "Deploying AtGlance CE ($ATGLANCE_VERSION)"
 
-ok "Images: $ATGLANCE_REGISTRY/ce-atglance-app:$ATGLANCE_VERSION, $ATGLANCE_REGISTRY/ce-atglance-gateway:$ATGLANCE_VERSION"
-docker pull "$ATGLANCE_REGISTRY/ce-atglance-app:$ATGLANCE_VERSION"
-docker pull "$ATGLANCE_REGISTRY/ce-atglance-gateway:$ATGLANCE_VERSION"
+ok "Images: $ATGLANCE_REGISTRY/ce-atglance-{app,gateway,mcp}:$ATGLANCE_VERSION"
+for image in app gateway mcp; do
+    docker pull "$ATGLANCE_REGISTRY/ce-atglance-$image:$ATGLANCE_VERSION"
+done
 docker compose pull
 docker compose up -d --remove-orphans
 
@@ -213,6 +214,7 @@ wait_healthy() {
     [ "$status" = "healthy" ] || die "$name did not become healthy. Check: docker compose -f $ATGLANCE_DIR/docker-compose.yml logs"
 }
 wait_healthy ce-atglance-app
+wait_healthy ce-atglance-mcp
 wait_healthy ce-atglance-gateway
 ok "All containers running"
 
@@ -225,6 +227,7 @@ echo "${C_B}AtGlance CE is running.${C_0}"
 echo
 echo "  Setup wizard:  http://$host_ip:$APP_PORT"
 echo "  API gateway:   http://$host_ip:$GATEWAY_PORT"
+echo "  MCP server:    http://$host_ip:$GATEWAY_PORT/mcp   (AI clients, with an API key; see docs/mcp.md)"
 echo "  CLI setup:     atglance --configure   (management URL: http://$host_ip:$GATEWAY_PORT)"
 echo "  Install dir:   $ATGLANCE_DIR"
 echo
