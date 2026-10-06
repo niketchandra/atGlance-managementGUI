@@ -40,8 +40,8 @@ claude mcp add --transport http atglance http://<console-host>:8002/mcp \
 
 ## Turning MCP on and off
 
-MCP is off on a new install. The super admin turns it on and off in **Site Setting > MCP**,
-which also shows the server state and the MCP URLs.
+MCP is off on a new install. The super admin turns it on and off with the **MCP Server (AI tools)** plugin in
+**Site Setting > Plugins** (`POST /admin/settings/mcp`). Its **Info** panel shows the server state and the MCP URLs.
 
 While MCP is on, every user gets an **MCP** link in the top bar to `/connect-ai` (route `mcp.connect`,
 `McpConnectController`, 404 while off). It has the full client setup: Claude Code, Claude Desktop,
@@ -52,25 +52,25 @@ addresses and snippets: `App\Support\McpConnect`.
 - MCP URL: `http://<domain>:8002/mcp` if a custom domain is set, else the private IP.
 - Fallback: `http://<private_ip>:8002/mcp`, from the server IP in Site Configuration (or the address the
   page was opened with, if that is a private IP). Users can switch every example to it. If the IP is unknown
-  (e.g. saved as `127.0.0.1`), the page says how to find it and the MCP tab asks the super admin to set it.
+  (e.g. saved as `127.0.0.1`), the page says how to find it and the plugin's Info panel asks the super admin to set it.
 
 - The setting is `admin_settings.mcp_enabled` (`'true'`/`'false'`, migration
   `2026_10_05_000000_add_mcp_enabled_setting`). Code: `App\Support\McpControl`.
 - **On/off starts or stops the `ce-atglance-mcp` container right away.** The console does this through the
-  `mcp-control` service (container `ce-atglance-mcp-control`, `nginx:alpine`, config inline in
+  `controller` service (container `ce-atglance-controller`, `nginx:alpine`, config inline in
   `docker-compose.yml` under `configs:`). It holds the Docker socket but forwards only three fixed calls;
   every other request gets 403:
 
-  | mcp-control path | Docker API call |
+  | controller path | Docker API call |
   |---|---|
   | `POST /mcp/start` | `POST /containers/ce-atglance-mcp/start` |
   | `POST /mcp/stop` | `POST /containers/ce-atglance-mcp/stop?t=5` |
   | `GET /mcp/status` | `GET /containers/ce-atglance-mcp/json` |
 
-  It has no published port; the app reaches it at `ATGLANCE_MCP_CONTROL_URL` (default `http://mcp-control:2375`).
+  It has no published port; the app reaches it at `ATGLANCE_CONTROLLER_URL` (default `http://controller:2375`).
 - The scheduler runs `mcp:manage` every minute and starts or stops the container if it does not match the
   setting, e.g. after `docker compose up -d` started it while MCP is off.
-- If `mcp-control` is not reachable (no Docker socket, Kubernetes, ECS), the setting is still saved, the tab
+- If the controller is not reachable (no Docker socket, Kubernetes, ECS), the setting is still saved, the tab
   says the state is unknown, and you start or stop the MCP service on that platform yourself.
 - While MCP is off, `<host>:8002/mcp` returns 500/503 from Kong. After turning it on, allow a few seconds:
   Kong re-resolves container names every 5 seconds (`KONG_DNS_VALID_TTL`, `kong/Dockerfile`), because a

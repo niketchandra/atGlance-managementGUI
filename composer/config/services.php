@@ -43,8 +43,8 @@ return [
         'portal_url' => env('ATGLANCE_LICENSE_PORTAL_URL', 'https://atglance.live'),
     ],
 
-    'mcp_control' => [
-        'url' => env('ATGLANCE_MCP_CONTROL_URL', 'http://mcp-control:2375'),
+    'controller' => [
+        'url' => env('ATGLANCE_CONTROLLER_URL', 'http://controller:2375'),
     ],
 
 ];

@@ -29,6 +29,14 @@ class S3Settings
         return filter_var((string) AdminSetting::getValue('s3_enabled', $fallback), FILTER_VALIDATE_BOOL);
     }
 
+    /** S3 Storage plugin (Plugins tab): shows the S3 Configuration tab. Installs already using S3 count as enabled. */
+    public static function pluginEnabled(): bool
+    {
+        $stored = AdminSetting::getValue('s3_plugin_enabled', null);
+
+        return $stored !== null ? filter_var((string) $stored, FILTER_VALIDATE_BOOL) : self::enabled();
+    }
+
     /**
      * @return array{key: string, secret: string, region: string, bucket: string}
      */

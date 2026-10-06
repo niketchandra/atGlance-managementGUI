@@ -42,12 +42,12 @@ class AiConnectTest extends TestCase
     public function test_super_admin_saves_settings_with_encrypted_key(): void
     {
         $this->actingAsRole(100);
+        AdminSetting::putValue('ai', 'ai_plugin_enabled', 'true');
 
         $this->post(route('admin.settings.ai'), [
-            'ai_enabled' => '1',
             'ai_provider' => 'openai',
-            'ai_model' => 'gpt-test',
-            'ai_api_key' => self::KEY,
+            'ai_config' => ['openai' => ['model' => 'gpt-test']],
+            'ai_key' => ['openai' => self::KEY],
         ])->assertRedirect(route('admin.settings', ['tab' => 'ai-connect']))->assertSessionHasNoErrors();
 
         $this->assertTrue(AiSettings::enabled());
@@ -55,7 +55,7 @@ class AiConnectTest extends TestCase
         $this->assertSame('gpt-test', AiSettings::model());
         $this->assertSame(self::KEY, AiSettings::apiKey());
 
-        $row = AdminSetting::query()->where('setting_key', 'ai_api_key')->first();
+        $row = AdminSetting::query()->where('setting_key', 'ai_provider_keys')->first();
         $this->assertTrue($row->is_encrypted);
         $this->assertStringNotContainsString(self::KEY, $row->setting_value);
     }
@@ -66,10 +66,9 @@ class AiConnectTest extends TestCase
         $this->actingAsRole(100);
 
         $this->post(route('admin.settings.ai'), [
-            'ai_enabled' => '1',
             'ai_provider' => 'anthropic',
-            'ai_model' => 'claude-sonnet-5',
-            'ai_api_key' => '',
+            'ai_config' => ['anthropic' => ['model' => 'claude-sonnet-5']],
+            'ai_key' => ['anthropic' => ''],
         ])->assertSessionHasNoErrors();
 
         $this->assertSame(self::KEY, AiSettings::apiKey());
@@ -98,27 +97,27 @@ class AiConnectTest extends TestCase
 
         $this->post(route('admin.settings.ai'), [
             'ai_provider' => 'anthropic',
-            'ai_base_url' => 'https://proxy.example.test',
-            'ai_model' => 'claude-opus-5',
+            'ai_config' => ['anthropic' => ['base_url' => 'https://proxy.example.test', 'model' => 'claude-opus-5']],
         ]);
         $this->assertSame('', AiSettings::apiKey());
     }
 
-    public function test_enabling_requires_model_and_key(): void
+    public function test_active_provider_needs_model_and_key(): void
     {
         $this->actingAsRole(100);
+        AdminSetting::putValue('ai', 'ai_plugin_enabled', 'true');
 
         $this->post(route('admin.settings.ai'), [
-            'ai_enabled' => '1',
             'ai_provider' => 'anthropic',
-            'ai_model' => 'claude-opus-5',
-        ])->assertSessionHasErrors('ai');
+            'ai_config' => ['anthropic' => ['model' => 'claude-opus-5']],
+        ])->assertSessionHasErrors('ai_config.anthropic');
         $this->assertFalse(AiSettings::enabled());
+        // What was entered is still saved.
+        $this->assertSame('claude-opus-5', AiSettings::modelFor('anthropic'));
 
         $this->post(route('admin.settings.ai'), [
-            'ai_enabled' => '1',
             'ai_provider' => 'ollama',
-            'ai_model' => 'llama3.2',
+            'ai_config' => ['ollama' => ['model' => 'llama3.2']],
         ])->assertSessionHasNoErrors();
         $this->assertTrue(AiSettings::enabled());
     }
@@ -126,11 +125,67 @@ class AiConnectTest extends TestCase
     public function test_custom_and_azure_require_base_url(): void
     {
         $this->actingAsRole(100);
+        AdminSetting::putValue('ai', 'ai_plugin_enabled', 'true');
 
-        $this->post(route('admin.settings.ai'), ['ai_provider' => 'custom', 'ai_model' => 'x'])
-            ->assertSessionHasErrors('ai_base_url');
-        $this->post(route('admin.settings.ai'), ['ai_provider' => 'azure', 'ai_model' => 'x', 'ai_base_url' => 'ftp://nope'])
-            ->assertSessionHasErrors('ai_base_url');
+        $this->post(route('admin.settings.ai'), ['ai_provider' => 'custom', 'ai_config' => ['custom' => ['model' => 'x']]])
+            ->assertSessionHasErrors('ai_config.custom');
+        $this->post(route('admin.settings.ai'), ['ai_provider' => 'azure', 'ai_config' => ['azure' => ['model' => 'x', 'base_url' => 'ftp://nope']]])
+            ->assertSessionHasErrors('ai_config.azure.base_url');
+    }
+
+    public function test_switching_provider_keeps_each_providers_settings(): void
+    {
+        $this->actingAsRole(100);
+        AdminSetting::putValue('ai', 'ai_plugin_enabled', 'true');
+
+        $this->post(route('admin.settings.ai'), [
+            'ai_provider' => 'openai',
+            'ai_config' => ['openai' => ['model' => 'gpt-test'], 'ollama' => ['model' => 'llama3.2']],
+            'ai_key' => ['openai' => self::KEY],
+        ])->assertSessionHasNoErrors();
+
+        $this->post(route('admin.settings.ai'), ['ai_provider' => 'ollama'])->assertSessionHasNoErrors();
+        $this->assertSame('ollama', AiSettings::provider());
+        $this->assertSame('llama3.2', AiSettings::model());
+
+        $this->post(route('admin.settings.ai'), ['ai_provider' => 'openai'])->assertSessionHasNoErrors();
+        $this->assertSame('gpt-test', AiSettings::model());
+        $this->assertSame(self::KEY, AiSettings::apiKey());
+    }
+
+    public function test_plugin_shows_the_tab_and_gates_ai(): void
+    {
+        $this->actingAsRole(100);
+
+        $this->get(route('admin.settings', ['tab' => 'ai-connect']))
+            ->assertOk()
+            ->assertDontSee('data-tab="ai-connect"', false)
+            ->assertSee('AI Connect');
+        $this->post(route('admin.settings.ai'), ['ai_provider' => 'ollama'])->assertSessionHasErrors('ai');
+
+        $this->post(route('admin.settings.ai.plugin'), ['enabled' => '1'])
+            ->assertRedirect(route('admin.settings', ['tab' => 'plugins', 'plugin' => 'ai']));
+        $this->assertTrue(AiSettings::pluginEnabled());
+        $this->assertFalse(AiSettings::enabled());
+
+        $this->get(route('admin.settings', ['tab' => 'ai-connect', 'provider' => 'ollama']))
+            ->assertOk()
+            ->assertSee('data-tab="ai-connect"', false)
+            ->assertSee('data-split="provider"', false)
+            ->assertSee('id="ai-panel-ollama" data-key="ollama" style="display: block;"', false);
+
+        $this->post(route('admin.settings.ai.plugin'), ['enabled' => '0']);
+        $this->assertFalse(AiSettings::pluginEnabled());
+    }
+
+    public function test_install_with_ai_on_keeps_working(): void
+    {
+        $this->saveAnthropic();
+
+        $this->assertTrue(AiSettings::pluginEnabled());
+        $this->assertTrue(AiSettings::enabled());
+        $this->assertSame(self::KEY, AiSettings::apiKeyFor('anthropic'));
+        $this->assertSame('', AiSettings::apiKeyFor('openai'));
     }
 
     public function test_admin_cannot_change_or_test(): void
@@ -138,9 +193,10 @@ class AiConnectTest extends TestCase
         $this->saveAnthropic();
         $this->actingAsRole(101);
 
-        $this->post(route('admin.settings.ai'), ['ai_provider' => 'openai', 'ai_model' => 'x'])
+        $this->post(route('admin.settings.ai'), ['ai_provider' => 'openai', 'ai_config' => ['openai' => ['model' => 'x']]])
             ->assertSessionHasErrors('ai');
         $this->assertSame('anthropic', AiSettings::provider());
+        $this->post(route('admin.settings.ai.plugin'), ['enabled' => '0'])->assertForbidden();
 
         $this->postJson(route('admin.settings.ai.test'), ['ai_provider' => 'anthropic'])->assertForbidden();
         $this->postJson(route('admin.settings.ai.models'), ['ai_provider' => 'anthropic'])->assertForbidden();

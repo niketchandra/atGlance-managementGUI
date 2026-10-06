@@ -15,7 +15,10 @@ return [
 
     'name' => env('APP_NAME', 'Laravel'),
 
-    'version' => env('VERSION', '0.1.0'),
+    // Release version, shown in the console and sent to the licence server.
+    // Set here (not in .env): the app .env lives on the storage volume and would
+    // keep an old value after an update. Bump it for every release.
+    'version' => '2.0.0',
 
     // Days of activity_logs kept by the daily activity:prune command.
     'activity_retention_days' => (int) env('ACTIVITY_RETENTION_DAYS', 180),

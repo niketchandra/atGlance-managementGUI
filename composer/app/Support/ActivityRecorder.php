@@ -22,7 +22,10 @@ class ActivityRecorder
     public const SUCCESS = 'success';
     public const FAILURE = 'failure';
 
-    public static function record(?int $userId, string $event, string $description, string $outcome = self::SUCCESS, ?Request $request = null): void
+    /**
+     * $workspaceId / $systemId tie the entry to a workspace (Recent Activity tab) and a system.
+     */
+    public static function record(?int $userId, string $event, string $description, string $outcome = self::SUCCESS, ?Request $request = null, ?int $workspaceId = null, ?int $systemId = null): void
     {
         $request ??= app()->bound('request') ? app('request') : null;
 
@@ -31,7 +34,12 @@ class ActivityRecorder
                 return;
             }
 
-            ActivityLog::create([
+            $context = [];
+            if (($workspaceId || $systemId) && Schema::hasColumn('activity_logs', 'workspace_id')) {
+                $context = ['workspace_id' => $workspaceId ?: null, 'system_register_id' => $systemId ?: null];
+            }
+
+            ActivityLog::create($context + [
                 'user_id' => $userId,
                 'event' => $event,
                 'description' => mb_substr($description, 0, 255),

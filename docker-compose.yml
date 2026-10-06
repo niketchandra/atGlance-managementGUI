@@ -7,7 +7,7 @@
 # the MCP server at <host>:8002/mcp.
 # Local development:       see docker-compose.dev.yml (builds from source)
 #
-# Settings come from .env next to this file (see .env.example). install.sh
+# Settings come from .env next to this file (see .env.example). atglance-installer.sh
 # creates it with random passwords.
 
 name: atglance
@@ -119,8 +119,8 @@ services:
         condition: service_healthy
 
   # Read-only MCP server for AI clients (Claude Desktop, Claude Code, ...).
-  # Turned on and off in Site Setting > MCP (off by default): the console starts and
-  # stops this container through mcp-control below.
+  # Turned on and off in Site Setting > Plugins > MCP Server (off by default): the console starts and
+  # stops this container through the controller service below.
   # No published port: clients reach it through the gateway at <host>:8002/mcp,
   # each with their own "Authorization: Bearer atgla-..." API key. See docs/mcp.md.
   mcp:
@@ -138,14 +138,15 @@ services:
   # Lets the console start/stop the mcp container. Holds the Docker socket but only
   # forwards start, stop and inspect of ce-atglance-mcp; every other call gets 403.
   # Internal only, no published port.
-  mcp-control:
+  controller:
     image: nginx:1.27-alpine
-    container_name: ce-atglance-mcp-control
+    container_name: ce-atglance-controller
     restart: unless-stopped
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
+      # DOCKER_SOCKET in .env for rootless Docker or a non-standard socket (atglance-installer.sh sets it).
+      - ${DOCKER_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock
     configs:
-      - source: mcp-control-nginx
+      - source: controller-nginx
         target: /etc/nginx/nginx.conf
 
   # Optional database admin UI. Uncomment to use: docker compose --profile tools up -d
@@ -169,7 +170,7 @@ volumes:
   redis-data:
 
 configs:
-  mcp-control-nginx:
+  controller-nginx:
     content: |
       user root;
       worker_processes 1;

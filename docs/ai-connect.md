@@ -1,15 +1,24 @@
 # AI Connect
 
-The **AI Connect** tab (`/admin/settings?tab=ai-connect`) connects one AI
-provider for the whole organization. Nothing in AtGlance calls it yet. The
-first feature that uses it is a follow-up to issue #11.
+AI Connect is a plugin: the super admin enables **AI Connect** in **Site Setting > Plugins**, which
+shows the **AI Connect** tab (`/admin/settings?tab=ai-connect`). The tab is hidden while the plugin is off.
+
+The tab has two panes:
+- Left: all providers. The radio button picks the **active** provider. The status shows "Active",
+  "Active, not set up" or "Ready" (set up but not active).
+- Right: the open provider's setup steps, base URL, API key and model, with **Load models** and
+  **Test <provider>** buttons that use that pane's values without saving.
+
+Every provider keeps its own base URL, model and key, so switching the active provider loses nothing.
+AI reviews run only while the plugin is on **and** the active provider is complete
+(`AiSettings::enabled()`); the plugin shows "needs attention" otherwise.
 
 ## Who can do what
 
 | Role | Access |
 |---|---|
-| Super admin (`rbac_id` 100) | Edits, tests, loads models |
-| Admin (`rbac_id` 101) | Sees the settings read-only; test and model requests return 403 |
+| Super admin (`rbac_id` 100) | Turns the plugin on and off, edits, tests, loads models |
+| Admin (`rbac_id` 101) | Sees the settings read-only; plugin toggle, test and model requests return 403 |
 
 ## Stored settings
 
@@ -17,12 +26,14 @@ All of these are in `admin_settings`, group `ai`:
 
 | Key | Value |
 |---|---|
-| `ai_enabled` | `true` / `false` |
-| `ai_provider` | A key of `App\Support\AiSettings::PROVIDERS` |
-| `ai_base_url` | Blank means the provider default |
-| `ai_model` | Model name, deployment name, or OpenClaw agent target |
-| `ai_api_key` | Encrypted with `APP_KEY` |
-| `ai_last_test` | JSON with the result of the last "Test connection" |
+| `ai_plugin_enabled` | `true` / `false` (plugin; falls back to `ai_enabled` on older installs) |
+| `ai_provider` | The active provider, a key of `App\Support\AiSettings::PROVIDERS` |
+| `ai_provider_config` | JSON `{provider: {base_url, model}}`; a blank base URL means the provider default |
+| `ai_provider_keys` | JSON `{provider: key}`, encrypted with `APP_KEY` |
+| `ai_last_test` | JSON with the result of the last test |
+
+Older installs stored one connection in `ai_base_url`, `ai_model` and `ai_api_key`. Those values are read
+for the provider in `ai_provider` until the tab is saved once; after that only the keys above are used.
 
 **The API key:**
 - It is never rendered in the page.
@@ -30,8 +41,8 @@ All of these are in `admin_settings`, group `ai`:
 - Error messages from the provider have the key replaced with `***`.
 
 **Saved key reuse:**
-- If the key field is left blank, the saved key is used, but only when the provider and the resolved base URL have not changed. This stops a saved key being sent to a new host.
-- Changing the provider or base URL without entering a key clears the saved key.
+- If a provider's key field is left blank, its saved key is kept, but only while that provider's resolved base URL is unchanged. This stops a saved key being sent to a new host.
+- Changing a provider's base URL without entering a key clears that provider's saved key.
 
 > The key is encrypted with `APP_KEY`. If the Docker image regenerates
 > `APP_KEY` on rebuild (see issue #3 follow-ups), you must enter the key again.
@@ -40,8 +51,9 @@ All of these are in `admin_settings`, group `ai`:
 
 | Method | Path | Name | Purpose |
 |---|---|---|---|
-| POST | `/admin/settings/ai` | `admin.settings.ai` | Save |
-| POST | `/admin/settings/ai/test` | `admin.settings.ai.test` | Test the form values without saving; returns JSON |
+| POST | `/admin/settings/ai/plugin` | `admin.settings.ai.plugin` | Turn the plugin on or off (super admin) |
+| POST | `/admin/settings/ai` | `admin.settings.ai` | Save every provider's settings and the active provider |
+| POST | `/admin/settings/ai/test` | `admin.settings.ai.test` | Test one provider's values without saving; returns JSON |
 | POST | `/admin/settings/ai/models` | `admin.settings.ai.models` | List the models the provider reports; returns JSON |
 
 ## How requests are sent

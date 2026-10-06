@@ -27,6 +27,12 @@ Used when the installer step was skipped or to replace the key. The console and
 organisation already exist here, so **Verify & Save** activates the licence
 directly, with the name of organisation `200`.
 
+Replacing a saved key (active or not) asks for the signed-in user's password
+(**Verify & Replace**). The password is checked before the new key is sent to
+atglance.live; a wrong or missing password leaves the current licence untouched
+and is logged as `license.replace_denied`. Successful changes are logged as
+`license.added` or `license.replaced`.
+
 ### Verify (check only, installer "Verify" button)
 
 ```
@@ -91,9 +97,12 @@ fields (`console.*`, ...) flattened to dot keys. The licence owner fields
 
 ## Daily check
 
-`php artisan license:check` runs every day at 02:15 (scheduler container). It
-calls **verify** (check only) with the stored key and sets **Validated On** to
-the check date.
+`php artisan license:check` calls **verify** (check only) with the stored key and
+updates the stored check date (`license_verified_at`).
+
+> **Paused for now:** the daily 02:15 schedule is commented out in
+> `routes/console.php`. Run `php artisan license:check` by hand; uncomment the
+> `Schedule::command('license:check')` line to turn the daily check back on.
 
 | Verify result | Effect |
 |---|---|
@@ -108,9 +117,11 @@ An admin activates it again with **Verify & Save**.
 
 ## Sidebar licence card
 
-Shows plan, licence name, **Activated On** (`console.activated_at` from
-atglance.live, date only) and **Validated On** (last successful activation or
-daily check, date only).
+Shows plan, **Activated On** (`console.activated_at` from atglance.live, date
+only) and the expiry line from `license_expires_at` (`License::expiry()`):
+**Expires On <date> (N days left)**, **Expires On <date> (today)**,
+**Expired On <date>**, or **No expiry date**. The line turns amber with 30 days
+or fewer left.
 
 Rate limits per key on atglance.live: verify 30/min, activate 30/min.
 

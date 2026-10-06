@@ -7,6 +7,7 @@ use App\Support\NotificationSettings;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Validation\Rule;
 
 /**
  * Notification tab of /admin/settings: which channels workspace admins may
@@ -24,8 +25,12 @@ class NotificationSettingsController extends Controller
 
         $rules = ['allowed' => ['nullable', 'array'], 'allowed.*' => ['nullable', 'boolean']];
         foreach (NotificationSettings::CREDENTIALS as $credentials) {
-            foreach (array_keys($credentials) as $key) {
-                $rules[$key] = ['nullable', 'string', 'max:2000'];
+            foreach ($credentials as $key => $meta) {
+                $rules[$key] = match ($meta['type'] ?? 'text') {
+                    'select' => ['nullable', Rule::in(array_keys($meta['options']))],
+                    'checkbox' => ['nullable', 'boolean'],
+                    default => ['nullable', 'string', 'max:2000'],
+                };
             }
         }
         $rules['notify_sms_from'] = ['nullable', 'regex:/^\+[1-9]\d{6,14}$/'];
@@ -40,7 +45,9 @@ class NotificationSettingsController extends Controller
 
         foreach (NotificationSettings::CREDENTIALS as $credentials) {
             foreach ($credentials as $key => $meta) {
-                $value = trim((string) ($validated[$key] ?? ''));
+                $value = ($meta['type'] ?? 'text') === 'checkbox'
+                    ? ($request->boolean($key) ? 'true' : 'false')
+                    : trim((string) ($validated[$key] ?? ''));
 
                 // A blank secret field keeps the saved secret; a "clear" box removes it.
                 if ($meta['secret'] && $value === '' && !$request->boolean('clear.' . $key)) {

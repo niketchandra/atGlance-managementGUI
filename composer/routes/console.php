@@ -72,7 +72,8 @@ Artisan::command('license:check', function (LicenseClient $client) {
 
 if (InstallationState::isInstalled()) {
     Schedule::command('activity:prune')->dailyAt('03:30')->withoutOverlapping();
-    Schedule::command('license:check')->dailyAt('02:15')->withoutOverlapping();
+    // Daily licence check paused for now; run `php artisan license:check` by hand if needed.
+    // Schedule::command('license:check')->dailyAt('02:15')->withoutOverlapping();
 }
 
 // Frequencies come from the Backup & Restore tab. The scheduler re-reads them on

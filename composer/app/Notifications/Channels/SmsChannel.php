@@ -13,7 +13,7 @@ use RuntimeException;
  */
 class SmsChannel extends HttpChannel
 {
-    public const ENDPOINT = 'https://mandrillapp.com/api/1.0/messages/send-sms';
+    public const ENDPOINT = 'https://mandrillapp.com/api/1.1/messages/send-sms';
 
     public function send(NotificationGroup $group, Message $message): void
     {
@@ -27,7 +27,13 @@ class SmsChannel extends HttpChannel
         foreach ($group->targetList() as $phone) {
             $response = $this->http()->post(self::ENDPOINT, [
                 'key' => $apiKey,
-                'message' => ['to' => $phone, 'from' => $from, 'text' => mb_substr($message->text(), 0, 1600)],
+                // Body shape from Mailchimp's "Send your first SMS" guide: message.sms.{text,to,from,consent}.
+                'message' => ['sms' => [
+                    'text' => mb_substr($message->text(), 0, 1600),
+                    'to' => $phone,
+                    'from' => $from,
+                    'consent' => NotificationSettings::credential('notify_sms_consent'),
+                ]],
             ]);
 
             $result = $response->json('0') ?? $response->json();
