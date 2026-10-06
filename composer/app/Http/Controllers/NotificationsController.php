@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Support\ActivityRecorder;
 use App\Models\NotificationGroup;
 use App\Models\User;
 use App\Models\Workspace;
@@ -52,10 +53,11 @@ class NotificationsController extends Controller
 
         $validated = $this->validateGroup($request, $scope, null);
 
-        NotificationGroup::create($validated + [
+        $group = NotificationGroup::create($validated + [
             'workspace_id' => $scope === self::ORGANIZATION_SCOPE ? null : (int) $scope,
             'created_by' => Auth::id(),
         ]);
+        $this->log($group, 'notification.group_added', 'Added notification group');
 
         return $this->backTo($scope)->with('success', 'Notification group added.');
     }
@@ -66,6 +68,7 @@ class NotificationsController extends Controller
         $this->authorizeScope($scope);
 
         $group->update($this->validateGroup($request, $scope, $group));
+        $this->log($group, 'notification.group_updated', 'Updated notification group');
 
         return $this->backTo($scope)->with('success', 'Notification group updated.');
     }
@@ -75,9 +78,18 @@ class NotificationsController extends Controller
         $scope = $this->scopeOf($group);
         $this->authorizeScope($scope);
 
+        $this->log($group, 'notification.group_deleted', 'Deleted notification group');
         $group->delete();
 
         return $this->backTo($scope)->with('success', 'Notification group deleted.');
+    }
+
+    /** Workspace groups show in that workspace's Recent Activity. The target (webhook URL, numbers) is never logged. */
+    private function log(NotificationGroup $group, string $event, string $verb): void
+    {
+        if ($group->workspace_id) {
+            ActivityRecorder::record((int) Auth::id(), $event, $verb . ' "' . $group->name . '" (' . (NotificationSettings::CHANNELS[$group->channel]['label'] ?? $group->channel) . ')', ActivityRecorder::SUCCESS, null, (int) $group->workspace_id);
+        }
     }
 
     public function test(NotificationGroup $group, Notifier $notifier): RedirectResponse

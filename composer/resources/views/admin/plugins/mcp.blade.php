@@ -21,7 +21,7 @@
 
 @if($mcpStatus === 'unknown')
     <div class="ag-alert ag-alert--warning" style="margin-bottom: 12px;">
-        <span>The console cannot reach <code>mcp-control</code>, so it cannot start or stop the MCP server. On Docker Compose, run <code>docker compose up -d</code> in the install folder to add it. On other platforms, start or stop the MCP service there.</span>
+        <span>The console cannot reach the controller (<code>ce-atglance-controller</code>), so it cannot start or stop the MCP server. On Docker Compose, run <code>docker compose up -d</code> in the install folder to add it. On other platforms, start or stop the MCP service there.</span>
     </div>
 @elseif($mcpMismatch)
     <div class="ag-alert ag-alert--warning" style="margin-bottom: 12px;">

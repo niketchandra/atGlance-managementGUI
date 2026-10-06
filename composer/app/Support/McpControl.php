@@ -7,7 +7,7 @@ use Illuminate\Support\Facades\Http;
 use Throwable;
 
 /**
- * Starts and stops the ce-atglance-mcp container through the mcp-control sidecar
+ * Starts and stops the ce-atglance-mcp container through the controller sidecar (ce-atglance-controller)
  * (docker-compose.yml), which only forwards start, stop and inspect of that container.
  */
 class McpControl
@@ -26,7 +26,7 @@ class McpControl
         AdminSetting::putValue('mcp', 'mcp_enabled', $enabled ? 'true' : 'false');
     }
 
-    /** running, stopped, or unknown when mcp-control is not reachable (e.g. no Docker socket). */
+    /** running, stopped, or unknown when the controller is not reachable (e.g. no Docker socket). */
     public static function status(): string
     {
         try {
@@ -63,6 +63,6 @@ class McpControl
 
     private static function url(string $path): string
     {
-        return rtrim((string) config('services.mcp_control.url'), '/') . $path;
+        return rtrim((string) config('services.controller.url'), '/') . $path;
     }
 }

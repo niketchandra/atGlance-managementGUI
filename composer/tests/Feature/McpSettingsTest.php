@@ -15,7 +15,7 @@ class McpSettingsTest extends TestCase
     use RefreshDatabase;
     use InteractsWithAdminConsole;
 
-    private const CONTROL = 'http://mcp-control:2375';
+    private const CONTROL = 'http://controller:2375';
 
     protected function setUp(): void
     {
@@ -155,7 +155,7 @@ class McpSettingsTest extends TestCase
             ->assertSee('http://192.168.1.14:8002/mcp', false);
     }
 
-    public function test_other_settings_tabs_do_not_call_mcp_control(): void
+    public function test_other_settings_tabs_do_not_call_the_controller(): void
     {
         $this->actingAsRole(100);
         Http::fake();
@@ -184,7 +184,7 @@ class McpSettingsTest extends TestCase
     public function test_setting_is_saved_and_error_shown_when_control_is_unreachable(): void
     {
         $this->actingAsRole(100);
-        Http::fake(fn () => throw new ConnectionException('Could not resolve host: mcp-control'));
+        Http::fake(fn () => throw new ConnectionException('Could not resolve host: controller'));
 
         $this->post(route('admin.settings.mcp'), ['enabled' => '1'])->assertSessionHasErrors('mcp');
 
@@ -224,7 +224,7 @@ class McpSettingsTest extends TestCase
 
     public function test_manage_command_does_nothing_when_control_is_unreachable(): void
     {
-        Http::fake(fn () => throw new ConnectionException('Could not resolve host: mcp-control'));
+        Http::fake(fn () => throw new ConnectionException('Could not resolve host: controller'));
         AdminSetting::putValue('mcp', 'mcp_enabled', 'true');
 
         $this->artisan('mcp:manage')->assertExitCode(0);

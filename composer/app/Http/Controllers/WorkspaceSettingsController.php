@@ -8,6 +8,7 @@ use App\Models\WorkspaceBackupRun;
 use App\Notifications\NotificationEvents;
 use App\Services\BackupService;
 use App\Services\WorkspaceAiSweep;
+use App\Support\ActivityRecorder;
 use App\Support\BackupSettings;
 use App\Support\S3Settings;
 use App\Support\WorkspaceSettings;
@@ -45,6 +46,8 @@ class WorkspaceSettingsController extends Controller
 
         $workspace->update(array_intersect_key($validated, array_flip(['name', 'description', 'status'])));
 
+        $this->log($workspace, 'workspace.updated', 'Updated the workspace name, description or status');
+
         return $this->back($workspace, 'general', 'Workspace updated.');
     }
 
@@ -66,6 +69,8 @@ class WorkspaceSettingsController extends Controller
 
         WorkspaceSettings::save($workspace->id, ['tags' => WorkspaceSettings::normalizeTags($validated['tags'] ?? [])]);
 
+        $this->log($workspace, 'workspace.tags_updated', 'Updated the workspace tags');
+
         return $this->back($workspace, 'tags', 'Workspace tags saved.');
     }
 
@@ -82,6 +87,8 @@ class WorkspaceSettingsController extends Controller
             'ai_sweep_enabled' => $request->boolean('ai_sweep_enabled'),
             'ai_sweep_skip_unchanged' => $request->boolean('ai_sweep_skip_unchanged'),
         ] + $validated);
+
+        $this->log($workspace, 'workspace.ai_settings_updated', 'Updated the Vulnerability Checks settings');
 
         return $this->back($workspace, 'vulnerability-checks', 'Vulnerability check settings saved.');
     }
@@ -102,6 +109,9 @@ class WorkspaceSettingsController extends Controller
     {
         $workspace = $this->permitted($workspaceId, 'vulnerability_checks');
         $stopped = WorkspaceAiRun::cancelUnfinished($workspace->id, (int) Auth::id());
+        if ($stopped > 0) {
+            $this->log($workspace, 'workspace.ai_queue_reset', 'Reset the Vulnerability Checks queue');
+        }
 
         return $this->back($workspace, 'vulnerability-checks', $stopped > 0
             ? 'Check queue reset. Files not reviewed yet will be skipped; finished reviews are kept.'
@@ -147,6 +157,8 @@ class WorkspaceSettingsController extends Controller
             'backup_keep_s3' => (int) $validated['backup_keep_s3'],
             'backup_notes' => trim((string) ($validated['backup_notes'] ?? '')),
         ] + $schedule);
+
+        $this->log($workspace, 'workspace.backup_settings_updated', 'Updated the workspace backup settings');
 
         return $this->back($workspace, 'backups', 'Backup settings saved.');
     }
@@ -206,6 +218,8 @@ class WorkspaceSettingsController extends Controller
             'member_email_default_events' => array_values(array_intersect($validated['member_email_default_events'] ?? [], $events)),
         ]);
 
+        $this->log($workspace, 'workspace.notification_settings_updated', 'Updated the workspace notification events');
+
         return $this->back($workspace, 'notifications', 'Notification settings saved.');
     }
 
@@ -227,6 +241,11 @@ class WorkspaceSettingsController extends Controller
         }
 
         return [$prefix . '_frequency' => $validated[$prefix . '_frequency'], $prefix . '_cron' => $cron];
+    }
+
+    private function log(Workspace $workspace, string $event, string $description): void
+    {
+        ActivityRecorder::record((int) Auth::id(), $event, $description, ActivityRecorder::SUCCESS, null, (int) $workspace->id);
     }
 
     private function permitted(int $workspaceId, string $permission): Workspace

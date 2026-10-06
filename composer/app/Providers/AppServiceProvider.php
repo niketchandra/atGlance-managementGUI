@@ -45,7 +45,7 @@ class AppServiceProvider extends ServiceProvider
             'ssoEnabled' => false,
             'ssoProvidersForAuth' => [],
             'disableEmailRegistration' => false,
-            'appVersion' => $this->resolveVersionFromDotEnv(),
+            'appVersion' => (string) config('app.version'),
         ];
 
         try {
@@ -125,7 +125,7 @@ class AppServiceProvider extends ServiceProvider
                 'ssoEnabled' => false,
                 'ssoProvidersForAuth' => [],
                 'disableEmailRegistration' => false,
-                'appVersion' => $this->resolveVersionFromDotEnv(),
+                'appVersion' => (string) config('app.version'),
             ];
         }
 
@@ -289,21 +289,4 @@ class AppServiceProvider extends ServiceProvider
         return trim($raw);
     }
 
-    private function resolveVersionFromDotEnv(): string
-    {
-        $envPath = base_path('.env');
-        if (is_readable($envPath)) {
-            $lines = @file($envPath, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
-            if (is_array($lines)) {
-                foreach ($lines as $line) {
-                    $line = trim((string) $line);
-                    if (str_starts_with($line, 'VERSION=')) {
-                        return trim(substr($line, 8), " \t\n\r\0\x0B\"'");
-                    }
-                }
-            }
-        }
-
-        return $this->getEnvValue('VERSION', (string) config('app.version', '0.1.0'));
-    }
 }

@@ -775,6 +775,7 @@ class AdminDashboardController extends Controller
             'Member added: ' . $workspace->name,
             ['Workspace' => $workspace->name, 'Member' => $admin->name . ' (' . $admin->email . ')', 'Role' => 'Workspace admin', 'By' => (string) $actor->name],
         );
+        ActivityRecorder::record((int) $actor->id, 'workspace.member_added', 'Added ' . $admin->name . ' as a workspace admin', ActivityRecorder::SUCCESS, null, (int) $workspace->id);
 
         return redirect()
             ->route($this->isSuperAdmin($actor) ? 'workspace.detail' : 'admin.workspaces.show', $workspaceId)
@@ -813,6 +814,7 @@ class AdminDashboardController extends Controller
             'Member added: ' . $workspace->name,
             ['Workspace' => $workspace->name, 'Member' => $targetUser->name . ' (' . $targetUser->email . ')', 'Role' => 'User', 'By' => (string) $actor->name],
         );
+        ActivityRecorder::record((int) $actor->id, 'workspace.member_added', 'Added ' . $targetUser->name . ' as a member', ActivityRecorder::SUCCESS, null, (int) $workspace->id);
 
         $showRoute = $this->isSuperAdmin($actor) ? 'workspace.detail' : 'admin.workspaces.show';
 
@@ -843,6 +845,7 @@ class AdminDashboardController extends Controller
             'Member removed: ' . $workspace->name,
             ['Workspace' => $workspace->name, 'Member' => $targetUser->name . ' (' . $targetUser->email . ')', 'Role' => 'Removed', 'By' => (string) $actor->name],
         );
+        ActivityRecorder::record((int) $actor->id, 'workspace.member_removed', 'Removed ' . $targetUser->name . ' from the workspace', ActivityRecorder::SUCCESS, null, (int) $workspace->id);
 
         $showRoute = $this->isSuperAdmin($actor) ? 'workspace.detail' : 'admin.workspaces.show';
 
@@ -1389,7 +1392,6 @@ class AdminDashboardController extends Controller
             'AWS_URL' => $s3StorageBaseUrl,
             'LOCAL_STORAGE_BASE_URL' => $localStorageBaseUrl,
             'S3_STORAGE_BASE_URL' => $s3StorageBaseUrl,
-            'VERSION' => (string) config('app.version', '0.1.0'),
         ]);
 
         AdminSetting::putValue('storage', 's3_enabled', $requestedEnabled ? 'true' : 'false');
@@ -2019,7 +2021,6 @@ class AdminDashboardController extends Controller
         $this->setEnvironmentValues([
             'LOCAL_STORAGE_BASE_URL' => $localStorageBaseUrl,
             'S3_STORAGE_BASE_URL' => $s3StorageBaseUrl,
-            'VERSION' => (string) config('app.version', '0.1.0'),
         ]);
 
         AdminSetting::putValue('storage', 'site_url', $siteUrl);

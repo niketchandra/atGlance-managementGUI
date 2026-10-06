@@ -34,6 +34,7 @@
             'vulnerability-checks' => ['Vulnerability Checks', 'fa-shield-alt'],
             'backups' => ['Backups', 'fa-clock-rotate-left'],
             'notifications' => ['Notifications', 'fa-bell'],
+            'activity' => ['Recent Activity', 'fa-clock'],
         ];
     @endphp
 
@@ -69,6 +70,10 @@
         @include('admin.workspace.tab-notifications')
     </div>
 
+    <div id="tab-activity" class="workspace-tab-content" style="display:{{ $activeTab === 'activity' ? 'block' : 'none' }};">
+        @include('admin.workspace.tab-activity')
+    </div>
+
     </div>
     </div>
 </div>
@@ -93,6 +98,11 @@
                 });
                 const url = new URL(window.location.href);
                 url.searchParams.set('tab', tabName);
+                // Recent Activity is built on the server only when its tab is requested.
+                if (document.querySelector('#tab-' + tabName + ' [data-activity-lazy]')) {
+                    window.location.assign(url.toString());
+                    return;
+                }
                 window.history.replaceState({}, '', url.toString());
             });
         });

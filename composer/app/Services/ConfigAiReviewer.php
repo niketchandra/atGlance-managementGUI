@@ -54,7 +54,8 @@ class ConfigAiReviewer
         try {
             $result = $this->validator->validate($connection, (string) $config->file_name, $config->service_name, $content);
         } catch (RuntimeException $e) {
-            ActivityRecorder::record($userId, 'config.ai_validated', 'AI validation failed for ' . $config->file_name . $who, ActivityRecorder::FAILURE);
+            ActivityRecorder::record($userId, 'config.ai_validated', 'AI validation failed for ' . $config->file_name . $who, ActivityRecorder::FAILURE,
+                null, \App\Models\SystemRegister::query()->whereKey($config->system_register_id)->value('workspace_id'), $config->system_register_id ? (int) $config->system_register_id : null);
 
             throw $e;
         }

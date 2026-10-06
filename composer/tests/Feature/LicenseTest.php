@@ -280,17 +280,26 @@ class LicenseTest extends TestCase
             ->assertDontSee('id="license-password"', false);
     }
 
-    public function test_sidebar_shows_activated_and_validated_dates(): void
+    public function test_sidebar_shows_activated_and_expiry_dates(): void
     {
         $this->fakeActivate($this->inUseBody(), 201);
         License::store(self::KEY, app(LicenseClient::class)->activate(self::KEY, 'Acme Corp'));
+        AdminSetting::putValue('license', 'license_expires_at', now()->addDays(45)->toDateString());
 
         $this->actingAsRole(100);
         $this->get(route('profile'))
             ->assertOk()
             ->assertSee('Activated On Sep 1, 2026')
-            ->assertSee('Validated On ' . now()->format('M j, Y'))
-            ->assertDontSee('No expiry date');
+            ->assertSee('Expires On ' . now()->addDays(45)->format('M j, Y') . ' (45 days left)')
+            ->assertDontSee('Validated On');
+    }
+
+    public function test_expiry_line_wording(): void
+    {
+        $this->assertSame('No expiry date', License::expiry('')['text']);
+        $this->assertSame('Expires On ' . now()->addDay()->format('M j, Y') . ' (1 day left)', License::expiry(now()->addDay()->toDateString())['text']);
+        $this->assertSame('Expires On ' . now()->format('M j, Y') . ' (today)', License::expiry(now()->toDateString())['text']);
+        $this->assertSame('Expired On ' . now()->subDays(3)->format('M j, Y'), License::expiry(now()->subDays(3)->toDateString())['text']);
     }
 
     public function test_daily_check_keeps_licence_active_and_updates_validated_date(): void
@@ -341,13 +350,13 @@ class LicenseTest extends TestCase
         $this->assertTrue(License::isActive());
     }
 
-    public function test_daily_check_is_scheduled(): void
+    public function test_daily_check_is_paused(): void
     {
+        // The daily schedule is commented out in routes/console.php for now; the command still works by hand.
         $events = collect(app(\Illuminate\Console\Scheduling\Schedule::class)->events())
             ->filter(fn ($event) => str_contains((string) $event->command, 'license:check'));
 
-        $this->assertCount(1, $events);
-        $this->assertSame('15 2 * * *', $events->first()->expression);
+        $this->assertCount(0, $events);
     }
 
     public function test_failed_activation_does_not_save(): void

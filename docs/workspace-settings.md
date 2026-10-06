@@ -42,6 +42,30 @@ Removing members:
 | Vulnerability Checks | Automatic AI review of the **latest version** of each config file: on upload, and/or on a schedule. See below. |
 | Backups | Scheduled backup of the workspace's stored config files, with notes and history. See below. |
 | Notifications | Which events the workspace sends, default member emails, channel groups, member choices. See `docs/notifications.md`. |
+| Recent Activity | Read-only timeline of everything in the workspace. See below. |
+
+## Recent Activity
+
+`?tab=activity` on the workspace page, for anyone who can open it. Newest first, grouped by day, 50 per page
+(`activity_page`), with filters: **Show** (`activity_type`: systems & services, config backups, AI reviews &
+checks, workspace backups, members & settings), **System** (`activity_system`) and **Period** (`activity_period`:
+24 hours, 7/30/90 days, all time; default 30 days). Each entry links to the system, file or AI review when there is one.
+
+Built by `App\Support\WorkspaceActivity` from the records of the workspace's systems (`system_register.workspace_id`):
+
+| Entry | Source |
+|---|---|
+| System registered | `system_register.created_at` |
+| Service added | `services` |
+| Config backed up (file, service, version) | `configuration_files` |
+| AI review (result, trigger, model) | `config_ai_validations` |
+| Vulnerability Check run (reviewed / failed / skipped) | `workspace_ai_runs` |
+| Workspace backup (finished / failed / skipped) | `workspace_backup_runs` |
+| System deregistered or reactivated, failed AI review, AI review deleted, queue reset, members added or removed, workspace settings changed, notification groups added / updated / deleted | `activity_logs` rows tagged with `workspace_id` / `system_register_id` (migration `2026_10_07_000000_add_workspace_to_activity_logs`; `ActivityRecorder::record(..., $workspaceId, $systemId)`) |
+
+The migration matches past "Deregistered / Reactivated system" log entries to their system by owner and name.
+Settings and member changes made before it are not in the timeline. Request payloads, secrets and notification
+targets are never shown. The feed is only built when the tab is opened.
 
 ## Storage
 

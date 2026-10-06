@@ -3,22 +3,21 @@
     AtGlance Community Edition installer for Windows (Docker Desktop).
 
 .DESCRIPTION
-    PowerShell port of install.sh. Run from an elevated PowerShell:
+    PowerShell port of atglance-installer.sh. Run from an elevated PowerShell:
 
-      irm https://raw.githubusercontent.com/niketchandra/atGlance-managementGUI/main/install.ps1 | iex
+      irm https://raw.githubusercontent.com/niketchandra/atGlance-managementGUI/main/scripts/atglance-installer.ps1 | iex
 
     or download it and run:
 
-      .\install.ps1 -Port 8000 -Version latest
+      .\atglance-installer.ps1 -Port 8000
 
     Options can also be set as environment variables (used when the script is
     piped to iex, where parameters cannot be passed):
       -Dir DIR          install directory        (ATGLANCE_DIR, default %ProgramData%\AtGlance)
-      -Version TAG      image tag for BOTH images (ATGLANCE_VERSION, default latest)
-                        atglance/ce-atglance-app, -gateway and -mcp at TAG
-                        e.g. -Version 1.2.1 deploys that release instead of latest
       -Registry PREFIX  image registry/namespace (ATGLANCE_REGISTRY, default atglance = Docker Hub)
       -Port PORT        web console port         (APP_PORT, default 8000)
+      -KeepClone        keep the git clone this script runs from (ATGLANCE_KEEP_CLONE=1);
+                        by default a clean clone is removed after a successful run
 
     The Kong API gateway always runs on port 8002 (GATEWAY_PORT). The atglance
     CLI talks to the gateway, so keep 8000 and 8002 unless you know you need
@@ -32,9 +31,11 @@
 [CmdletBinding()]
 param(
     [string]$Dir,
+    # Ignored: the installer always deploys "latest". Kept so older commands still run.
     [string]$Version,
     [string]$Registry,
-    [int]$Port = 0
+    [int]$Port = 0,
+    [switch]$KeepClone
 )
 
 $ErrorActionPreference = 'Stop'
@@ -46,8 +47,17 @@ function Get-Setting($Value, $EnvName, $Default) {
     return $Default
 }
 
+# Folder of this script when run from a file (empty when piped to iex); see Remove-Clone.
+$ScriptDir   = $PSScriptRoot
+$KeepClone   = $KeepClone -or ([Environment]::GetEnvironmentVariable('ATGLANCE_KEEP_CLONE') -eq '1')
+
 $AtglanceDir      = Get-Setting $Dir      'ATGLANCE_DIR'      (Join-Path $env:ProgramData 'AtGlance')
-$AtglanceVersion  = Get-Setting $Version  'ATGLANCE_VERSION'  'latest'
+# Always the newest release: atglance/ce-atglance-app, -gateway and -mcp at "latest".
+$AtglanceVersion  = 'latest'
+$requestedVersion = Get-Setting $Version 'ATGLANCE_VERSION' 'latest'
+if ($requestedVersion -ne 'latest') {
+    Write-Host "  ! -Version / ATGLANCE_VERSION is no longer supported; installing latest." -ForegroundColor Yellow
+}
 $AtglanceRegistry = Get-Setting $Registry 'ATGLANCE_REGISTRY' 'atglance'
 $AtglanceRef      = Get-Setting $null     'ATGLANCE_REF'      'main'
 $AppPort          = [int](Get-Setting $(if ($Port) { $Port }) 'APP_PORT' 8000)
@@ -58,6 +68,10 @@ $ComposeFile      = Get-Setting $null 'ATGLANCE_COMPOSE_FILE' ''
 
 $MinDiskGb = 5
 $MinMemMb  = 1024
+# The controller service uses "configs: content:", added in Docker Compose 2.23.
+$MinCompose = [version]'2.23.0'
+# First start (MySQL init + migrations) can take a few minutes.
+$HealthTimeoutS = 300
 
 function Step($m) { Write-Host ""; Write-Host "==> $m" -ForegroundColor White }
 function Ok($m)   { Write-Host "  " -NoNewline; Write-Host ([char]0x2713) -ForegroundColor Green -NoNewline; Write-Host " $m" }
@@ -90,6 +104,43 @@ function Write-Utf8NoBom($Path, $Text) {
 }
 
 # ---------------------------------------------------------------------------
+# Clone clean-up. When this script runs from a git clone of the AtGlance repository
+# (git clone ...; .\scripts\atglance-installer.ps1), the clone is not needed once AtGlance is running:
+# everything lives in the install directory and the Docker volumes. It is removed only
+# after a successful run, and only when it holds nothing of the user's own:
+# no uncommitted or untracked files, no stash, no commits that are not on the remote.
+# -KeepClone (ATGLANCE_KEEP_CLONE=1) keeps it.
+function Remove-Clone {
+    $ErrorActionPreference = 'Continue'
+    if ($KeepClone) { return }
+    if (-not $ScriptDir) { return }                        # piped to iex: no clone
+    if (-not (Get-Command git -ErrorAction SilentlyContinue)) { return }
+    $git = { git -c safe.directory=* -C $ScriptDir @args 2>$null }
+    $top = & $git rev-parse --show-toplevel
+    if ($LASTEXITCODE -ne 0 -or -not $top) { return }
+    $top = [IO.Path]::GetFullPath("$top".Trim()).TrimEnd('\', '/')
+    if ((& $git remote get-url origin) -notmatch 'niketchandra/atGlance-managementGUI') { return }
+    if (-not (Test-Path -LiteralPath $AtglanceDir)) { return }
+    $install = [IO.Path]::GetFullPath($AtglanceDir).TrimEnd('\', '/')
+    # Never a drive root or a profile folder.
+    if ($top -eq [IO.Path]::GetPathRoot($top).TrimEnd('\', '/')) { return }
+    if (@($env:USERPROFILE, $env:PUBLIC, $env:ProgramData, $env:SystemRoot) -contains $top) { return }
+    if (("$install\").StartsWith("$top\", [StringComparison]::OrdinalIgnoreCase)) { Warn "Kept the clone ${top}: the install directory is inside it."; return }
+    if (("$top\").StartsWith("$install\", [StringComparison]::OrdinalIgnoreCase)) { return }
+    if ((& $git status --porcelain) -or (& $git stash list) -or (& $git log --branches --not --remotes --oneline)) {
+        Warn "Kept the clone ${top}: it has local changes or commits. Remove it yourself when done: Remove-Item -Recurse -Force '$top'"
+        return
+    }
+    Set-Location -LiteralPath $env:SystemDrive\
+    try {
+        Remove-Item -LiteralPath $top -Recurse -Force -ErrorAction Stop
+        Ok "Removed the clone $top (not needed any more; -KeepClone keeps it)"
+    } catch {
+        Warn "Could not remove the clone ${top}: $($_.Exception.Message)"
+    }
+}
+
+# ---------------------------------------------------------------------------
 Step "Checking prerequisites"
 
 $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
@@ -99,10 +150,11 @@ Ok "Running as administrator on Windows"
 
 $arch = $env:PROCESSOR_ARCHITECTURE
 switch -Regex ($arch) {
-    '^(AMD64|x86)$' { Ok "Architecture amd64"; break }
-    '^ARM64$'       { Ok "Architecture arm64"; break }
+    '^(AMD64|x86)$' { $Platform = 'amd64'; break }
+    '^ARM64$'       { $Platform = 'arm64'; break }
     default         { Die "Unsupported CPU architecture: $arch. Use amd64 or arm64." }
 }
+Ok "Architecture $Platform"
 
 $os = Get-CimInstance Win32_OperatingSystem
 Ok "OS: $($os.Caption)"
@@ -148,7 +200,12 @@ Ok "Docker $(docker version --format '{{.Server.Version}}')"
 
 docker compose version *> $null
 if ($LASTEXITCODE -ne 0) { Die "Docker Compose plugin not found. Update Docker Desktop, then re-run." }
-Ok "Docker Compose $(docker compose version --short)"
+$composeText = (docker compose version --short) -replace '^v', ''
+$composeVersion = [version]((($composeText -split '[-+]')[0]))
+if ($composeVersion -lt $MinCompose) {
+    Die "Docker Compose $composeText is too old (need $MinCompose or newer). Update Docker Desktop, then re-run."
+}
+Ok "Docker Compose $composeText"
 
 # ---------------------------------------------------------------------------
 Step "Preparing $AtglanceDir"
@@ -189,9 +246,16 @@ if (Test-Path .env) {
     Set-EnvValue APP_PORT          $AppPort
     Set-EnvValue GATEWAY_PORT      $GatewayPort
 } else {
+    # A database from an earlier install keeps its old password; new random ones would lock the app out.
+    docker volume inspect atglance_db-data *> $null
+    if ($LASTEXITCODE -eq 0) {
+        Die ("Found an existing AtGlance database (Docker volume atglance_db-data) but no $AtglanceDir\.env with its passwords.`n" +
+             "    Re-run with -Dir pointing at the original install folder, or restore its .env here.`n" +
+             "    To start over instead (deletes ALL AtGlance data): docker volume rm atglance_db-data atglance_app-storage atglance_redis-data")
+    }
     $stamp = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
     $envText = @"
-# AtGlance CE settings, created by install.ps1 on $stamp.
+# AtGlance CE settings, created by atglance-installer.ps1 on $stamp.
 ATGLANCE_VERSION=$AtglanceVersion
 ATGLANCE_REGISTRY=$AtglanceRegistry
 APP_PORT=$AppPort
@@ -206,35 +270,55 @@ DB_ROOT_PASSWORD=$(New-RandomSecret)
 }
 
 # ---------------------------------------------------------------------------
-Step "Deploying AtGlance CE ($AtglanceVersion)"
+Step "Deploying AtGlance CE (latest)"
 
-Ok "Images: $AtglanceRegistry/ce-atglance-{app,gateway,mcp}:$AtglanceVersion"
-foreach ($img in "$AtglanceRegistry/ce-atglance-app:$AtglanceVersion", "$AtglanceRegistry/ce-atglance-gateway:$AtglanceVersion", "$AtglanceRegistry/ce-atglance-mcp:$AtglanceVersion") {
-    docker pull $img
-    if ($LASTEXITCODE -ne 0) { Die "Could not pull $img. Check the version tag exists." }
+# An install that already serves a custom domain through the built-in proxy keeps it on upgrade.
+$composeArgs = @('-f', 'docker-compose.yml')
+if (Test-Path docker-compose.domain.yml) {
+    $appEnv = docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' ce-atglance-app 2>$null
+    if ($LASTEXITCODE -eq 0 -and ($appEnv -contains 'ATGLANCE_PROXY=builtin')) {
+        $composeArgs += @('-f', 'docker-compose.domain.yml')
+        Ok "Keeping the custom domain and HTTPS proxy (ports 80 and 443)"
+    }
 }
-docker compose pull
+
+foreach ($name in 'app', 'gateway', 'mcp') {
+    $img = "$AtglanceRegistry/ce-atglance-${name}:$AtglanceVersion"
+    $out = (docker pull --platform "linux/$Platform" $img 2>&1 | Out-String)
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host $out
+        if ($out -match 'no matching manifest|does not match the specified platform') {
+            Die "$img has no linux/$Platform build. Use an amd64 machine, or a version published for $Platform."
+        }
+        if ($out -match 'not found|manifest unknown') {
+            Die "$img does not exist. Check -Registry (see https://hub.docker.com/r/$AtglanceRegistry/ce-atglance-app/tags)."
+        }
+        Die "Could not pull $img. Check the internet connection and Docker Hub access."
+    }
+    Ok "Pulled $img"
+}
+docker compose @composeArgs pull --quiet
 if ($LASTEXITCODE -ne 0) { Die "docker compose pull failed." }
-docker compose up -d --remove-orphans
+docker compose @composeArgs up -d --remove-orphans
 if ($LASTEXITCODE -ne 0) { Die "docker compose up failed." }
 
 function Wait-Healthy($Name) {
     $status = 'starting'
     Write-Host "  Waiting for $Name" -NoNewline
-    for ($i = 0; $i -lt 90; $i++) {
+    for ($i = 0; $i -lt ($HealthTimeoutS / 3); $i++) {
         $status = (docker inspect -f '{{.State.Health.Status}}' $Name 2>$null)
         if ($LASTEXITCODE -ne 0 -or -not $status) { $status = 'starting' }
         if ($status -eq 'healthy') { break }
         Write-Host "." -NoNewline
-        Start-Sleep -Seconds 2
+        Start-Sleep -Seconds 3
     }
     Write-Host ""
     if ($status -ne 'healthy') {
-        Die "$Name did not become healthy. Check: docker compose -f $AtglanceDir\docker-compose.yml logs"
+        docker logs --tail 30 $Name 2>&1 | ForEach-Object { Write-Host "    $_" }
+        Die "$Name did not become healthy within $($HealthTimeoutS / 60) minutes (last lines above). Full logs: cd $AtglanceDir; docker compose logs"
     }
 }
 Wait-Healthy ce-atglance-app
-Wait-Healthy ce-atglance-mcp
 Wait-Healthy ce-atglance-gateway
 Ok "All containers running"
 
@@ -249,7 +333,7 @@ Write-Host "AtGlance CE is running." -ForegroundColor White
 Write-Host ""
 Write-Host "  Setup wizard:  http://${hostIp}:$AppPort"
 Write-Host "  API gateway:   http://${hostIp}:$GatewayPort"
-Write-Host "  MCP server:    http://${hostIp}:$GatewayPort/mcp   (AI clients, with an API key; see docs/mcp.md)"
+Write-Host "  MCP server:    off by default. Turn on: Site Setting > Plugins > MCP Server (then http://${hostIp}:$GatewayPort/mcp)"
 Write-Host "  CLI setup:     atglance --configure   (management URL: http://${hostIp}:$GatewayPort)"
 Write-Host "  Install dir:   $AtglanceDir"
 Write-Host ""
@@ -261,3 +345,5 @@ Write-Host ""
 Write-Host "  Back up the app key. It encrypts stored secrets and lives in the"
 Write-Host "  atglance_app-storage volume, file .env:"
 Write-Host "    docker exec ce-atglance-app grep APP_KEY /app/storage/.env"
+
+Remove-Clone

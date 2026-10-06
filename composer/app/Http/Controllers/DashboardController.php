@@ -921,7 +921,8 @@ class DashboardController extends Controller
         }
 
         $validation->delete();
-        ActivityRecorder::record($actor->id, 'config.ai_validation_deleted', 'Deleted an AI validation of ' . $config->file_name, ActivityRecorder::SUCCESS, $request);
+        ActivityRecorder::record($actor->id, 'config.ai_validation_deleted', 'Deleted an AI validation of ' . $config->file_name, ActivityRecorder::SUCCESS, $request,
+            SystemRegister::query()->whereKey($config->system_register_id)->value('workspace_id'), $config->system_register_id ? (int) $config->system_register_id : null);
 
         return response()->json(['success' => true]);
     }
