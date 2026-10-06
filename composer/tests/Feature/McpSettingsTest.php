@@ -45,33 +45,47 @@ class McpSettingsTest extends TestCase
         Http::assertSent(fn (HttpRequest $request) => $request->url() === self::CONTROL . $path && $request->method() === 'POST');
     }
 
-    public function test_get_mcp_url_redirects_to_mcp_tab(): void
+    public function test_old_mcp_url_redirects_to_the_plugin(): void
     {
         $this->actingAsRole(100);
 
-        $this->get('/admin/settings/mcp')->assertRedirect(route('admin.settings', ['tab' => 'mcp']));
+        $this->get('/admin/settings/mcp')->assertRedirect(route('admin.settings', ['tab' => 'plugins', 'plugin' => 'mcp']));
     }
 
-    public function test_mcp_tab_shows_toggle_status_and_page_link(): void
+    public function test_plugin_shows_toggle_status_and_setup_link(): void
     {
         $this->actingAsRole(100);
         $this->fakeControl(false);
 
-        $this->get(route('admin.settings', ['tab' => 'mcp']))
+        $this->get(route('admin.settings', ['tab' => 'plugins', 'plugin' => 'mcp']))
             ->assertOk()
-            ->assertSee('Turn on MCP')
+            ->assertSee('MCP Server (AI tools)')
             ->assertSee('Server stopped')
-            ->assertDontSee('Open the MCP setup page');
+            ->assertSee(route('admin.settings.mcp'), false)
+            ->assertDontSee('Open setup page')
+            ->assertDontSee('data-tab="mcp"', false);
 
         AdminSetting::putValue('mcp', 'mcp_enabled', 'true');
         $this->fakeControl(true);
 
-        $this->get(route('admin.settings', ['tab' => 'mcp']))
+        $this->get(route('admin.settings', ['tab' => 'plugins', 'plugin' => 'mcp']))
             ->assertOk()
-            ->assertSee('Turn off MCP')
             ->assertSee('Server running')
-            ->assertSee('Open the MCP setup page')
+            ->assertSee('Open setup page')
+            ->assertSee(':8002/mcp', false)
             ->assertSee(route('mcp.connect'), false);
+    }
+
+    public function test_plugin_flags_attention_when_enabled_but_stopped(): void
+    {
+        $this->actingAsRole(100);
+        $this->fakeControl(false);
+        AdminSetting::putValue('mcp', 'mcp_enabled', 'true');
+
+        $this->get(route('admin.settings', ['tab' => 'plugins']))
+            ->assertOk()
+            ->assertSee('stopped although the plugin is enabled')
+            ->assertSee('ag-plugin-attention', false);
     }
 
     public function test_connect_page_and_sidebar_link_only_when_mcp_is_on(): void
@@ -156,13 +170,13 @@ class McpSettingsTest extends TestCase
         $this->actingAsRole(100);
         $this->fakeControl(false);
 
-        $this->put(route('admin.settings.mcp'), ['enabled' => '1'])
-            ->assertRedirect(route('admin.settings', ['tab' => 'mcp']))
+        $this->post(route('admin.settings.mcp'), ['enabled' => '1'])
+            ->assertRedirect(route('admin.settings', ['tab' => 'plugins', 'plugin' => 'mcp']))
             ->assertSessionHasNoErrors();
         $this->assertSame('true', AdminSetting::getValue('mcp_enabled'));
         $this->assertControlCalled('/mcp/start');
 
-        $this->put(route('admin.settings.mcp'), ['enabled' => '0'])->assertSessionHasNoErrors();
+        $this->post(route('admin.settings.mcp'), ['enabled' => '0'])->assertSessionHasNoErrors();
         $this->assertSame('false', AdminSetting::getValue('mcp_enabled'));
         $this->assertControlCalled('/mcp/stop');
     }
@@ -172,7 +186,7 @@ class McpSettingsTest extends TestCase
         $this->actingAsRole(100);
         Http::fake(fn () => throw new ConnectionException('Could not resolve host: mcp-control'));
 
-        $this->put(route('admin.settings.mcp'), ['enabled' => '1'])->assertSessionHasErrors('mcp');
+        $this->post(route('admin.settings.mcp'), ['enabled' => '1'])->assertSessionHasErrors('mcp');
 
         $this->assertSame('true', AdminSetting::getValue('mcp_enabled'));
     }
@@ -182,7 +196,7 @@ class McpSettingsTest extends TestCase
         $this->actingAsRole(101);
         Http::fake();
 
-        $this->put(route('admin.settings.mcp'), ['enabled' => '1'])->assertForbidden();
+        $this->post(route('admin.settings.mcp'), ['enabled' => '1'])->assertForbidden();
 
         $this->assertNotSame('true', AdminSetting::getValue('mcp_enabled'));
         Http::assertNothingSent();

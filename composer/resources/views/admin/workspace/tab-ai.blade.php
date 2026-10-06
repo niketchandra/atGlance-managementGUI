@@ -14,7 +14,7 @@
 
     @unless($aiEnabled)
         <div style="padding: 12px; border-radius: 12px; background: var(--ag-surface); color: var(--ag-muted); font-size: 13px; margin-bottom: 16px;">
-            <i class="fas fa-info-circle"></i> AI Connect is off. Settings are saved, but no checks run until a super admin turns it on in Site Settings &rarr; AI Connect.
+            <i class="fas fa-info-circle"></i> AI Connect is off. Settings are saved, but no checks run until a super admin enables AI Connect in Site Settings &rarr; Plugins and sets up a provider.
         </div>
     @endunless
 

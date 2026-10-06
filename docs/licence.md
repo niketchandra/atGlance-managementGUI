@@ -27,6 +27,12 @@ Used when the installer step was skipped or to replace the key. The console and
 organisation already exist here, so **Verify & Save** activates the licence
 directly, with the name of organisation `200`.
 
+Replacing a saved key (active or not) asks for the signed-in user's password
+(**Verify & Replace**). The password is checked before the new key is sent to
+atglance.live; a wrong or missing password leaves the current licence untouched
+and is logged as `license.replace_denied`. Successful changes are logged as
+`license.added` or `license.replaced`.
+
 ### Verify (check only, installer "Verify" button)
 
 ```

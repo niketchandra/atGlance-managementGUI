@@ -207,6 +207,8 @@ class WorkspaceSettingsTest extends TestCase
     {
         Queue::fake();
         AdminSetting::putValue('ai', 'ai_enabled', 'true');
+        AdminSetting::putValue('ai', 'ai_provider', 'ollama');
+        AdminSetting::putValue('ai', 'ai_model', 'llama3.2');
         $system = $this->system($this->workspace);
         $this->config($system, 'a.conf');
         $this->config($system, 'b.conf');
@@ -230,6 +232,8 @@ class WorkspaceSettingsTest extends TestCase
     {
         Queue::fake();
         AdminSetting::putValue('ai', 'ai_enabled', 'true');
+        AdminSetting::putValue('ai', 'ai_provider', 'ollama');
+        AdminSetting::putValue('ai', 'ai_model', 'llama3.2');
         $system = $this->system($this->workspace);
         $configId = $this->config($system, 'a.conf');
         $this->config($system, 'b.conf');
@@ -309,6 +313,8 @@ class WorkspaceSettingsTest extends TestCase
     {
         Queue::fake();
         AdminSetting::putValue('ai', 'ai_enabled', 'true');
+        AdminSetting::putValue('ai', 'ai_provider', 'ollama');
+        AdminSetting::putValue('ai', 'ai_model', 'llama3.2');
 
         $system = $this->system($this->workspace);
         $old = $this->config($system, 'sshd_config');

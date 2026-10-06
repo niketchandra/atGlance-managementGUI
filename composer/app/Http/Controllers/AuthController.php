@@ -4,7 +4,12 @@ namespace App\Http\Controllers;
 
 use App\Support\AccountAlerts;
 use App\Support\ActivityRecorder;
+use App\Services\Sso\GithubClient;
+use App\Services\Sso\OidcClient;
+use App\Services\Sso\SsoException;
 use App\Support\License;
+use App\Support\SsoProviders;
+use App\Support\SsoSettings;
 use App\Support\UserAgent;
 
 use App\Models\AdminSetting;
@@ -13,10 +18,8 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Str;
 use Illuminate\Support\Carbon;
 
@@ -24,164 +27,77 @@ class AuthController extends Controller
 {
     public function redirectToSso(Request $request, string $provider)
     {
-        $provider = strtolower(trim($provider));
+        $provider = SsoProviders::normalizeKey($provider);
         $intent = strtolower(trim((string) $request->query('intent', '')));
-        $providerCatalog = config('sso.providers', []);
 
-        if (!isset($providerCatalog[$provider])) {
-            return redirect()->route('home')->withErrors([
-                'login' => 'Unsupported SSO provider selected.',
-            ]);
+        if (!SsoProviders::exists($provider)) {
+            return redirect()->route('home')->withErrors(['login' => 'Unsupported SSO provider selected.']);
+        }
+        if (!SsoSettings::enabled()) {
+            return redirect()->route('home')->withErrors(['login' => 'SSO is currently disabled by the administrator.']);
+        }
+        if (!in_array($provider, SsoSettings::enabledProviders(), true)) {
+            return redirect()->route('home')->withErrors(['login' => 'This SSO provider is not enabled for your organization.']);
+        }
+        if (SsoProviders::missingFields($provider) !== []) {
+            return redirect()->route('home')->withErrors(['login' => SsoProviders::label($provider) . ' sign-in is not fully set up. Ask your administrator.']);
         }
 
-        $enabledProviders = $this->resolveSsoEnabledProviders(array_keys($providerCatalog));
-        $ssoEnabledFlag = $this->resolveSsoEnabledFlag();
-        $effectiveSsoEnabled = $ssoEnabledFlag || !empty($enabledProviders);
+        $flow = [
+            'provider' => $provider,
+            'intent' => $intent === 'pin_reset' ? 'pin_reset' : '',
+            'started_at' => time(),
+        ];
 
-        if (!$effectiveSsoEnabled) {
-            return redirect()->route('home')->withErrors([
-                'login' => 'SSO is currently disabled by the administrator.',
-            ]);
+        try {
+            $url = SsoProviders::definition($provider)['type'] === 'github'
+                ? app(GithubClient::class)->authorizationUrl($request, $flow)
+                : app(OidcClient::class)->authorizationUrl($provider, $request, $flow);
+        } catch (SsoException $e) {
+            Log::warning('SSO sign-in could not start', ['provider' => $provider, 'error' => $e->getMessage()]);
+
+            return redirect()->route('home')->withErrors(['login' => $e->getMessage()]);
         }
 
-        if (!in_array($provider, $enabledProviders, true)) {
-            return redirect()->route('home')->withErrors([
-                'login' => 'This SSO provider is not enabled for your organization.',
-            ]);
-        }
-
-        $providerUrl = $this->resolveSsoProviderUrl($provider);
-
-        if ($providerUrl === '') {
-            return redirect()->route('home')->withErrors([
-                'login' => 'SSO URL is not configured for the selected provider.',
-            ]);
-        }
-
-        if ($provider === 'github') {
-            $providerUrl = $this->buildGithubAuthorizeUrl($providerUrl, $request);
-        }
-
-        if ($intent === 'pin_reset') {
-            $request->session()->put('sso_intent', 'pin_reset');
-        } else {
-            $request->session()->forget('sso_intent');
-        }
-
-        return redirect()->away($providerUrl);
+        return redirect()->away($url);
     }
 
     public function handleSsoCallback(Request $request, string $provider)
     {
-        $provider = strtolower(trim($provider));
-        $intent = (string) $request->session()->pull('sso_intent', '');
+        $provider = SsoProviders::normalizeKey($provider);
+        $flow = (array) $request->session()->pull('sso_flow', []);
+        $label = SsoProviders::label($provider);
 
-        if ($provider !== 'github') {
-            return redirect()->route('home')->withErrors([
-                'login' => 'Callback for this SSO provider is not implemented yet.',
-            ]);
-        }
-
-        if ($request->filled('error')) {
-            return redirect()->route('home')->withErrors([
-                'login' => 'GitHub login was cancelled or denied.',
-            ]);
-        }
-
-        $code = (string) $request->query('code', '');
-        if ($code === '') {
-            return redirect()->route('home')->withErrors([
-                'login' => 'Missing authorization code from GitHub callback.',
-            ]);
-        }
-
-        $expectedState = (string) $request->session()->pull('sso_state_github', '');
+        // The state ties this callback to the sign-in this browser started (login CSRF protection).
         $returnedState = (string) $request->query('state', '');
-        if ($expectedState !== '' && $returnedState !== '' && !hash_equals($expectedState, $returnedState)) {
-            return redirect()->route('home')->withErrors([
-                'login' => 'Invalid OAuth state received from GitHub.',
-            ]);
+        if (($flow['provider'] ?? null) !== $provider || $returnedState === '' || !hash_equals((string) ($flow['state'] ?? ''), $returnedState)
+            || time() - (int) ($flow['started_at'] ?? 0) > 600) {
+            return redirect()->route('home')->withErrors(['login' => 'The sign-in link is invalid or expired. Please try again.']);
+        }
+        if ($request->filled('error')) {
+            return redirect()->route('home')->withErrors(['login' => $label . ' sign-in was cancelled or denied.']);
+        }
+        if (!SsoSettings::enabled() || !in_array($provider, SsoSettings::enabledProviders(), true)) {
+            return redirect()->route('home')->withErrors(['login' => 'This SSO provider is not enabled for your organization.']);
         }
 
-        [$clientId, $clientSecret] = $this->getProviderClientCredentials('github');
+        try {
+            $identity = SsoProviders::definition($provider)['type'] === 'github'
+                ? app(GithubClient::class)->user($request, $flow)
+                : app(OidcClient::class)->user($provider, $request, $flow);
+        } catch (SsoException $e) {
+            Log::warning('SSO sign-in failed', ['provider' => $provider, 'error' => $e->getMessage()]);
+            ActivityRecorder::record(null, 'auth.login_failed', 'Sign-in with ' . $label . ' failed: ' . $e->getMessage(), ActivityRecorder::FAILURE, $request);
 
-        if ($clientId === '' || $clientSecret === '') {
-            return redirect()->route('home')->withErrors([
-                'login' => 'GitHub SSO is not fully configured. Set Client ID and Client Secret in admin settings.',
-            ]);
+            return redirect()->route('home')->withErrors(['login' => $e->getMessage()]);
         }
 
-        $callbackUrl = route('auth.sso.callback', ['provider' => 'github']);
+        return $this->completeSsoLogin($request, $provider, $identity['email'], $identity['name'], (string) ($flow['intent'] ?? ''));
+    }
 
-        $tokenResponse = Http::asForm()
-            ->acceptJson()
-            ->timeout(15)
-            ->post('https://github.com/login/oauth/access_token', [
-                'client_id' => $clientId,
-                'client_secret' => $clientSecret,
-                'code' => $code,
-                'redirect_uri' => $callbackUrl,
-            ]);
-
-        if (!$tokenResponse->ok()) {
-            return redirect()->route('home')->withErrors([
-                'login' => 'Failed to get access token from GitHub.',
-            ]);
-        }
-
-        $accessToken = (string) $tokenResponse->json('access_token', '');
-        if ($accessToken === '') {
-            return redirect()->route('home')->withErrors([
-                'login' => 'GitHub did not return an access token.',
-            ]);
-        }
-
-        $githubUserResponse = Http::withToken($accessToken)
-            ->acceptJson()
-            ->withHeaders([
-                'User-Agent' => 'AtGlance-SSO',
-                'Accept' => 'application/vnd.github+json',
-            ])
-            ->timeout(15)
-            ->get('https://api.github.com/user');
-
-        if (!$githubUserResponse->ok()) {
-            return redirect()->route('home')->withErrors([
-                'login' => 'Failed to fetch GitHub profile information.',
-            ]);
-        }
-
-        $githubUser = $githubUserResponse->json();
-        $email = trim((string) ($githubUser['email'] ?? ''));
-
-        if ($email === '') {
-            $emailsResponse = Http::withToken($accessToken)
-                ->acceptJson()
-                ->withHeaders([
-                    'User-Agent' => 'AtGlance-SSO',
-                    'Accept' => 'application/vnd.github+json',
-                ])
-                ->timeout(15)
-                ->get('https://api.github.com/user/emails');
-
-            if ($emailsResponse->ok()) {
-                $emails = collect($emailsResponse->json())
-                    ->filter(fn ($item) => is_array($item));
-
-                $primaryVerified = $emails->first(fn ($item) => ($item['primary'] ?? false) && ($item['verified'] ?? false));
-                $fallback = $emails->first();
-                $email = trim((string) (($primaryVerified['email'] ?? null) ?? ($fallback['email'] ?? '')));
-            }
-        }
-
-        if ($email === '') {
-            return redirect()->route('home')->withErrors([
-                'login' => 'GitHub account email is required to sign in.',
-            ]);
-        }
-
-        $displayName = trim((string) (($githubUser['name'] ?? null) ?: ($githubUser['login'] ?? null) ?: 'GitHub User'));
-
+    private function completeSsoLogin(Request $request, string $provider, string $email, string $displayName, string $intent)
+    {
+        $label = SsoProviders::label($provider);
         $user = User::where('email', $email)->first();
         if (!$user) {
             if (!License::isActive()) {
@@ -200,7 +116,7 @@ class AuthController extends Controller
         }
 
         if (strtolower((string) ($user->status ?? 'active')) !== 'active') {
-            ActivityRecorder::record($user->id, 'auth.login_blocked', 'Sign-in with ' . ucfirst($provider) . ' blocked: account inactive', ActivityRecorder::FAILURE, $request);
+            ActivityRecorder::record($user->id, 'auth.login_blocked', 'Sign-in with ' . $label . ' blocked: account inactive', ActivityRecorder::FAILURE, $request);
 
             return redirect()->route('home')->withErrors([
                 'login' => 'Your account is inactive. Please contact your administrator.',
@@ -221,7 +137,7 @@ class AuthController extends Controller
             if (preg_match('/^\d{5}$/', $pendingPin) === 1) {
                 $currentUser->pin = Hash::make($pendingPin);
                 $currentUser->save();
-                ActivityRecorder::record($currentUser->id, 'pin.reset', 'Reset PIN (verified with ' . ucfirst($provider) . ')', ActivityRecorder::SUCCESS, $request);
+                ActivityRecorder::record($currentUser->id, 'pin.reset', 'Reset PIN (verified with ' . $label . ')', ActivityRecorder::SUCCESS, $request);
 
                 return redirect()->route('settings')->with('success', 'SSO authentication successful. PIN reset completed.');
             }
@@ -242,13 +158,13 @@ class AuthController extends Controller
         Auth::login($user, true);
         $request->session()->regenerate();
         AccountAlerts::signedIn($user, $request);
-        ActivityRecorder::record($user->id, 'auth.login', 'Signed in with ' . ucfirst($provider) . ' from ' . UserAgent::describe($request->userAgent()), ActivityRecorder::SUCCESS, $request);
+        ActivityRecorder::record($user->id, 'auth.login', 'Signed in with ' . $label . ' from ' . UserAgent::describe($request->userAgent()), ActivityRecorder::SUCCESS, $request);
         $user->recordLogin($request->ip());
         $request->session()->put('auth_method', 'sso');
         $request->session()->put('auth_sso_provider', $provider);
         $targetRoute = in_array((int) $user->rbac_id, [100, 101], true) ? 'admin.dashboard' : 'dashboard';
 
-        return redirect()->route($targetRoute)->with('success', 'Logged in with GitHub successfully.');
+        return redirect()->route($targetRoute)->with('success', 'Logged in with ' . $label . ' successfully.');
     }
 
     /**
@@ -386,198 +302,6 @@ class AuthController extends Controller
         // Store the token in the database or cache
         // For now, just return a message
         return back()->with('status', 'If an account exists with this email, a password reset link will be sent shortly.');
-    }
-
-    private function buildGithubAuthorizeUrl(string $providerUrl, Request $request): string
-    {
-        [$clientId] = $this->getProviderClientCredentials('github');
-        if ($clientId === '') {
-            return $providerUrl;
-        }
-
-        $parts = parse_url($providerUrl);
-        $baseUrl = ($parts['scheme'] ?? 'https') . '://' . ($parts['host'] ?? 'github.com') . ($parts['path'] ?? '/login/oauth/authorize');
-
-        parse_str($parts['query'] ?? '', $query);
-
-        $state = Str::random(40);
-        $request->session()->put('sso_state_github', $state);
-
-        $callbackUrl = route('auth.sso.callback', ['provider' => 'github']);
-
-        $query = array_merge($query, [
-            'client_id' => $query['client_id'] ?? $clientId,
-            'redirect_uri' => $query['redirect_uri'] ?? $callbackUrl,
-            'scope' => $query['scope'] ?? 'read:user user:email',
-            'state' => $query['state'] ?? $state,
-        ]);
-
-        return $baseUrl . '?' . http_build_query($query);
-    }
-
-    private function getProviderClientCredentials(string $provider): array
-    {
-        $provider = strtolower(trim($provider));
-
-        $prefix = $this->providerEnvKeyPrefix($provider);
-        $clientId = $this->resolveSsoProviderValue('sso_provider_client_ids', $provider, $this->getEnvValue($prefix . '_CLIENT_ID', ''));
-        $clientSecret = $this->resolveSsoProviderSecret($provider, $this->getSecretEnvValue($prefix . '_CLIENT_SECRET', ''));
-
-        return [$clientId, $clientSecret];
-    }
-
-    private function getEnvValue(string $key, string $default = ''): string
-    {
-        $fileValue = $this->readEnvFileValue($key);
-        if ($fileValue !== null) {
-            return $fileValue;
-        }
-
-        $value = env($key);
-        if ($value !== null && $value !== false) {
-            return trim((string) $value);
-        }
-
-        $runtime = getenv($key);
-        if ($runtime !== false) {
-            return trim((string) $runtime);
-        }
-
-        return trim($default);
-    }
-
-    private function readEnvFileValue(string $key): ?string
-    {
-        $envPath = base_path('.env');
-        if (!is_readable($envPath)) {
-            return null;
-        }
-
-        $pattern = '/^' . preg_quote($key, '/') . '=(.*)$/m';
-        $contents = @file_get_contents($envPath);
-        if ($contents === false || preg_match($pattern, $contents, $matches) !== 1) {
-            return null;
-        }
-
-        $raw = trim((string) ($matches[1] ?? ''));
-        if (
-            strlen($raw) >= 2
-            && str_starts_with($raw, '"')
-            && str_ends_with($raw, '"')
-        ) {
-            $raw = substr($raw, 1, -1);
-            $raw = str_replace('\\"', '"', $raw);
-        }
-
-        return trim($raw);
-    }
-
-    private function getSecretEnvValue(string $key, string $default = ''): string
-    {
-        $value = $this->getEnvValue($key, $default);
-        if ($value === '') {
-            return '';
-        }
-
-        if (!str_starts_with($value, 'ENC:')) {
-            return $value;
-        }
-
-        try {
-            return trim(Crypt::decryptString(substr($value, 4)));
-        } catch (\Throwable) {
-            return '';
-        }
-    }
-
-    private function resolveSsoProviderUrl(string $provider): string
-    {
-        return $this->resolveSsoProviderValue('sso_provider_urls', $provider, $this->getEnvValue($this->providerEnvKeyPrefix($provider) . '_URL', ''));
-    }
-
-    private function resolveSsoProviderSecret(string $provider, string $fallback): string
-    {
-        return $this->resolveSsoProviderValue('sso_provider_client_secrets', $provider, $fallback);
-    }
-
-    private function resolveSsoProviderValue(string $settingKey, string $provider, string $fallback): string
-    {
-        $storedValue = AdminSetting::getValue($settingKey, null);
-        if ($storedValue === null || $storedValue === '') {
-            return $fallback;
-        }
-
-        if (!is_array($storedValue)) {
-            $decoded = json_decode((string) $storedValue, true);
-            $storedValue = is_array($decoded) ? $decoded : [];
-        }
-
-        return trim((string) ($storedValue[$provider] ?? $fallback));
-    }
-
-    private function resolveEnabledSsoProvidersFromEnvironment(array $providerKeys): array
-    {
-        $raw = $this->getEnvValue('SSO_ENABLED_PROVIDERS', '');
-        if ($raw === '') {
-            return [];
-        }
-
-        return collect(explode(',', $raw))
-            ->map(fn (string $provider) => strtolower(trim($provider)))
-            ->filter(fn (string $provider) => in_array($provider, $providerKeys, true))
-            ->unique()
-            ->values()
-            ->all();
-    }
-
-    private function resolveSsoEnabledFlag(): bool
-    {
-        $storedValue = AdminSetting::getValue('sso_enabled', null);
-        $source = $storedValue !== null ? (string) $storedValue : $this->getEnvValue('SSO_ENABLED', 'false');
-
-        return filter_var($source, FILTER_VALIDATE_BOOL);
-    }
-
-    private function resolveSsoEnabledProviders(array $providerKeys): array
-    {
-        $storedProviders = $this->resolveStoredSsoProviders($providerKeys);
-        if (!empty($storedProviders)) {
-            return $storedProviders;
-        }
-
-        return $this->resolveEnabledSsoProvidersFromEnvironment($providerKeys);
-    }
-
-    private function resolveStoredSsoProviders(array $providerKeys): array
-    {
-        $storedValue = AdminSetting::getValue('sso_enabled_providers', null);
-        if ($storedValue === null || $storedValue === '') {
-            return [];
-        }
-
-        if (is_array($storedValue)) {
-            $providers = $storedValue;
-        } else {
-            $providers = json_decode((string) $storedValue, true);
-            if (!is_array($providers)) {
-                $providers = array_map('trim', explode(',', (string) $storedValue));
-            }
-        }
-
-        return collect($providers)
-            ->map(fn (string $provider) => strtolower(trim($provider)))
-            ->filter(fn (string $provider) => in_array($provider, $providerKeys, true))
-            ->unique()
-            ->values()
-            ->all();
-    }
-
-    private function providerEnvKeyPrefix(string $provider): string
-    {
-        $normalized = strtoupper((string) preg_replace('/[^A-Za-z0-9]+/', '_', strtolower(trim($provider))));
-        $normalized = trim($normalized, '_');
-
-        return 'SSO_' . $normalized;
     }
 
     private function isEmailRegistrationDisabled(): bool

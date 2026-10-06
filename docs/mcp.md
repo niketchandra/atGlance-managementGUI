@@ -40,8 +40,8 @@ claude mcp add --transport http atglance http://<console-host>:8002/mcp \
 
 ## Turning MCP on and off
 
-MCP is off on a new install. The super admin turns it on and off in **Site Setting > MCP**,
-which also shows the server state and the MCP URLs.
+MCP is off on a new install. The super admin turns it on and off with the **MCP Server (AI tools)** plugin in
+**Site Setting > Plugins** (`POST /admin/settings/mcp`). Its **Info** panel shows the server state and the MCP URLs.
 
 While MCP is on, every user gets an **MCP** link in the top bar to `/connect-ai` (route `mcp.connect`,
 `McpConnectController`, 404 while off). It has the full client setup: Claude Code, Claude Desktop,
@@ -52,7 +52,7 @@ addresses and snippets: `App\Support\McpConnect`.
 - MCP URL: `http://<domain>:8002/mcp` if a custom domain is set, else the private IP.
 - Fallback: `http://<private_ip>:8002/mcp`, from the server IP in Site Configuration (or the address the
   page was opened with, if that is a private IP). Users can switch every example to it. If the IP is unknown
-  (e.g. saved as `127.0.0.1`), the page says how to find it and the MCP tab asks the super admin to set it.
+  (e.g. saved as `127.0.0.1`), the page says how to find it and the plugin's Info panel asks the super admin to set it.
 
 - The setting is `admin_settings.mcp_enabled` (`'true'`/`'false'`, migration
   `2026_10_05_000000_add_mcp_enabled_setting`). Code: `App\Support\McpControl`.

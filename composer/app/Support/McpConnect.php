@@ -4,7 +4,7 @@ namespace App\Support;
 
 /**
  * Addresses and copy-paste client setup for the MCP server (<host>:8002/mcp),
- * shown on the MCP setup page (/connect-ai) and the Site Setting > MCP tab.
+ * shown on the MCP setup page (/connect-ai) and the MCP Server plugin details (Site Setting > Plugins).
  */
 class McpConnect
 {

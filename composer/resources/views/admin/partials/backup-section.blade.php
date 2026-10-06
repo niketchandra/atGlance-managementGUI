@@ -4,7 +4,7 @@
 
     Expects: $type ('database' or 'config'), $section (BackupSettings::get() + label + last_run),
     $sectionKey ('database' or 'files', for the restore list), $icon, $description,
-    $restoreNote, $frequencies, $s3Available.
+    $restoreNote, $frequencies, $s3Available, $open (shown as the open pane).
 --}}
 @php
     $old = fn (string $name, $current) => old("backup_{$type}_{$name}", $current);
@@ -16,7 +16,7 @@
     $lastRun = $section['last_run'] ?? [];
     $statusColor = ['success' => 'var(--ag-success)', 'failed' => 'var(--ag-danger)'][$lastRun['status'] ?? ''] ?? 'var(--ag-muted)';
 @endphp
-<section class="backup-section" data-type="{{ $type }}" style="margin-top: 18px; padding: 18px; border: 1px solid var(--ag-line); border-radius: 14px;">
+<section class="backup-section ag-split-panel" data-type="{{ $type }}" data-key="{{ $type }}" style="display: {{ ($open ?? true) ? 'block' : 'none' }};">
     <h3 style="font-size: 17px; margin-bottom: 4px;"><i class="fas {{ $icon }}"></i> {{ $section['label'] }} &amp; restore</h3>
     <p style="font-size: 13px; color: var(--ag-muted); margin-bottom: 14px;">{{ $description }}</p>
 
@@ -63,7 +63,7 @@
                     <input type="checkbox" class="backup-to-s3" name="backup_{{ $type }}_to_s3" value="1" form="backup-settings-form" {{ $toS3 ? 'checked' : '' }}>
                     Upload to S3
                     @unless($s3Available)
-                        <span style="font-size: 12px; color: var(--ag-muted);">(enable S3 on the S3 tab first)</span>
+                        <span style="font-size: 12px; color: var(--ag-muted);">(set up S3 Storage in the Plugins tab first)</span>
                     @endunless
                 </label>
                 <div class="backup-keep-s3" style="display: {{ $toS3 ? 'block' : 'none' }};">

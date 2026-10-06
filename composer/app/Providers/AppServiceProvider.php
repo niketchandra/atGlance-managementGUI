@@ -100,28 +100,19 @@ class AppServiceProvider extends ServiceProvider
                 $decodedFeatures = json_decode((string) $featuresRaw, true);
                 $sharedSettings['siteFeatures'] = is_array($decodedFeatures) ? $decodedFeatures : [];
 
-                $providerCatalog = config('sso.providers', []);
-                $providerKeys = array_keys($providerCatalog);
                 $disableEmailRegistration = filter_var((string) AdminSetting::getValue('disable_email_registration', 'false'), FILTER_VALIDATE_BOOL);
-                $enabledProviders = $this->resolveSsoEnabledProviders($providerKeys);
-                $ssoEnabledFlag = $this->resolveSsoEnabledFlag();
+                $ssoEnabledFlag = \App\Support\SsoSettings::enabled();
 
                 $sharedSettings['ssoEnabled'] = $ssoEnabledFlag;
                 $sharedSettings['disableEmailRegistration'] = $disableEmailRegistration;
-                $sharedSettings['ssoProvidersForAuth'] = collect($ssoEnabledFlag ? $enabledProviders : [])
-                    ->map(function ($providerKey) use ($providerCatalog) {
-                        $providerKey = (string) $providerKey;
-                        if (!isset($providerCatalog[$providerKey])) {
-                            return null;
-                        }
-
-                        return [
-                            'key' => $providerKey,
-                            'label' => $providerCatalog[$providerKey]['label'] ?? ucfirst($providerKey),
-                            'icon' => $providerCatalog[$providerKey]['icon'] ?? 'fas fa-shield-alt',
-                        ];
-                    })
-                    ->filter()
+                // Only providers that are fully set up get a sign-in button.
+                $sharedSettings['ssoProvidersForAuth'] = collect($ssoEnabledFlag ? \App\Support\SsoSettings::enabledProviders() : [])
+                    ->filter(fn (string $providerKey) => \App\Support\SsoProviders::missingFields($providerKey) === [])
+                    ->map(fn (string $providerKey) => [
+                        'key' => $providerKey,
+                        'label' => \App\Support\SsoProviders::label($providerKey),
+                        'icon' => \App\Support\SsoProviders::definition($providerKey)['icon'] ?? 'fas fa-shield-alt',
+                    ])
                     ->values()
                     ->all();
             }
@@ -272,48 +263,6 @@ class AppServiceProvider extends ServiceProvider
         return trim((string) $default);
     }
 
-    private function resolveSsoEnabledFlag(): bool
-    {
-        $storedValue = AdminSetting::getValue('sso_enabled', null);
-        $source = $storedValue !== null ? (string) $storedValue : $this->getEnvValue('SSO_ENABLED', 'false');
-
-        return filter_var($source, FILTER_VALIDATE_BOOL);
-    }
-
-    private function resolveSsoEnabledProviders(array $providerKeys): array
-    {
-        $storedProviders = $this->resolveStoredSsoProviders($providerKeys);
-        if (!empty($storedProviders)) {
-            return $storedProviders;
-        }
-
-        return $this->resolveEnabledSsoProvidersFromEnvironment($providerKeys);
-    }
-
-    private function resolveStoredSsoProviders(array $providerKeys): array
-    {
-        $storedValue = AdminSetting::getValue('sso_enabled_providers', null);
-        if ($storedValue === null || $storedValue === '') {
-            return [];
-        }
-
-        if (is_array($storedValue)) {
-            $providers = $storedValue;
-        } else {
-            $providers = json_decode((string) $storedValue, true);
-            if (!is_array($providers)) {
-                $providers = array_map('trim', explode(',', (string) $storedValue));
-            }
-        }
-
-        return collect($providers)
-            ->map(fn (string $provider) => strtolower(trim($provider)))
-            ->filter(fn (string $provider) => in_array($provider, $providerKeys, true))
-            ->unique()
-            ->values()
-            ->all();
-    }
-
     private function readEnvFileValue(string $key): ?string
     {
         $envPath = base_path('.env');
@@ -338,21 +287,6 @@ class AppServiceProvider extends ServiceProvider
         }
 
         return trim($raw);
-    }
-
-    private function resolveEnabledSsoProvidersFromEnvironment(array $providerKeys): array
-    {
-        $raw = $this->getEnvValue('SSO_ENABLED_PROVIDERS', '');
-        if ($raw === '') {
-            return [];
-        }
-
-        return collect(explode(',', $raw))
-            ->map(fn (string $provider) => strtolower(trim($provider)))
-            ->filter(fn (string $provider) => in_array($provider, $providerKeys, true))
-            ->unique()
-            ->values()
-            ->all();
     }
 
     private function resolveVersionFromDotEnv(): string

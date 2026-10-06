@@ -24,6 +24,7 @@ class TelegramChannel extends HttpChannel
             'chat_id' => $group->target,
             'text' => $message->text(),
             'disable_web_page_preview' => true,
+            'disable_notification' => filter_var(NotificationSettings::credential('notify_telegram_silent'), FILTER_VALIDATE_BOOL),
         ]);
 
         // The URL holds the token, so only the status and Telegram's description are reported.

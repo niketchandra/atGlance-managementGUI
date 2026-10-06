@@ -28,6 +28,16 @@ class License
         }
     }
 
+    /** A licence key is saved (active or not); changing it is then a replacement. */
+    public static function hasStoredKey(): bool
+    {
+        try {
+            return trim((string) AdminSetting::getValue('license_key', '')) !== '';
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
     /**
      * Saves a licence from a successful LicenseClient::activate() result.
      */

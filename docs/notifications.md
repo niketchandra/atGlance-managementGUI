@@ -16,15 +16,19 @@ Example: the super admin sets SMTP on the Email Configuration tab and allows Ema
 | Channel | Super admin sets | Group target |
 |---|---|---|
 | Email | SMTP on the Email Configuration tab (check it there with **Send test email**, which uses the saved settings) | Email addresses, comma separated |
-| Microsoft Teams | Allow | Teams channel webhook URL (Workflows template "Post to a channel when a webhook request is received"), https |
-| Slack | Allow | Slack incoming webhook URL, `https://hooks.slack.com/...` |
+| Microsoft Teams | Allow | Teams channel webhook URL from the Workflows template "Send webhook alerts to a channel", https. Not for private channels; about 28 KB per message |
+| Slack | Allow | Slack incoming webhook URL, `https://hooks.slack.com/...` (one channel per webhook) |
 | WhatsApp (SimpleFloww) | Not available yet: waiting for the provider's API details | — |
-| n8n | Allow; optional auth header name and value (for the Webhook node's Header Auth) | n8n webhook URL |
-| Telegram | Allow; bot token | Chat ID (e.g. `-1001234567890`) or `@channel`; the bot must be in the chat |
-| Webhook | Allow; signing secret | Webhook URL (http or https) |
-| SMS (Mailchimp Transactional) | Allow; API key; from number (E.164) | Phone numbers in E.164, comma separated |
+| n8n | Allow; optional Header auth (name, value) and/or Basic auth (user, password), matching the Webhook node | n8n **Production** URL (the workflow must be active) |
+| Telegram | Allow; bot token from @BotFather; optional "Send silently" (`disable_notification`) | Chat ID (e.g. `-1001234567890`) or `@channel`; the bot must be in the chat (an admin in channels) |
+| Webhook | Allow; optional signing secret | Webhook URL (http or https) |
+| SMS (Mailchimp Transactional) | Allow; API key; approved sending number (E.164); consent type (`recurring` default, `recurring-no-confirm`, `onetime`) | Phone numbers in E.164, comma separated |
 
-A channel can be used only when it is allowed and its required settings are complete. The Notification tab shows "Ready" or "Setup needed" for each channel.
+A channel can be used only when it is allowed and its required settings are complete. The Notification tab lists the channels on the left ("Ready", "Setup needed", "Off", "Coming soon") and, for the open channel, the official guide link, the organization setup steps, the fields, and the steps for a workspace group's target with an example. Guides: `NotificationSettings::GUIDES`.
+
+SMS uses the request body from Mailchimp's "Send your first SMS" guide:
+`POST https://mandrillapp.com/api/1.1/messages/send-sms` with `{"key": ..., "message": {"sms": {"text", "to", "from", "consent"}}}`.
+Earlier versions sent `message.{to, from, text}` to `api/1.0` without `consent`.
 
 ## Events
 

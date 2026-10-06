@@ -10,7 +10,7 @@ class ManageMcpCommand extends Command
 {
     protected $signature = 'mcp:manage';
 
-    protected $description = 'Start or stop the MCP container to match Site Setting > MCP';
+    protected $description = 'Start or stop the MCP container to match the MCP Server plugin (Site Setting > Plugins)';
 
     public function handle(): int
     {

@@ -66,7 +66,7 @@ Comprehensive settings management with 5 tabs.
 - `GET /settings` - Settings page (authenticated users only)
 
 ### MCP setup page (`resources/views/mcp-connect.blade.php`)
-Linked as **MCP** in the top bar for every user while MCP is on (Site Setting > MCP). Setup steps for connecting
+Linked as **MCP** in the top bar for every user while the MCP Server plugin is enabled (Site Setting > Plugins). Setup steps for connecting
 AI clients to the read-only MCP server, with the user's own API key. See `docs/mcp.md`.
 
 **Route:**
@@ -145,6 +145,7 @@ The values are read per request by `App\Support\SiteProfile` and shared with eve
 
 - **Plugins tab** (`/admin/settings?tab=plugins`): a scrolling list with a search box at the top. Each plugin is one bar with its icon, name, a one-line summary, an Enabled/Disabled badge, its action button, **Info** and **Enable/Disable** (super admin only). A dot next to the name means the details need attention.
   - **Info** opens the plugin's details below its bar. `?plugin=<key>` opens one directly, for example `?tab=plugins&plugin=custom-domain`.
+  - Plugins: **Custom Domain & HTTPS**, **SSO Login**, **S3 Storage** and **MCP Server (AI tools)**. S3 Storage works like SSO Login: enabling it shows the **S3 Configuration** tab (`POST /admin/settings/s3/plugin`, super admin); S3 is in use once the bucket and keys are saved there. Disabling is refused while files are still stored in S3 (move them back with the Migration tab first). Installs that already used S3 keep the plugin on. SSO Login is switched on and off here (`POST /admin/settings/sso/plugin`, super admin); providers are set up on the **SSO Configuration** tab, which only appears while the plugin is enabled (`?tab=sso` falls back to Plugins). Disabling SSO also turns email registration back on, so users are never left without a way to sign up or reset a password.
   - The list comes from `App\Support\PluginRegistry`. To add a plugin, add an entry there (key, name, icon, summary, search keywords, enabled, toggle route, action) and a details partial in `resources/views/admin/plugins/`.
 - **Custom Domain & HTTPS plugin**: the action button is "Set the domain on the Site tab" once it is enabled. Its details (`admin/plugins/custom-domain.blade.php`) show:
   - Setup steps for VM (the built-in proxy), ECS, Azure Container Apps and Kubernetes.

@@ -27,6 +27,20 @@
 
     @php
         $activeTab = request('tab', 'info');
+        // The SSO Configuration tab exists only while the SSO Login plugin is enabled.
+        if ($activeTab === 'sso' && !$ssoEnabled) {
+            $activeTab = 'plugins';
+        }
+        // The S3 Configuration tab exists only while the S3 Storage plugin is enabled.
+        $s3PluginEnabled = \App\Support\S3Settings::pluginEnabled();
+        // The AI Connect tab exists only while the AI Connect plugin is enabled.
+        $aiPluginEnabled = \App\Support\AiSettings::pluginEnabled();
+        if ($activeTab === 'ai-connect' && !$aiPluginEnabled) {
+            $activeTab = 'plugins';
+        }
+        if ($activeTab === 's3' && !$s3PluginEnabled) {
+            $activeTab = 'plugins';
+        }
     @endphp
 
     <div class="ag-side-layout">
@@ -34,16 +48,21 @@
         <button type="button" class="ag-tab settings-tab-btn {{ $activeTab === 'info' ? 'active' : '' }}" data-tab="info"><i class="fas fa-circle-info"></i> Info</button>
         <button type="button" class="ag-tab settings-tab-btn {{ $activeTab === 'site' ? 'active' : '' }}" data-tab="site"><i class="fas fa-globe"></i> Site Configuration</button>
         <button type="button" class="ag-tab settings-tab-btn {{ $activeTab === 'email' ? 'active' : '' }}" data-tab="email"><i class="fas fa-envelope"></i> Email Configuration</button>
+        @if($ssoEnabled)
         <button type="button" class="ag-tab settings-tab-btn {{ $activeTab === 'sso' ? 'active' : '' }}" data-tab="sso"><i class="fas fa-right-to-bracket"></i> SSO Configuration</button>
+        @endif
+        @if($s3PluginEnabled)
         <button type="button" class="ag-tab settings-tab-btn {{ $activeTab === 's3' ? 'active' : '' }}" data-tab="s3"><i class="fas fa-cloud"></i> S3 Configuration</button>
+        @endif
         <button type="button" class="ag-tab settings-tab-btn {{ $activeTab === 'migration' ? 'active' : '' }}" data-tab="migration"><i class="fas fa-right-left"></i> Migration</button>
         <button type="button" class="ag-tab settings-tab-btn {{ $activeTab === 'backup-restore' ? 'active' : '' }}" data-tab="backup-restore"><i class="fas fa-clock-rotate-left"></i> Backup &amp; Restore</button>
         <button type="button" class="ag-tab settings-tab-btn {{ $activeTab === 'plugins' ? 'active' : '' }}" data-tab="plugins"><i class="fas fa-puzzle-piece"></i> Plugins</button>
         <button type="button" class="ag-tab settings-tab-btn {{ $activeTab === 'crons' ? 'active' : '' }}" data-tab="crons"><i class="fas fa-stopwatch"></i> Crons</button>
+        @if($aiPluginEnabled)
         <button type="button" class="ag-tab settings-tab-btn {{ $activeTab === 'ai-connect' ? 'active' : '' }}" data-tab="ai-connect"><i class="fas fa-robot"></i> AI Connect</button>
+        @endif
         <button type="button" class="ag-tab settings-tab-btn {{ $activeTab === 'notification' ? 'active' : '' }}" data-tab="notification"><i class="fas fa-bell"></i> Notification</button>
         <button type="button" class="ag-tab settings-tab-btn {{ $activeTab === 'licence' ? 'active' : '' }}" data-tab="licence"><i class="fas fa-key"></i> Licence</button>
-        <button type="button" class="ag-tab settings-tab-btn {{ $activeTab === 'mcp' ? 'active' : '' }}" data-tab="mcp"><i class="fas fa-network-wired"></i> MCP</button>
     </nav>
     <div class="ag-side-content">
 
@@ -337,12 +356,13 @@
         @endif
     </div>
 
+    @if($s3PluginEnabled)
     <div id="tab-s3" class="settings-tab-content ag-card" style="display:{{ $activeTab === 's3' ? 'block' : 'none' }}; padding:24px;">
         <h2 style="font-size: 18px; margin-bottom: 8px;">S3 Configuration</h2>
-        @php
-            $s3EnabledState = (string) old('s3_enabled', ($useS3Storage ?? false) ? '1' : '0');
-        @endphp
-        <p style="font-size: 13px; color: var(--ag-muted); margin-bottom: 14px;">Local storage is default. Enable S3 only when you want backups/migration to target S3.</p>
+        <p style="font-size: 13px; color: var(--ag-muted); margin-bottom: 14px;">
+            {{ ($useS3Storage ?? false) ? 'S3 is in use.' : 'Not in use yet: save the bucket and keys below to start using S3.' }}
+            Turn S3 Storage off in the <a href="{{ route('admin.settings', ['tab' => 'plugins', 'plugin' => 's3']) }}" style="color: var(--ag-teal); text-decoration: underline;">Plugins tab</a>; this tab is then hidden.
+        </p>
         <div style="margin-bottom: 14px; padding: 10px; border-radius: 12px; background: var(--ag-surface); color: var(--ag-subtle); font-size: 13px; line-height: 1.5;">
             <strong>Note:</strong>
             <br>
@@ -356,13 +376,6 @@
         </div>
         <form method="POST" action="{{ route('admin.settings.s3', ['tab' => 's3']) }}">
             @csrf
-            <input type="hidden" name="s3_enabled" value="0">
-            <div style="margin-bottom: 12px;">
-                <label style="display: flex; align-items: center; gap: 8px;">
-                    <input type="checkbox" name="s3_enabled" value="1" {{ $s3EnabledState === '1' ? 'checked' : '' }}>
-                    <span>Enable S3 configuration</span>
-                </label>
-            </div>
 
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 12px;">
                 <div>
@@ -400,6 +413,7 @@
             <button class="ag-btn" type="submit">Save S3 Settings</button>
         </form>
     </div>
+    @endif
 
     <div id="tab-email" class="settings-tab-content ag-card" style="display:{{ $activeTab === 'email' ? 'block' : 'none' }}; padding:24px;">
         <h2 style="font-size: 18px; margin-bottom: 12px;">Email Configuration</h2>
@@ -636,27 +650,59 @@
             <p style="font-size: 12px; color: var(--ag-muted); margin-top: 6px;">When this is off, no backup runs. Existing backups can still be restored.</p>
         </form>
 
-        @include('admin.partials.backup-section', [
-            'type' => 'database',
-            'sectionKey' => 'database',
-            'section' => $backupSections['database'],
-            'icon' => 'fa-database',
-            'description' => 'A gzipped SQL dump of every table: users, systems, settings, activity and the configuration file records. Only the super admin can restore it.',
-            'restoreNote' => 'restoring a database backup replaces the whole database. Everyone may need to sign in again. Older portal backups (database plus .env) are listed here too and also bring back their .env file.',
-            'frequencies' => $backupFrequencies,
-            's3Available' => $useS3Storage,
-        ])
+        @php
+            $backupOpen = in_array(request('backup'), ['database', 'config'], true) ? request('backup') : 'database';
+            $backupNav = [
+                'database' => ['label' => 'Database', 'icon' => 'fa-database'],
+                'config' => ['label' => 'Config & files', 'icon' => 'fa-file-code'],
+            ];
+        @endphp
+        <div class="ag-split" data-split="backup" style="margin-top: 18px;">
+            <nav class="ag-split-nav" aria-label="Backups">
+                <div class="ag-split-hint">Tick to run the backup on its schedule, then save. Click a name to set it up or restore.</div>
+                @foreach($backupNav as $backupType => $backupItem)
+                    @php
+                        $backupSection = $backupSections[$backupType];
+                        $backupScheduled = (string) old('backup_' . $backupType . '_enabled', $backupSection['enabled'] ? '1' : '0') === '1';
+                        $backupFailed = ($backupSection['last_run']['status'] ?? '') === 'failed';
+                    @endphp
+                    <div class="ag-split-item {{ $backupType === $backupOpen ? 'is-open' : '' }}" data-key="{{ $backupType }}">
+                        <input type="checkbox" class="backup-nav-toggle" data-type="{{ $backupType }}" {{ $backupScheduled ? 'checked' : '' }} aria-label="Scheduled {{ $backupItem['label'] }} backup">
+                        <button type="button" class="ag-split-open" data-key="{{ $backupType }}" aria-expanded="{{ $backupType === $backupOpen ? 'true' : 'false' }}">
+                            <i class="fas {{ $backupItem['icon'] }}"></i>
+                            <span class="ag-split-name">{{ $backupItem['label'] }}</span>
+                            <span class="ag-split-state {{ $backupFailed ? 'is-bad' : ($backupScheduled ? 'is-on' : '') }}" data-failed="{{ $backupFailed ? '1' : '0' }}">{{ $backupFailed ? 'Last run failed' : ($backupScheduled ? 'Scheduled' : 'Off') }}</span>
+                        </button>
+                    </div>
+                @endforeach
+            </nav>
 
-        @include('admin.partials.backup-section', [
-            'type' => 'config',
-            'sectionKey' => 'files',
-            'section' => $backupSections['config'],
-            'icon' => 'fa-file-code',
-            'description' => 'Every uploaded configuration file with its content, the systems and services it belongs to, saved AI validations, and the console\'s own files: branding images and other public uploads, and the built-in proxy\'s certificates.',
-            'restoreNote' => 'restoring adds missing records back and resets changed ones to their backed-up values; records created after the backup are kept. Configuration file contents and console files are written back.',
-            'frequencies' => $backupFrequencies,
-            's3Available' => $useS3Storage,
-        ])
+            <div style="min-width: 0;">
+            @include('admin.partials.backup-section', [
+                'type' => 'database',
+                'sectionKey' => 'database',
+                'section' => $backupSections['database'],
+                'icon' => 'fa-database',
+                'description' => 'A gzipped SQL dump of every table: users, systems, settings, activity and the configuration file records. Only the super admin can restore it.',
+                'restoreNote' => 'restoring a database backup replaces the whole database. Everyone may need to sign in again. Older portal backups (database plus .env) are listed here too and also bring back their .env file.',
+                'frequencies' => $backupFrequencies,
+                's3Available' => $useS3Storage,
+                'open' => $backupOpen === 'database',
+            ])
+
+            @include('admin.partials.backup-section', [
+                'type' => 'config',
+                'sectionKey' => 'files',
+                'section' => $backupSections['config'],
+                'icon' => 'fa-file-code',
+                'description' => 'Every uploaded configuration file with its content, the systems and services it belongs to, saved AI validations, and the console\'s own files: branding images and other public uploads, and the built-in proxy\'s certificates.',
+                'restoreNote' => 'restoring adds missing records back and resets changed ones to their backed-up values; records created after the backup are kept. Configuration file contents and console files are written back.',
+                'frequencies' => $backupFrequencies,
+                's3Available' => $useS3Storage,
+                'open' => $backupOpen === 'config',
+            ])
+            </div>
+        </div>
     </div>
 
     <div id="tab-crons" class="settings-tab-content ag-card" style="display:{{ $activeTab === 'crons' ? 'block' : 'none' }}; padding:24px;">
@@ -753,349 +799,64 @@
             A licence works on one console only. This console's ID is <span>{{ \App\Support\License::instanceId() }}</span>.
         </p>
 
+        @php $licenceReplacing = \App\Support\License::hasStoredKey(); @endphp
         <form method="POST" action="{{ route('admin.settings.licence') }}">
             @csrf
-            <label class="ag-label" for="license-key">{{ $licence['active'] ? 'Replace licence key' : 'Licence key' }}</label>
-            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+            <label class="ag-label" for="license-key">{{ $licenceReplacing ? 'Replace licence key' : 'Licence key' }}</label>
+            <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-end;">
                 <input class="ag-input" id="license-key" type="text" name="license_key" required autocomplete="off" spellcheck="false" placeholder="Paste your licence key" style="flex: 1; min-width: 240px;">
-                <button class="ag-btn" type="submit">Verify &amp; Save</button>
+                @if($licenceReplacing)
+                    <div style="flex: 0 1 240px; min-width: 200px;">
+                        <label class="ag-label" for="license-password">Your password</label>
+                        <input class="ag-input" id="license-password" type="password" name="password" required autocomplete="current-password" style="width: 100%;">
+                    </div>
+                @endif
+                <button class="ag-btn" type="submit">{{ $licenceReplacing ? 'Verify & Replace' : 'Verify & Save' }}</button>
             </div>
+            @if($licenceReplacing)
+                <p style="font-size: 12px; color: var(--ag-muted); margin-top: 6px;">A licence is already saved. Enter your password to replace it; the current licence stays in place if the new key is not accepted.</p>
+            @endif
+            @error('password')
+                <div style="font-size: 12px; color: var(--ag-danger); margin-top: 6px;">{{ $message }}</div>
+            @enderror
         </form>
     </div>
 
+    @if($aiPluginEnabled)
     <div id="tab-ai-connect" class="settings-tab-content ag-card" style="display:{{ $activeTab === 'ai-connect' ? 'block' : 'none' }}; padding:24px;">
         <h2 style="font-size: 18px; margin-bottom: 8px;">AI Connect</h2>
-        @php
-            $aiCanEdit = (int) auth()->user()->rbac_id === 100;
-            $aiProviders = \App\Support\AiSettings::PROVIDERS;
-            $aiProvider = old('ai_provider', \App\Support\AiSettings::provider());
-            $aiProvider = isset($aiProviders[$aiProvider]) ? $aiProvider : 'anthropic';
-            $aiHasKey = \App\Support\AiSettings::apiKey() !== '';
-            $aiLastTest = \App\Support\AiSettings::lastTest();
-        @endphp
         <p style="font-size: 13px; color: var(--ag-muted); margin-bottom: 10px;">
             Connect an AI provider to {{ $brandName ?? 'AtGlance' }}. Cloud providers need an API key; self-hosted models (Ollama, LM Studio, OpenClaw) need a base URL the server can reach.
+            Turn AI Connect off in the <a href="{{ route('admin.settings', ['tab' => 'plugins', 'plugin' => 'ai']) }}" style="color: var(--ag-teal); text-decoration: underline;">Plugins tab</a>; this tab is then hidden.
         </p>
-        @unless($aiCanEdit)
+        @unless((int) auth()->user()->rbac_id === 100)
             <div style="margin-bottom: 12px; padding: 10px; border-radius: 12px; background: var(--ag-surface); color: var(--ag-subtle); font-size: 13px;">Only the super admin can change these settings.</div>
         @endunless
-
-        <form id="ai-connect-form" method="POST" action="{{ route('admin.settings.ai') }}" data-test-url="{{ route('admin.settings.ai.test') }}" data-models-url="{{ route('admin.settings.ai.models') }}">
-            @csrf
-            <fieldset {{ $aiCanEdit ? '' : 'disabled' }} style="border: none; padding: 0; margin: 0;">
-                <label style="display: flex; gap: 8px; align-items: center; font-size: 14px; margin-bottom: 14px;">
-                    <input type="checkbox" name="ai_enabled" value="1" {{ old('ai_enabled', \App\Support\AiSettings::enabled()) ? 'checked' : '' }}>
-                    Enable AI features
-                </label>
-
-                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; margin-bottom: 12px;">
-                    <div>
-                        <label class="ag-label" for="ai-provider">Provider</label>
-                        <select class="ag-select" id="ai-provider" name="ai_provider" style="width: 100%;">
-                            @foreach($aiProviders as $aiKey => $aiMeta)
-                                <option value="{{ $aiKey }}" {{ $aiProvider === $aiKey ? 'selected' : '' }}>{{ $aiMeta['label'] }}</option>
-                            @endforeach
-                        </select>
-                    </div>
-                    <div>
-                        <label class="ag-label" for="ai-base-url">Base URL <span id="ai-base-url-note" style="color: var(--ag-muted);"></span></label>
-                        <input class="ag-input" id="ai-base-url" type="text" name="ai_base_url" value="{{ old('ai_base_url', \App\Support\AiSettings::baseUrl()) }}" style="width: 100%;">
-                    </div>
-                    <div id="ai-key-wrap">
-                        <label class="ag-label" for="ai-api-key">API key <span id="ai-key-note" style="color: var(--ag-muted);"></span></label>
-                        <input class="ag-input" id="ai-api-key" type="password" name="ai_api_key" autocomplete="new-password" data-saved="{{ $aiHasKey ? '1' : '0' }}" placeholder="{{ $aiHasKey ? 'Saved; leave blank to keep' : 'Not set' }}" style="width: 100%;">
-                        @if($aiHasKey)
-                            <label style="display: flex; gap: 6px; align-items: center; font-size: 12px; color: var(--ag-muted); margin-top: 4px;">
-                                <input type="checkbox" name="ai_clear_api_key" value="1"> Remove saved key
-                            </label>
-                        @endif
-                    </div>
-                    <div>
-                        <label class="ag-label" for="ai-model">Model</label>
-                        <div style="display: flex; gap: 6px;">
-                            <input class="ag-input" id="ai-model" type="text" name="ai_model" list="ai-model-options" value="{{ old('ai_model', \App\Support\AiSettings::model()) }}" style="flex: 1; min-width: 0;">
-                            @if($aiCanEdit)
-                                <button class="ag-btn ag-btn--ghost" type="button" id="ai-load-models" style="white-space: nowrap;">Load models</button>
-                            @endif
-                        </div>
-                        <datalist id="ai-model-options"></datalist>
-                        <div id="ai-model-hint" style="font-size: 12px; color: var(--ag-muted); margin-top: 4px;"></div>
-                    </div>
-                </div>
-
-                <div style="border-radius: 12px; padding: 12px; background: var(--ag-surface); margin-bottom: 14px;">
-                    <strong id="ai-steps-title" style="font-size: 13px;">Setup</strong>
-                    <ol id="ai-steps" style="margin: 6px 0 0 18px; padding: 0; font-size: 13px; color: var(--ag-subtle); line-height: 1.6;"></ol>
-                </div>
-
-                <div id="ai-result" role="status" style="display: none; margin-bottom: 12px; padding: 10px; border-radius: 12px; font-size: 13px; word-break: break-word;"></div>
-
-                @if($aiLastTest)
-                    <div id="ai-last-test" style="font-size: 12px; color: var(--ag-muted); margin-bottom: 12px;">
-                        Last test: <span style="color:{{ $aiLastTest['ok'] ? '#137a54' : '#b91c1c' }}; font-weight:600;">{{ $aiLastTest['ok'] ? 'Success' : 'Failed' }}</span>
-                        ({{ $aiProviders[$aiLastTest['provider']]['label'] ?? $aiLastTest['provider'] }}{{ $aiLastTest['model'] ? ', ' . $aiLastTest['model'] : '' }})
-                        {{ \Illuminate\Support\Carbon::parse($aiLastTest['at'])->diffForHumans() }} - {{ $aiLastTest['message'] }}
-                    </div>
-                @endif
-
-                @if($aiCanEdit)
-                    <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-                        <button class="ag-btn ag-btn--ghost" type="button" id="ai-test">Test connection</button>
-                        <button class="ag-btn" type="submit">Save AI Connection</button>
-                    </div>
-                @endif
-            </fieldset>
-        </form>
-        <script type="application/json" id="ai-provider-catalog">@json(\App\Support\AiSettings::catalogForView())</script>
+        @include('admin.ai.providers')
     </div>
-
-    <div id="tab-mcp" class="settings-tab-content ag-card" style="display:{{ $activeTab === 'mcp' ? 'block' : 'none' }}; padding:24px;">
-        @php
-            $mcpEnabled = \App\Support\McpControl::enabled();
-            $mcpCanEdit = (int) auth()->user()->rbac_id === 100;
-            $mcpStatus = $activeTab === 'mcp' ? \App\Support\McpControl::status() : null;
-            $mcpStatusLabel = ['running' => 'Server running', 'stopped' => 'Server stopped', 'unknown' => 'Server state unknown'][$mcpStatus] ?? null;
-            $mcpStatusStyle = ['running' => 'background: var(--ag-success-soft); color: var(--ag-success);', 'stopped' => 'background: var(--ag-surface); color: var(--ag-subtle);', 'unknown' => 'background: var(--ag-warning-soft); color: var(--ag-warning);'][$mcpStatus] ?? '';
-            $mcpMismatch = $mcpStatus !== null && $mcpStatus !== 'unknown' && ($mcpStatus === 'running') !== $mcpEnabled;
-            $mcpInfo = \App\Support\McpConnect::info(request()->getHost());
-        @endphp
-
-        <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 8px;">
-            <h2 style="font-size: 18px;">MCP</h2>
-            <div style="display: flex; gap: 6px; flex-wrap: wrap;">
-                <span style="font-size: 12px; font-weight: 600; border-radius: 999px; padding: 3px 10px; {{ $mcpEnabled ? 'background: var(--ag-success-soft); color: var(--ag-success);' : 'background: var(--ag-surface); color: var(--ag-subtle);' }}">{{ $mcpEnabled ? 'On' : 'Off' }}</span>
-                @if($mcpStatusLabel)
-                    <span style="font-size: 12px; font-weight: 600; border-radius: 999px; padding: 3px 10px; {{ $mcpStatusStyle }}">{{ $mcpStatusLabel }}</span>
-                @endif
-            </div>
-        </div>
-        @if($mcpStatus === 'unknown')
-            <div style="margin-bottom: 12px; padding: 10px; border-radius: 12px; background: var(--ag-warning-soft); color: var(--ag-warning); font-size: 12px; line-height: 1.6;">
-                The console cannot reach <code>mcp-control</code>, so it cannot start or stop the MCP server. On Docker Compose, run <code>docker compose up -d</code> in the install folder to add it. On other platforms, start or stop the MCP service there.
-            </div>
-        @elseif($mcpMismatch)
-            <div style="margin-bottom: 12px; padding: 10px; border-radius: 12px; background: var(--ag-warning-soft); color: var(--ag-warning); font-size: 12px; line-height: 1.6;">
-                The MCP server is {{ $mcpStatus === 'running' ? 'running although MCP is off' : 'stopped although MCP is on' }}. The console corrects this within a minute.
-            </div>
-        @endif
-        <p style="font-size: 13px; color: var(--ag-muted); margin-bottom: 14px;">
-            Lets AI clients (Claude Code, Claude Desktop, VS Code, GitHub Copilot, n8n and other MCP apps) answer questions from this console's data: systems, config backups, AI reviews and vulnerabilities.
-            Read-only. Each client uses its own API key and sees only what that user can see.
-            When MCP is on, every user gets an <strong>MCP</strong> link in the top bar with the setup steps.
-        </p>
-
-        @if($mcpCanEdit)
-            <form method="POST" action="{{ route('admin.settings.mcp') }}" style="margin-bottom: 20px;">
-                @csrf
-                @method('PUT')
-                <input type="hidden" name="enabled" value="{{ $mcpEnabled ? '0' : '1' }}">
-                <button class="ag-btn {{ $mcpEnabled ? 'ag-btn--ghost' : '' }}" type="submit">{{ $mcpEnabled ? 'Turn off MCP' : 'Turn on MCP' }}</button>
-            </form>
-        @else
-            <div style="margin-bottom: 16px; padding: 10px; border-radius: 12px; background: var(--ag-surface); color: var(--ag-subtle); font-size: 13px;">Only the super admin can turn MCP on or off.</div>
-        @endif
-
-        <div style="display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 6px 14px; font-size: 13px; margin-bottom: 16px;">
-            <span style="color: var(--ag-muted);">MCP URL</span><code style="overflow-wrap: anywhere;">{{ $mcpInfo['primary'] }}</code>
-            <span style="color: var(--ag-muted);">Private IP URL</span>
-            @if($mcpInfo['fallback'])
-                <code style="overflow-wrap: anywhere;">{{ $mcpInfo['fallback'] }}</code>
-            @else
-                <span style="color: var(--ag-warning);">Unknown. Set the server's private IP in <a href="{{ route('admin.settings', ['tab' => 'site']) }}" style="color: var(--ag-teal); text-decoration: underline;">Site Configuration</a> so users get a working fallback address.</span>
-            @endif
-        </div>
-
-        @if($mcpEnabled)
-            <a href="{{ route('mcp.connect') }}" class="ag-btn ag-btn--ghost"><i class="fas fa-plug"></i> Open the MCP setup page</a>
-        @else
-            <div style="padding: 14px; border-radius: 12px; background: var(--ag-surface); color: var(--ag-subtle); font-size: 13px;">
-                MCP is off. Turn it on to start the MCP server and show the MCP setup page to users.
-            </div>
-        @endif
-    </div>
+    @endif
 
     <div id="tab-notification" class="settings-tab-content ag-card" style="display:{{ $activeTab === 'notification' ? 'block' : 'none' }}; padding:24px;">
         <h2 style="font-size: 18px; margin-bottom: 8px;">Notification</h2>
-        @php
-            $notifyCanEdit = (int) auth()->user()->rbac_id === 100;
-        @endphp
         <p style="font-size: 13px; color: var(--ag-muted); margin-bottom: 10px;">
             Allow the channels that workspace admins can use, and set the organization-level connection for each one.
             Workspace admins then add their own groups (email lists, channels, chats) on the
             <a href="{{ route('admin.notifications') }}" style="color: var(--ag-teal); text-decoration: underline;">Notifications</a> page.
         </p>
-        @unless($notifyCanEdit)
+        @unless((int) auth()->user()->rbac_id === 100)
             <div style="margin-bottom: 12px; padding: 10px; border-radius: 12px; background: var(--ag-surface); color: var(--ag-subtle); font-size: 13px;">Only the super admin can change these settings.</div>
         @endunless
 
-        <form method="POST" action="{{ route('admin.settings.notifications') }}">
-            @csrf
-            <fieldset {{ $notifyCanEdit ? '' : 'disabled' }} style="border: none; padding: 0; margin: 0;">
-                <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; margin-bottom: 14px;">
-                    @foreach(\App\Support\NotificationSettings::CHANNELS as $notifyChannel => $notifyMeta)
-                        @php
-                            $notifyAllowed = \App\Support\NotificationSettings::isAllowed($notifyChannel);
-                            $notifyMissing = $notifyAllowed ? \App\Support\NotificationSettings::missingSetup($notifyChannel) : null;
-                        @endphp
-                        <div style="border:1px solid #e5e7eb; border-radius:8px; padding:12px; background:{{ $notifyMeta['available'] ? '#ffffff' : '#f9fafb' }};">
-                            <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 6px;">
-                                <strong style="font-size: 14px;">{{ $notifyMeta['label'] }}</strong>
-                                @if(!$notifyMeta['available'])
-                                    <span style="font-size: 11px; color: var(--ag-warning); background: var(--ag-warning-soft); border-radius: 999px; padding: 2px 8px;">Waiting for provider API details</span>
-                                @elseif($notifyAllowed && $notifyMissing === null)
-                                    <span style="font-size: 11px; color: #137a54; background: var(--ag-success-soft); border-radius: 999px; padding: 2px 8px;">Ready</span>
-                                @elseif($notifyAllowed)
-                                    <span style="font-size: 11px; color: var(--ag-danger); background: var(--ag-danger-soft); border-radius: 999px; padding: 2px 8px;">Setup needed</span>
-                                @endif
-                            </div>
-                            <div style="font-size: 12px; color: var(--ag-muted); margin-bottom: 8px;">Groups enter: {{ $notifyMeta['target'] }}</div>
-
-                            @if($notifyMeta['available'])
-                                <label style="display: flex; gap: 8px; align-items: center; font-size: 13px; color: var(--ag-subtle); margin-bottom: 8px;">
-                                    <input type="hidden" name="allowed[{{ $notifyChannel }}]" value="0">
-                                    <input type="checkbox" name="allowed[{{ $notifyChannel }}]" value="1" {{ $notifyAllowed ? 'checked' : '' }}>
-                                    Allow workspace admins to use this channel
-                                </label>
-                            @endif
-
-                            @if($notifyChannel === 'email')
-                                <div style="font-size: 12px; color: var(--ag-subtle);">
-                                    SMTP server: {{ \App\Support\NotificationSettings::mailConfigured() ? 'configured' : 'not configured' }} on the
-                                    <a href="{{ route('admin.settings', ['tab' => 'email']) }}" style="color: var(--ag-teal); text-decoration: underline;">Email Configuration</a> tab.
-                                </div>
-                            @endif
-
-                            @foreach(\App\Support\NotificationSettings::CREDENTIALS[$notifyChannel] ?? [] as $notifyKey => $notifyCredential)
-                                @php
-                                    $notifySaved = \App\Support\NotificationSettings::credential($notifyKey);
-                                @endphp
-                                <div style="margin-top: 8px;">
-                                    <label class="ag-label">{{ $notifyCredential['label'] }}</label>
-                                    @if($notifyCredential['secret'])
-                                        <input class="ag-input" type="password" name="{{ $notifyKey }}" autocomplete="new-password" placeholder="{{ $notifySaved !== '' ? 'Saved; leave blank to keep' : 'Not set' }}" style="width: 100%;">
-                                        @if($notifySaved !== '')
-                                            <label style="display: flex; gap: 6px; align-items: center; font-size: 12px; color: var(--ag-muted); margin-top: 4px;">
-                                                <input type="checkbox" name="clear[{{ $notifyKey }}]" value="1"> Remove saved value
-                                            </label>
-                                        @endif
-                                    @else
-                                        <input class="ag-input" type="text" name="{{ $notifyKey }}" value="{{ old($notifyKey, $notifySaved) }}" style="width: 100%;">
-                                    @endif
-                                </div>
-                            @endforeach
-
-                            @if($notifyMissing)
-                                <div style="font-size: 12px; color: var(--ag-danger); margin-top: 8px;">{{ $notifyMissing }}</div>
-                            @endif
-                        </div>
-                    @endforeach
-                </div>
-
-                @if($notifyCanEdit)
-                    <button class="ag-btn" type="submit">Save Notification Channels</button>
-                @endif
-            </fieldset>
-        </form>
+        @include('admin.notifications.channels')
     </div>
 
+    @if($ssoEnabled)
     <div id="tab-sso" class="settings-tab-content ag-card" style="display:{{ $activeTab === 'sso' ? 'block' : 'none' }}; padding:24px;">
         <h2 style="font-size: 18px; margin-bottom: 12px;">SSO Configuration</h2>
-        <form method="POST" action="{{ route('admin.settings.sso', ['tab' => 'sso']) }}">
-            @csrf
-            <div style="margin-bottom: 12px;">
-                <label style="display: flex; align-items: center; gap: 8px;">
-                    <input id="sso-enabled-toggle" type="checkbox" name="sso_enabled" value="1" {{ old('sso_enabled', $ssoEnabled) ? 'checked' : '' }}>
-                    <span>Enable SSO login</span>
-                </label>
-            </div>
-
-            <div id="disable-email-registration-wrap" style="margin-bottom:12px; {{ old('sso_enabled', $ssoEnabled) ? '' : 'display:none;' }}">
-                <label style="display: flex; align-items: center; gap: 8px;">
-                    <input id="disable-email-registration-toggle" type="checkbox" name="disable_email_registration" value="1" {{ old('disable_email_registration', $disableEmailRegistration ?? false) ? 'checked' : '' }}>
-                    <span>Disable user registration with email/password</span>
-                </label>
-                <p style="margin: 6px 0 0 26px; font-size: 12px; color: var(--ag-muted);">When enabled, registration and forgot-password by email are disabled on the login page.</p>
-            </div>
-
-            @php
-                $selectedProviders = old('sso_enabled_providers', $ssoEnabledProviders ?? []);
-                $providerUrls = old('sso_provider_urls', $ssoProviderUrls ?? []);
-                $providerClientIds = old('sso_provider_client_ids', $ssoProviderClientIds ?? []);
-                $hasProviderClientSecrets = $hasSsoProviderClientSecrets ?? [];
-                $providerTenantIds = old('sso_provider_tenant_ids', $ssoProviderTenantIds ?? []);
-            @endphp
-
-            <div style="margin-bottom: 14px;">
-                <label class="ag-label">Enable Providers</label>
-                <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px;">
-                    @foreach(($ssoProviderOptions ?? []) as $providerKey => $providerMeta)
-                        <label style="display: flex; align-items: center; gap: 8px; border-radius: 12px; padding: 8px 10px; cursor: pointer; background: var(--ag-surface);">
-                            <input class="sso-provider-checkbox" type="checkbox" name="sso_enabled_providers[]" value="{{ $providerKey }}" {{ in_array($providerKey, $selectedProviders, true) ? 'checked' : '' }}>
-                            <span>{{ $providerMeta['label'] ?? ucfirst($providerKey) }}</span>
-                        </label>
-                    @endforeach
-                </div>
-                @error('sso_enabled_providers')
-                    <div style="margin-top: 8px; font-size: 12px; color: var(--ag-danger);">{{ $message }}</div>
-                @enderror
-            </div>
-
-            <div style="margin-bottom: 14px;">
-                <label class="ag-label">Provider Login URLs</label>
-                <p style="font-size: 12px; color: var(--ag-muted); margin-bottom: 10px;">Only selected providers are shown below. Configure URL and Client ID/Secret per provider. Tenant/Domain is optional and not required for GitHub.</p>
-                <p style="font-size: 12px; color: var(--ag-subtle); margin-bottom: 10px;">Configure callback/redirect URL on your identity platform, not here. App callback format: <strong>{{ url('/auth/sso/{provider}/callback') }}</strong></p>
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
-                    @foreach(($ssoProviderOptions ?? []) as $providerKey => $providerMeta)
-                        <div class="provider-url-group" data-provider="{{ $providerKey }}" style="display:{{ in_array($providerKey, $selectedProviders, true) ? 'block' : 'none' }};">
-                            <div style="font-size: 12px; color: var(--ag-text); margin-bottom: 6px;">Callback URL for {{ $providerMeta['label'] ?? ucfirst($providerKey) }}: <strong>{{ url('/auth/sso/' . $providerKey . '/callback') }}</strong></div>
-                            <label class="ag-label">{{ $providerMeta['label'] ?? ucfirst($providerKey) }} URL</label>
-                            <input
-                                class="ag-input provider-config-input"
-                                type="url"
-                                name="sso_provider_urls[{{ $providerKey }}]"
-                                value="{{ $providerUrls[$providerKey] ?? '' }}"
-                                placeholder="https://..."
-                                style="width: 100%;"
-                            >
-
-                            <label class="ag-label" style="margin: 8px 0 5px;">{{ $providerMeta['label'] ?? ucfirst($providerKey) }} Client ID</label>
-                            <input
-                                class="ag-input provider-config-input"
-                                type="text"
-                                name="sso_provider_client_ids[{{ $providerKey }}]"
-                                value="{{ $providerClientIds[$providerKey] ?? '' }}"
-                                placeholder="Client ID"
-                                style="width: 100%;"
-                            >
-
-                            <label class="ag-label" style="margin: 8px 0 5px;">{{ $providerMeta['label'] ?? ucfirst($providerKey) }} Client Secret {{ !empty($hasProviderClientSecrets[$providerKey] ?? false) ? '(leave blank to keep existing)' : '' }}</label>
-                            <input
-                                class="ag-input provider-config-input"
-                                type="password"
-                                name="sso_provider_client_secrets[{{ $providerKey }}]"
-                                placeholder="Client Secret"
-                                style="width: 100%;"
-                            >
-
-                            @if($providerKey !== 'github')
-                                <label class="ag-label" style="margin: 8px 0 5px;">{{ $providerMeta['label'] ?? ucfirst($providerKey) }} Tenant ID / Domain (optional)</label>
-                                <input
-                                    class="ag-input provider-config-input"
-                                    type="text"
-                                    name="sso_provider_tenant_ids[{{ $providerKey }}]"
-                                    value="{{ $providerTenantIds[$providerKey] ?? '' }}"
-                                    placeholder="Tenant ID or Domain"
-                                    style="width: 100%;"
-                                >
-                            @endif
-                        </div>
-                    @endforeach
-                </div>
-            </div>
-
-            <button class="ag-btn" type="submit">Save SSO Settings</button>
-        </form>
+        <p style="font-size: 13px; color: var(--ag-muted); margin-bottom: 12px;">SSO Login is enabled. Turn it off in the <a href="{{ route('admin.settings', ['tab' => 'plugins', 'plugin' => 'sso']) }}" style="color: var(--ag-teal); text-decoration: underline;">Plugins tab</a>; this tab is then hidden.</p>
+        @include('admin.sso.providers')
     </div>
+    @endif
     </div>
     </div>
 </div>
@@ -1369,111 +1130,36 @@
         });
     });
 
+    // Left-hand ticks on Backup & Restore mirror each section's "Scheduled backup" switch.
+    document.querySelectorAll('.backup-nav-toggle').forEach((box) => {
+        const section = document.querySelector(`.backup-section[data-type="${box.dataset.type}"]`);
+        const select = section ? section.querySelector('.backup-enabled') : null;
+        const state = box.closest('.ag-split-item').querySelector('.ag-split-state');
+        if (!select) {
+            return;
+        }
+        const paint = () => {
+            const on = select.value === '1';
+            box.checked = on;
+            if (state.dataset.failed !== '1') {
+                state.textContent = on ? 'Scheduled' : 'Off';
+                state.classList.toggle('is-on', on);
+            }
+        };
+        box.addEventListener('change', () => {
+            select.value = box.checked ? '1' : '0';
+            select.dispatchEvent(new Event('change'));
+            const split = box.closest('[data-split]');
+            if (box.checked && split && split.splitOpen) {
+                split.splitOpen(box.dataset.type);
+            }
+        });
+        select.addEventListener('change', paint);
+    });
+
     updateProviderConfigVisibility();
     updateSsoDependentVisibility();
     updateBackupVisibility();
-})();
-
-// AI Connect tab: per-provider hints, "Load models" and "Test connection".
-(function () {
-    const form = document.getElementById('ai-connect-form');
-    const catalogEl = document.getElementById('ai-provider-catalog');
-    if (!form || !catalogEl) {
-        return;
-    }
-
-    const catalog = JSON.parse(catalogEl.textContent);
-    const providerSelect = document.getElementById('ai-provider');
-    const baseUrlInput = document.getElementById('ai-base-url');
-    const baseUrlNote = document.getElementById('ai-base-url-note');
-    const keyWrap = document.getElementById('ai-key-wrap');
-    const keyInput = document.getElementById('ai-api-key');
-    const keyNote = document.getElementById('ai-key-note');
-    const modelHint = document.getElementById('ai-model-hint');
-    const modelOptions = document.getElementById('ai-model-options');
-    const stepsTitle = document.getElementById('ai-steps-title');
-    const stepsList = document.getElementById('ai-steps');
-    const result = document.getElementById('ai-result');
-    const savedProvider = providerSelect.value;
-    const savedKeyPlaceholder = keyInput.placeholder;
-
-    function updateProviderHints() {
-        const meta = catalog[providerSelect.value];
-        baseUrlInput.placeholder = meta.base_url_hint;
-        baseUrlNote.textContent = meta.base_url ? '(optional, default shown)' : '(required)';
-        keyWrap.style.display = meta.key === 'none' ? 'none' : 'block';
-        keyNote.textContent = meta.key === 'required' ? '(required)' : '(optional)';
-        // A saved key is only reused for the provider it was saved with.
-        keyInput.placeholder = providerSelect.value === savedProvider ? savedKeyPlaceholder : 'Not set';
-        modelHint.textContent = meta.model_hint;
-        stepsTitle.textContent = 'Setup: ' + meta.label;
-        stepsList.replaceChildren(...meta.steps.map((step) => {
-            const item = document.createElement('li');
-            item.textContent = step;
-            return item;
-        }));
-        modelOptions.replaceChildren();
-    }
-
-    function showResult(ok, message) {
-        result.style.display = 'block';
-        result.style.background = ok ? '#ecfdf5' : '#fef2f2';
-        result.style.border = '1px solid ' + (ok ? '#a7f3d0' : '#fecaca');
-        result.style.color = ok ? '#065f46' : '#991b1b';
-        result.textContent = message;
-    }
-
-    async function post(url) {
-        const response = await fetch(url, {
-            method: 'POST',
-            headers: { 'Accept': 'application/json' },
-            body: new FormData(form),
-        });
-        const data = await response.json().catch(() => ({}));
-        if (response.status === 422 && data.errors) {
-            return { ok: false, message: Object.values(data.errors).flat().join(' ') };
-        }
-        if (!response.ok && !data.message) {
-            return { ok: false, message: 'Request failed (HTTP ' + response.status + ').' };
-        }
-        return data;
-    }
-
-    async function run(button, busyText, url, onDone) {
-        const label = button.textContent;
-        button.disabled = true;
-        button.textContent = busyText;
-        try {
-            onDone(await post(url));
-        } catch (error) {
-            showResult(false, 'Request failed: ' + error.message);
-        } finally {
-            button.disabled = false;
-            button.textContent = label;
-        }
-    }
-
-    const testButton = document.getElementById('ai-test');
-    if (testButton) {
-        testButton.addEventListener('click', () => run(testButton, 'Testing...', form.dataset.testUrl, (data) => {
-            showResult(data.ok, data.message + (data.ok && data.reply ? ' Reply: "' + data.reply + '"' : ''));
-        }));
-    }
-
-    const loadModelsButton = document.getElementById('ai-load-models');
-    if (loadModelsButton) {
-        loadModelsButton.addEventListener('click', () => run(loadModelsButton, 'Loading...', form.dataset.modelsUrl, (data) => {
-            showResult(data.ok, data.message);
-            modelOptions.replaceChildren(...(data.models || []).map((id) => {
-                const option = document.createElement('option');
-                option.value = id;
-                return option;
-            }));
-        }));
-    }
-
-    providerSelect.addEventListener('change', updateProviderHints);
-    updateProviderHints();
 })();
 
 // Email Configuration: send a test email with the saved settings.
@@ -1549,4 +1235,5 @@
     }
 })();
 </script>
+@include('admin.partials.split-script')
 @endsection

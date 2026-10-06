@@ -22,6 +22,11 @@ class N8nChannel extends HttpChannel
         if ($headerName !== '' && $headerValue !== '') {
             $request = $request->withHeaders([$headerName => $headerValue]);
         }
+        $basicUser = NotificationSettings::credential('notify_n8n_basic_user');
+        $basicPassword = NotificationSettings::credential('notify_n8n_basic_password');
+        if ($basicUser !== '' && $basicPassword !== '') {
+            $request = $request->withBasicAuth($basicUser, $basicPassword);
+        }
 
         $this->ensureSuccessful($request->post($group->target, $message->payload()), 'n8n');
     }

@@ -29,7 +29,8 @@ channels, workspace groups and events), `docs/workspace-settings.md` (workspace
 settings tabs: tags, automatic AI checks, workspace backups, workspace notifications), `docs/mcp.md` (read-only
 MCP server in `mcp/` and its `/api/mcp/*` API), `docs/ai-connect.md` (AI provider
 connection and per-provider setup), `docs/licence.md` (licence verification and
-what an unlicensed instance blocks), `docs/custom-domain.md` (custom domain,
+what an unlicensed instance blocks), `docs/sso.md` (SSO Login plugin, providers,
+sign-in flow), `docs/custom-domain.md` (custom domain,
 HTTPS and the opt-in built-in Caddy proxy), `docs/tested-scenarios.md` (tested failure
 scenarios), `docs/backend-guide.md` / `docs/resilience-implementation.md` (original API layout notes).
 

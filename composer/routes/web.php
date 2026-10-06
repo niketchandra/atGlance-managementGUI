@@ -109,18 +109,20 @@ Route::middleware('app.installed')->group(function () {
             Route::post('/settings/site', [AdminDashboardController::class, 'updateSiteSettings'])->name('admin.settings.site');
             Route::delete('/settings/contact-submissions/{submissionId}', [AdminDashboardController::class, 'deleteContactSubmission'])->whereNumber('submissionId')->name('admin.settings.contact-submissions.delete');
             Route::post('/settings/s3', [AdminDashboardController::class, 'updateS3Settings'])->name('admin.settings.s3');
+            Route::post('/settings/s3/plugin', [AdminDashboardController::class, 'toggleS3Plugin'])->name('admin.settings.s3.plugin');
             Route::post('/settings/backup-restore', [AdminDashboardController::class, 'updateBackupRestoreSettings'])->name('admin.settings.backup-restore');
             Route::get('/settings/backups', [BackupRestoreController::class, 'index'])->name('admin.settings.backups');
             Route::post('/settings/restore', [BackupRestoreController::class, 'restore'])->name('admin.settings.restore');
             Route::post('/settings/backups/run', [BackupRestoreController::class, 'run'])->middleware('throttle:6,1')->name('admin.settings.backups.run');
             Route::post('/settings/notifications', [NotificationSettingsController::class, 'update'])->name('admin.settings.notifications');
             Route::post('/settings/ai', [AiConnectController::class, 'update'])->name('admin.settings.ai');
+            Route::post('/settings/ai/plugin', [AiConnectController::class, 'togglePlugin'])->name('admin.settings.ai.plugin');
             Route::post('/settings/licence', [LicenseController::class, 'update'])->name('admin.settings.licence');
             Route::post('/settings/domain/plugin', [DomainSettingsController::class, 'togglePlugin'])->name('admin.settings.domain.plugin');
             Route::post('/settings/domain', [DomainSettingsController::class, 'save'])->name('admin.settings.domain');
             Route::post('/settings/domain/check', [DomainSettingsController::class, 'check'])->name('admin.settings.domain.check');
-            Route::get('/settings/mcp', fn () => redirect()->route('admin.settings', ['tab' => 'mcp']));
-            Route::put('/settings/mcp', [AdminDashboardController::class, 'updateMcpSettings'])->name('admin.settings.mcp');
+            Route::get('/settings/mcp', fn () => redirect()->route('admin.settings', ['tab' => 'plugins', 'plugin' => 'mcp']));
+            Route::post('/settings/mcp', [AdminDashboardController::class, 'updateMcpSettings'])->name('admin.settings.mcp');
             Route::delete('/settings/domain/certificate', [DomainSettingsController::class, 'removeCertificate'])->name('admin.settings.domain.certificate.remove');
             Route::get('/settings/domain/ca.crt', [DomainSettingsController::class, 'downloadCa'])->name('admin.settings.domain.ca');
             Route::post('/settings/ai/test', [AiConnectController::class, 'test'])->name('admin.settings.ai.test');
@@ -131,6 +133,7 @@ Route::middleware('app.installed')->group(function () {
             Route::post('/settings/mail', [AdminDashboardController::class, 'updateMailSettings'])->name('admin.settings.mail');
             Route::post('/settings/mail/test', [MailTestController::class, 'send'])->middleware('throttle:5,1')->name('admin.settings.mail.test');
             Route::post('/settings/sso', [AdminDashboardController::class, 'updateSsoSettings'])->name('admin.settings.sso');
+            Route::post('/settings/sso/plugin', [AdminDashboardController::class, 'toggleSsoPlugin'])->name('admin.settings.sso.plugin');
         });
 
         // Workspace admin is a per-workspace role, so any signed-in user may reach these;

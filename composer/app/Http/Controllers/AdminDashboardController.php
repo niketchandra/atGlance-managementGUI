@@ -18,6 +18,8 @@ use App\Support\BackupSettings;
 use App\Support\McpControl;
 use App\Support\S3Settings;
 use App\Support\SiteProfile;
+use App\Support\SsoProviders;
+use App\Support\SsoSettings;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -1114,20 +1116,6 @@ class AdminDashboardController extends Controller
         $siteMetadata = $this->getJsonSetting('site_metadata', []);
         $siteTags = $this->getJsonSetting('site_tags', []);
         $mailRecipients = $this->getJsonSetting('mail_recipients', []);
-        $ssoProviderOptions = config('sso.providers', []);
-        $ssoSettings = $this->resolveSsoSettingsFromEnvironment($ssoProviderOptions);
-        $ssoEnabledProviders = $ssoSettings['enabled_providers'];
-        $ssoProviderUrls = $ssoSettings['provider_urls'];
-        $ssoProviderClientIds = $ssoSettings['provider_client_ids'];
-        $ssoProviderClientSecrets = $ssoSettings['provider_client_secrets'];
-        $ssoProviderTenantIds = $ssoSettings['provider_tenant_ids'];
-
-        $hasSsoProviderClientSecrets = collect($ssoProviderOptions)
-            ->mapWithKeys(function ($meta, $providerKey) use ($ssoProviderClientSecrets) {
-                return [$providerKey => !empty($ssoProviderClientSecrets[$providerKey] ?? '')];
-            })
-            ->all();
-
         return view('admin.settings', [
             'siteUrl' => $siteUrl,
             'siteDomain' => $siteDomain,
@@ -1174,19 +1162,9 @@ class AdminDashboardController extends Controller
             'mailFromAddress' => AdminSetting::getValue('mail_from_address', ''),
             'mailFromName' => AdminSetting::getValue('mail_from_name', ''),
             'mailRecipientsText' => implode(',', $mailRecipients),
-            'ssoEnabled' => $ssoSettings['enabled'],
+            'ssoEnabled' => SsoSettings::enabled(),
             'disableEmailRegistration' => $this->isFeatureEnabledSetting('disable_email_registration'),
-            'ssoProvider' => $ssoEnabledProviders[0] ?? '',
-            'ssoProviderOptions' => $ssoProviderOptions,
-            'ssoEnabledProviders' => $ssoEnabledProviders,
-            'ssoProviderUrls' => $ssoProviderUrls,
-            'ssoProviderClientIds' => $ssoProviderClientIds,
-            'hasSsoProviderClientSecrets' => $hasSsoProviderClientSecrets,
-            'ssoProviderTenantIds' => $ssoProviderTenantIds,
-            'ssoClientId' => $ssoProviderClientIds[$ssoEnabledProviders[0] ?? ''] ?? '',
-            'hasSsoClientSecret' => !empty($ssoProviderClientSecrets[$ssoEnabledProviders[0] ?? ''] ?? ''),
-            'ssoTenantId' => $ssoProviderTenantIds[$ssoEnabledProviders[0] ?? ''] ?? '',
-            'ssoRedirectUrl' => $ssoProviderUrls[$ssoEnabledProviders[0] ?? ''] ?? '',
+            'ssoEnabledProviders' => SsoSettings::enabledProviders(),
         ]);
     }
 
@@ -1321,8 +1299,41 @@ class AdminDashboardController extends Controller
         return redirect()->route('admin.settings', ['tab' => 'site'])->with('success', 'Contact message deleted.');
     }
 
+    public function toggleS3Plugin(Request $request): RedirectResponse
+    {
+        abort_unless(Auth::user()?->isSuperAdmin(), 403);
+        $enabled = $request->boolean('enabled');
+        $back = redirect()->route('admin.settings', ['tab' => 'plugins', 'plugin' => 's3']);
+
+        if (!$enabled) {
+            // Config files stored in S3 would become unreadable.
+            $analysis = $this->analyzeStorageMigrationDirection('s3_to_local');
+            if (($analysis['files_pending_migration'] ?? 0) > 0) {
+                return redirect()
+                    ->route('admin.settings', ['tab' => 'migration'])
+                    ->withErrors(['s3_enabled' => 'Before disabling S3 Storage, migrate the files stored in S3 back to local storage here.'])
+                    ->with('migration_analysis', $analysis)
+                    ->with('migration_direction', 's3_to_local');
+            }
+            $this->setEnvironmentValues(['S3_ENABLED' => 'false']);
+            AdminSetting::putValue('storage', 's3_enabled', 'false');
+        }
+        AdminSetting::putValue('storage', 's3_plugin_enabled', $enabled ? 'true' : 'false');
+
+        ActivityRecorder::record(Auth::id(), 'settings.s3_plugin', 'S3 Storage plugin ' . ($enabled ? 'enabled' : 'disabled'));
+
+        return $back->with('success', $enabled
+            ? 'S3 Storage is enabled. Enter the bucket and keys on the S3 Configuration tab to start using it.'
+            : 'S3 Storage is disabled. Everything is stored locally.');
+    }
+
     public function updateS3Settings(Request $request): RedirectResponse
     {
+        if (!S3Settings::pluginEnabled()) {
+            return redirect()->route('admin.settings', ['tab' => 'plugins', 'plugin' => 's3'])
+                ->withErrors(['s3' => 'Enable S3 Storage in the Plugins tab first.']);
+        }
+
         $currentlyEnabled = $this->isFeatureEnabledSetting('s3_enabled', $this->isS3Enabled());
 
         $validated = $request->validate([
@@ -1333,7 +1344,8 @@ class AdminDashboardController extends Controller
             's3_bucket' => ['required', 'string', 'max:255'],
         ]);
 
-        $requestedEnabled = $request->boolean('s3_enabled');
+        // On/off is the S3 Storage plugin; saving the keys here puts S3 to use.
+        $requestedEnabled = true;
         $runtimeCredentials = $this->resolveS3RuntimeCredentials();
         $resolvedSecret = trim((string) ($validated['s3_secret_key'] ?? ''));
 
@@ -1715,122 +1727,157 @@ class AdminDashboardController extends Controller
         return redirect()->route('admin.settings', ['tab' => 'email'])->with('success', 'Mail settings saved successfully.');
     }
 
+    public function toggleSsoPlugin(Request $request): RedirectResponse
+    {
+        abort_unless(Auth::user()?->isSuperAdmin(), 403);
+        $enabled = $request->boolean('enabled');
+
+        $this->setEnvironmentValues(['SSO_ENABLED' => $enabled ? 'true' : 'false']);
+        AdminSetting::putValue('sso', 'sso_enabled', $enabled ? 'true' : 'false');
+        if (!$enabled) {
+            // Without SSO, users must be able to register and reset passwords by email again.
+            AdminSetting::putValue('sso', 'disable_email_registration', 'false');
+        }
+
+        ActivityRecorder::record(Auth::id(), 'settings.sso_plugin', 'SSO Login plugin ' . ($enabled ? 'enabled' : 'disabled'));
+
+        return redirect()->route('admin.settings', ['tab' => 'plugins', 'plugin' => 'sso'])->with('success', $enabled
+            ? 'SSO Login is enabled. Set up at least one provider on the SSO tab.'
+            : 'SSO Login is disabled. The login page shows email and password only.');
+    }
+
     public function updateSsoSettings(Request $request): RedirectResponse
     {
-        $providerOptions = config('sso.providers', []);
-        $providerKeys = array_keys($providerOptions);
+        if (!SsoSettings::enabled()) {
+            return redirect()->route('admin.settings', ['tab' => 'plugins', 'plugin' => 'sso'])
+                ->withErrors(['sso' => 'Enable SSO Login in the Plugins tab first.']);
+        }
 
-        $validated = $request->validate([
-            'sso_enabled' => ['nullable', 'boolean'],
+        $catalog = SsoProviders::all();
+        $request->validate([
             'disable_email_registration' => ['nullable', 'boolean'],
             'sso_enabled_providers' => ['nullable', 'array'],
-            'sso_enabled_providers.*' => [Rule::in($providerKeys)],
-            'sso_provider_urls' => ['nullable', 'array'],
-            'sso_provider_urls.*' => ['nullable', 'url', 'max:2048'],
-            'sso_provider_client_ids' => ['nullable', 'array'],
-            'sso_provider_client_ids.*' => ['nullable', 'string', 'max:255'],
-            'sso_provider_client_secrets' => ['nullable', 'array'],
-            'sso_provider_client_secrets.*' => ['nullable', 'string', 'max:255'],
-            'sso_provider_tenant_ids' => ['nullable', 'array'],
-            'sso_provider_tenant_ids.*' => ['nullable', 'string', 'max:255'],
-            'sso_client_id' => ['nullable', 'string', 'max:255'],
-            'sso_client_secret' => ['nullable', 'string', 'max:255'],
-            'sso_tenant_id' => ['nullable', 'string', 'max:255'],
-            'sso_redirect_url' => ['nullable', 'url', 'max:2048'],
+            'sso_enabled_providers.*' => [Rule::in(array_keys($catalog))],
+            'sso_config' => ['nullable', 'array'],
+            'sso_config.*' => ['array'],
+            'sso_config.*.*' => ['nullable', 'string', 'max:2048'],
+            'sso_secret' => ['nullable', 'array'],
+            'sso_secret.*' => ['nullable', 'string', 'max:1024'],
+            'sso_clear_secret' => ['nullable', 'array'],
         ]);
 
-        $enabledProviders = collect($request->input('sso_enabled_providers', []))
-            ->map(fn ($provider) => strtolower(trim((string) $provider)))
-            ->filter(fn ($provider) => in_array($provider, $providerKeys, true))
-            ->unique()
-            ->values()
-            ->all();
+        $enabledProviders = array_values(array_unique(array_intersect((array) $request->input('sso_enabled_providers', []), array_keys($catalog))));
 
-        $effectiveSsoEnabled = $request->boolean('sso_enabled');
-
-        if ($effectiveSsoEnabled && empty($enabledProviders)) {
-            return back()->withErrors([
-                'sso_enabled_providers' => 'Select at least one SSO provider when SSO is enabled.',
-            ])->withInput();
-        }
-
-        $providerUrls = collect($request->input('sso_provider_urls', []))
-            ->mapWithKeys(function ($url, $provider) use ($providerKeys) {
-                $provider = strtolower(trim((string) $provider));
-                if (!in_array($provider, $providerKeys, true)) {
-                    return [];
-                }
-
-                return [$provider => trim((string) $url)];
-            })
-            ->all();
-
-        $providerClientIds = collect($request->input('sso_provider_client_ids', []))
-            ->mapWithKeys(function ($clientId, $provider) use ($providerKeys) {
-                $provider = strtolower(trim((string) $provider));
-                if (!in_array($provider, $providerKeys, true)) {
-                    return [];
-                }
-
-                return [$provider => trim((string) $clientId)];
-            })
-            ->all();
-
-        $providerTenantIds = collect($request->input('sso_provider_tenant_ids', []))
-            ->mapWithKeys(function ($tenantId, $provider) use ($providerKeys) {
-                $provider = strtolower(trim((string) $provider));
-                if (!in_array($provider, $providerKeys, true)) {
-                    return [];
-                }
-
-                return [$provider => trim((string) $tenantId)];
-            })
-            ->all();
-
-        $existingProviderClientSecrets = [];
-        foreach ($providerKeys as $providerKey) {
-            $existingProviderClientSecrets[$providerKey] = $this->getSecretEnvValue($this->providerEnvKeyPrefix($providerKey) . '_CLIENT_SECRET', '');
-        }
-        $providerClientSecrets = [];
-        foreach ($providerKeys as $providerKey) {
-            $incomingSecret = trim((string) $request->input("sso_provider_client_secrets.$providerKey", ''));
-            if ($incomingSecret !== '') {
-                $providerClientSecrets[$providerKey] = $incomingSecret;
+        // Everything entered is saved, even when a provider has errors, so a secret is never lost;
+        // only providers without errors are enabled. Unticked providers keep their settings.
+        $config = SsoProviders::savedConfig();
+        $secrets = SsoProviders::secrets();
+        $errors = [];
+        foreach ($catalog as $provider => $definition) {
+            $input = (array) $request->input('sso_config.' . $provider, []);
+            $submitted = $input !== [] || $request->has('sso_secret.' . $provider);
+            $selected = in_array($provider, $enabledProviders, true);
+            if (!$submitted && !$selected) {
                 continue;
             }
 
-            $existingSecret = trim((string) ($existingProviderClientSecrets[$providerKey] ?? ''));
-            if ($existingSecret !== '') {
-                $providerClientSecrets[$providerKey] = $existingSecret;
+            if ($submitted) {
+                $values = ['client_id' => trim((string) ($input['client_id'] ?? ''))];
+                foreach ($definition['fields'] ?? [] as $field => $meta) {
+                    $values[$field] = ($meta['type'] ?? 'text') === 'checkbox'
+                        ? (!empty($input[$field]) ? 'true' : 'false')
+                        : trim((string) ($input[$field] ?? ''));
+                }
+                $config[$provider] = $values;
+            } else {
+                $values = ['client_id' => SsoProviders::clientId($provider)];
+                foreach (array_keys($definition['fields'] ?? []) as $field) {
+                    $values[$field] = SsoProviders::value($provider, $field);
+                }
+                $secrets[$provider] ??= SsoProviders::clientSecret($provider);
+            }
+
+            $secret = trim((string) $request->input('sso_secret.' . $provider, ''));
+            if ($secret !== '') {
+                $secrets[$provider] = $secret;
+            } elseif ($request->boolean('sso_clear_secret.' . $provider)) {
+                unset($secrets[$provider]);
+            }
+
+            if (in_array($provider, $enabledProviders, true)) {
+                $label = $definition['label'];
+                foreach ($this->ssoProviderErrors($provider, $values, $secrets[$provider] ?? '') as $message) {
+                    $errors['sso_config.' . $provider][] = $label . ': ' . $message;
+                }
             }
         }
 
-        $envUpdates = [
-            'SSO_ENABLED' => $effectiveSsoEnabled ? 'true' : 'false',
-            'SSO_ENABLED_PROVIDERS' => implode(',', $enabledProviders),
-        ];
+        $readyProviders = array_values(array_filter($enabledProviders, fn ($provider) => !isset($errors['sso_config.' . $provider])));
+        // Without a working provider, turning off email registration would leave no way to sign up.
+        $disableEmailRegistration = $request->boolean('disable_email_registration') && $readyProviders !== [];
 
-        foreach ($providerKeys as $providerKey) {
-            $prefix = $this->providerEnvKeyPrefix($providerKey);
-            $envUpdates[$prefix . '_URL'] = (string) ($providerUrls[$providerKey] ?? '');
-            $envUpdates[$prefix . '_CLIENT_ID'] = (string) ($providerClientIds[$providerKey] ?? '');
-            $envUpdates[$prefix . '_CLIENT_SECRET'] = $this->encryptSecretForEnvironment((string) ($providerClientSecrets[$providerKey] ?? ''));
-            $envUpdates[$prefix . '_TENANT_ID'] = (string) ($providerTenantIds[$providerKey] ?? '');
+        AdminSetting::putValue('sso', 'sso_provider_config', $config);
+        AdminSetting::putValue('sso', 'sso_provider_client_secrets', $secrets, true);
+        AdminSetting::putValue('sso', 'sso_enabled_providers', $readyProviders);
+        AdminSetting::putValue('sso', 'disable_email_registration', $disableEmailRegistration ? 'true' : 'false');
+        $this->setEnvironmentValues(['SSO_ENABLED_PROVIDERS' => implode(',', $readyProviders)]);
+
+        $labels = fn (array $keys) => implode(', ', array_map(fn ($key) => $catalog[$key]['label'], $keys));
+        ActivityRecorder::record(Auth::id(), 'settings.sso_updated', 'Updated SSO providers: ' . ($readyProviders === [] ? 'none enabled' : $labels($readyProviders)));
+
+        $redirect = redirect()->route('admin.settings', ['tab' => 'sso']);
+        if ($errors !== []) {
+            $notReady = array_values(array_diff($enabledProviders, $readyProviders));
+
+            return $redirect
+                ->withErrors(collect($errors)->map(fn ($messages) => implode(' ', $messages))->all())
+                ->withInput($request->except('sso_secret'))
+                ->with('success', 'Saved. ' . $labels($notReady) . ' stays disabled until the fields below are fixed; saved secrets are kept.');
         }
 
-        $this->setEnvironmentValues($envUpdates);
-        AdminSetting::putValue('sso', 'sso_enabled', $effectiveSsoEnabled ? 'true' : 'false');
-        AdminSetting::putValue('sso', 'sso_enabled_providers', $enabledProviders);
-        AdminSetting::putValue('sso', 'sso_provider_urls', $providerUrls);
-        AdminSetting::putValue('sso', 'sso_provider_client_ids', $providerClientIds);
-        AdminSetting::putValue('sso', 'sso_provider_client_secrets', $providerClientSecrets, true);
-        AdminSetting::putValue('sso', 'sso_provider_tenant_ids', $providerTenantIds);
+        return $redirect->with('success', $readyProviders === []
+            ? 'SSO settings saved. No provider is enabled yet.'
+            : 'SSO settings saved. Sign out and try the new button on the login page.');
+    }
 
-        if ($effectiveSsoEnabled) {
-            AdminSetting::putValue('sso', 'disable_email_registration', $request->boolean('disable_email_registration') ? 'true' : 'false');
+    /** @return array<int, string> what is wrong with one provider's settings */
+    private function ssoProviderErrors(string $provider, array $values, string $secret): array
+    {
+        $definition = SsoProviders::definition($provider);
+        $errors = [];
+        if ($values['client_id'] === '') {
+            $errors[] = ($definition['client_id_label'] ?? 'Client ID') . ' is required.';
+        }
+        if ($secret === '') {
+            $errors[] = ($definition['client_secret_label'] ?? 'Client secret') . ' is required.';
+        }
+        foreach ($definition['fields'] ?? [] as $field => $meta) {
+            $value = (string) ($values[$field] ?? '');
+            if (($meta['required'] ?? false) && $value === '') {
+                $errors[] = $meta['label'] . ' is required.';
+                continue;
+            }
+            if ($value !== '' && ($meta['type'] ?? 'text') === 'url') {
+                if (filter_var($value, FILTER_VALIDATE_URL) === false || !str_starts_with(strtolower($value), 'https://')) {
+                    $errors[] = $meta['label'] . ' must be an https:// address.';
+                }
+            }
         }
 
-        return redirect()->route('admin.settings', ['tab' => 'sso'])->with('success', 'SSO settings saved successfully.');
+        if ($provider === 'microsoft' && in_array(strtolower($values['tenant_id'] ?? ''), SsoProviders::RESERVED_MICROSOFT_TENANTS, true)) {
+            $errors[] = 'Use your own Directory (tenant) ID, not common, organizations or consumers.';
+        }
+        if ($provider === 'auth0' && ($values['domain'] ?? '') !== '' && !preg_match('/^(https:\/\/)?[a-z0-9.-]+\.[a-z]{2,}\/?$/i', $values['domain'])) {
+            $errors[] = 'Domain must look like your-tenant.us.auth0.com.';
+        }
+        if ($provider === 'okta' && ($values['auth_server'] ?? '') !== '' && !preg_match('/^[A-Za-z0-9_-]+$/', $values['auth_server'])) {
+            $errors[] = 'Authorization server ID can only contain letters, numbers, - and _.';
+        }
+        if ($provider === 'google' && ($values['allowed_domain'] ?? '') !== '' && !preg_match('/^[a-z0-9.-]+\.[a-z]{2,}$/i', $values['allowed_domain'])) {
+            $errors[] = 'Google Workspace domain must look like example.com.';
+        }
+
+        return $errors;
     }
 
     private function getJsonSetting(string $key, array $default): array
@@ -1848,122 +1895,6 @@ class AdminDashboardController extends Controller
         $decoded = json_decode((string) $value, true);
 
         return is_array($decoded) ? $decoded : $default;
-    }
-
-    private function resolveSsoSettingsFromEnvironment(array $providerOptions): array
-    {
-        $providerKeys = array_keys($providerOptions);
-        $storedEnabledProviders = $this->resolveStoredSsoProviders($providerKeys);
-        $enabledProviders = !empty($storedEnabledProviders)
-            ? $storedEnabledProviders
-            : $this->resolveEnabledSsoProvidersFromEnvironment($providerKeys);
-
-        $providerUrls = [];
-        $providerClientIds = [];
-        $providerClientSecrets = [];
-        $providerTenantIds = [];
-
-        foreach ($providerKeys as $providerKey) {
-            $prefix = $this->providerEnvKeyPrefix($providerKey);
-            $providerUrls[$providerKey] = $this->resolveStoredOrEnvValue('sso_provider_urls', $providerKey, $this->getEnvValue($prefix . '_URL', ''));
-            $providerClientIds[$providerKey] = $this->resolveStoredOrEnvValue('sso_provider_client_ids', $providerKey, $this->getEnvValue($prefix . '_CLIENT_ID', ''));
-            $providerClientSecrets[$providerKey] = $this->resolveStoredOrEnvSecret($providerKey, $this->getSecretEnvValue($prefix . '_CLIENT_SECRET', ''));
-            $providerTenantIds[$providerKey] = $this->resolveStoredOrEnvValue('sso_provider_tenant_ids', $providerKey, $this->getEnvValue($prefix . '_TENANT_ID', ''));
-        }
-
-        $storedSsoEnabled = AdminSetting::getValue('sso_enabled', null);
-        $ssoEnabledSource = $storedSsoEnabled !== null ? (string) $storedSsoEnabled : $this->getEnvValue('SSO_ENABLED', 'false');
-        $ssoEnabled = filter_var($ssoEnabledSource, FILTER_VALIDATE_BOOL) || !empty($enabledProviders);
-
-        return [
-            'enabled' => $ssoEnabled,
-            'enabled_providers' => $enabledProviders,
-            'provider_urls' => $providerUrls,
-            'provider_client_ids' => $providerClientIds,
-            'provider_client_secrets' => $providerClientSecrets,
-            'provider_tenant_ids' => $providerTenantIds,
-        ];
-    }
-
-    private function resolveEnabledSsoProvidersFromEnvironment(array $providerKeys): array
-    {
-        $raw = $this->getEnvValue('SSO_ENABLED_PROVIDERS', '');
-        if ($raw === '') {
-            return [];
-        }
-
-        return collect(explode(',', $raw))
-            ->map(fn (string $provider) => strtolower(trim($provider)))
-            ->filter(fn (string $provider) => in_array($provider, $providerKeys, true))
-            ->unique()
-            ->values()
-            ->all();
-    }
-
-    private function resolveStoredSsoProviders(array $providerKeys): array
-    {
-        $storedValue = AdminSetting::getValue('sso_enabled_providers', null);
-        if ($storedValue === null || $storedValue === '') {
-            return [];
-        }
-
-        if (is_array($storedValue)) {
-            $providers = $storedValue;
-        } else {
-            $providers = json_decode((string) $storedValue, true);
-            if (!is_array($providers)) {
-                $providers = array_map('trim', explode(',', (string) $storedValue));
-            }
-        }
-
-        return collect($providers)
-            ->map(fn (string $provider) => strtolower(trim($provider)))
-            ->filter(fn (string $provider) => in_array($provider, $providerKeys, true))
-            ->unique()
-            ->values()
-            ->all();
-    }
-
-    private function resolveStoredOrEnvValue(string $settingKey, string $providerKey, string $fallback): string
-    {
-        $storedValue = AdminSetting::getValue($settingKey, null);
-        if ($storedValue === null) {
-            return $fallback;
-        }
-
-        $decoded = $this->decodeProviderSettingValue($storedValue);
-
-        return array_key_exists($providerKey, $decoded) ? (string) $decoded[$providerKey] : '';
-    }
-
-    private function resolveStoredOrEnvSecret(string $providerKey, string $fallback): string
-    {
-        $storedValue = AdminSetting::getValue('sso_provider_client_secrets', null);
-        if ($storedValue === null) {
-            return $fallback;
-        }
-
-        $decoded = $this->decodeProviderSettingValue($storedValue);
-
-        return array_key_exists($providerKey, $decoded) ? (string) $decoded[$providerKey] : '';
-    }
-
-    private function decodeProviderSettingValue(mixed $storedValue): array
-    {
-        if (is_array($storedValue)) {
-            return $storedValue;
-        }
-
-        $decoded = json_decode((string) $storedValue, true);
-        return is_array($decoded) ? $decoded : [];
-    }
-
-    private function providerEnvKeyPrefix(string $provider): string
-    {
-        $normalized = strtoupper((string) preg_replace('/[^A-Za-z0-9]+/', '_', strtolower(trim($provider))));
-        $normalized = trim($normalized, '_');
-
-        return 'SSO_' . $normalized;
     }
 
     private function isFeatureEnabledSetting(string $key, bool $default = false): bool
@@ -2612,12 +2543,12 @@ class AdminDashboardController extends Controller
             $error === null ? ActivityRecorder::SUCCESS : ActivityRecorder::FAILURE
         );
 
-        $redirect = redirect()->route('admin.settings', ['tab' => 'mcp']);
+        $redirect = redirect()->route('admin.settings', ['tab' => 'plugins', 'plugin' => 'mcp']);
 
         if ($error !== null) {
             return $redirect->withErrors(['mcp' => 'MCP turned ' . ($enabled ? 'on' : 'off') . ', but the MCP container was not ' . ($enabled ? 'started' : 'stopped') . ': ' . $error]);
         }
 
-        return $redirect->with('success', $enabled ? 'MCP turned on. The MCP server is running.' : 'MCP turned off. The MCP server is stopped.');
+        return $redirect->with('success', $enabled ? 'MCP Server is enabled and running. Users now see the MCP link in the top bar.' : 'MCP Server is disabled and stopped.');
     }
 }

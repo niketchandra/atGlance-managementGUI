@@ -208,7 +208,7 @@
                 </tr>
                 <tr>
                     <td>HTTP 500, 502 or 503</td>
-                    <td>The MCP server is not running. It may have just been turned on: wait 5 seconds and try again. Otherwise ask your administrator to turn on MCP in Site Setting.</td>
+                    <td>The MCP server is not running. It may have just been turned on: wait 5 seconds and try again. Otherwise ask your administrator to enable the MCP Server plugin in Site Setting &gt; Plugins.</td>
                 </tr>
                 <tr>
                     <td>"The console rejected the API key"</td>

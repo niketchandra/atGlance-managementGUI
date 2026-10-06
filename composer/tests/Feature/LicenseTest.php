@@ -246,6 +246,40 @@ class LicenseTest extends TestCase
             ->assertDontSee('user.email');
     }
 
+    public function test_replacing_a_saved_licence_needs_the_password(): void
+    {
+        Organization::query()->updateOrCreate(['id' => 200], ['name' => 'Acme Corp']);
+        $this->actingAsRole(100);
+        License::store('atg_old_licence_key_000000', ['details' => ['name' => 'Old licence', 'plan' => 'free', 'expires_at' => null, 'extra' => []]]);
+        $this->fakeVerify($this->availableBody());
+        $this->fakeActivate($this->inUseBody(), 201);
+
+        $this->get(route('admin.settings', ['tab' => 'licence']))
+            ->assertOk()
+            ->assertSee('Replace licence key')
+            ->assertSee('name="password"', false);
+
+        $this->post(route('admin.settings.licence'), ['license_key' => self::KEY])
+            ->assertSessionHasErrors('password');
+        $this->post(route('admin.settings.licence'), ['license_key' => self::KEY, 'password' => 'wrong'])
+            ->assertSessionHasErrors('password');
+        Http::assertNothingSent();
+        $this->assertSame('atg_old_licence_key_000000', (string) AdminSetting::getValue('license_key'));
+
+        $this->post(route('admin.settings.licence'), ['license_key' => self::KEY, 'password' => 'secret-pass'])
+            ->assertSessionHasNoErrors();
+        $this->assertSame(self::KEY, (string) AdminSetting::getValue('license_key'));
+    }
+
+    public function test_first_licence_does_not_ask_for_a_password(): void
+    {
+        $this->actingAsRole(100);
+
+        $this->get(route('admin.settings', ['tab' => 'licence']))
+            ->assertOk()
+            ->assertDontSee('id="license-password"', false);
+    }
+
     public function test_sidebar_shows_activated_and_validated_dates(): void
     {
         $this->fakeActivate($this->inUseBody(), 201);
