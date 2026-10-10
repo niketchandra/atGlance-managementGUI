@@ -221,3 +221,15 @@ services:
         strip_path: false
         methods:
           - GET
+
+  # atglance CLI v2 API. Same /api/v1/* path on the gateway (:8002) and the app (:8000).
+  - name: cli-v1-service
+    url: http://app:8000
+    routes:
+      - name: cli-v1-route
+        paths:
+          - /api/v1/
+        strip_path: false
+        methods:
+          - GET
+          - POST
