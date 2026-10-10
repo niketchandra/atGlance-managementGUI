@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\ConfigurationFile;
 use App\Models\RawData;
 use App\Models\Service;
+use App\Models\SystemRegister;
 use App\Jobs\ValidateConfigWithAi;
 use App\Notifications\NotificationEvents;
 use App\Services\Notifier;
@@ -66,6 +67,14 @@ class FileController extends Controller
         $file = $request->file('file');
 
         $systemId = $request->input('system_register_id', $request->input('system_id'));
+
+        // Only systems of the uploader's organisation (teammates included).
+        if ($systemId) {
+            $systemOrgId = SystemRegister::query()->whereKey((int) $systemId)->value('org_id');
+            if ((int) ($systemOrgId ?? 200) !== (int) ($user->org_id ?? 200)) {
+                return response()->json(['message' => 'System not found'], 404);
+            }
+        }
 
         if (!$request->filled('service_id') && (!$systemId || !$request->filled('service_name'))) {
             return response()->json([

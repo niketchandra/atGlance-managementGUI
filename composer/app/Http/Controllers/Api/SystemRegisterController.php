@@ -94,6 +94,23 @@ class SystemRegisterController extends Controller
         return [$user, null];
     }
 
+    /**
+     * Force actions are for admins of the system's organisation (a super admin may
+     * act on any organisation). Returns the 403 response, or null when allowed.
+     */
+    private function forbidForceActor(User $actor, ?SystemRegister $system)
+    {
+        $allowed = $actor->isAdmin() && (
+            $system === null
+            || $actor->isSuperAdmin()
+            || (int) ($system->org_id ?? 200) === (int) ($actor->org_id ?? 200)
+        );
+
+        return $allowed ? null : response()->json([
+            'message' => "Only an admin of the system's organisation can force this action",
+        ], 403);
+    }
+
     private function logForceSystemAction(Request $request, User $actor, int $systemId, string $action): void
     {
         ActivityLog::create([
@@ -345,8 +362,8 @@ class SystemRegisterController extends Controller
     }
 
     /**
-     * Force deregister any system - change status to inactive
-     * Requires bearer token authentication
+     * Force deregister a system - change status to inactive
+     * No bearer token; an admin of the system's organisation signs in with email + password/pin
      */
     public function deregisterForce(Request $request)
     {
@@ -361,9 +378,22 @@ class SystemRegisterController extends Controller
             ], 400);
         }
 
+        return $this->forceDeregister($request, $systemId);
+    }
+
+    /**
+     * Force deregister by an admin of the system's organisation, identified by
+     * email + password/pin. Shared by the legacy and the /api/v1 routes.
+     */
+    public function forceDeregister(Request $request, mixed $systemId)
+    {
         [$actor, $errorResponse] = $this->resolveForceActor($request);
         if ($errorResponse) {
             return $errorResponse;
+        }
+
+        if ($forbidden = $this->forbidForceActor($actor, null)) {
+            return $forbidden;
         }
         
         // Find the system by ID
@@ -375,7 +405,10 @@ class SystemRegisterController extends Controller
             ], 404);
         }
 
-        // Force deregister - no ownership check required
+        if ($forbidden = $this->forbidForceActor($actor, $system)) {
+            return $forbidden;
+        }
+
         $system->status = 'inactive';
         $system->save();
 
@@ -452,7 +485,7 @@ class SystemRegisterController extends Controller
 
     /**
      * Force reactivate any system - change status from inactive to active
-     * ADMIN-LEVEL endpoint: requires session bearer token, no ownership check
+     * ADMIN-LEVEL endpoint: no bearer token; an admin of the system's organisation signs in with email + password/pin
      */
     public function reactiveForce(Request $request)
     {
@@ -467,9 +500,22 @@ class SystemRegisterController extends Controller
             ], 400);
         }
 
+        return $this->forceReactivate($request, $systemId);
+    }
+
+    /**
+     * Force reactivate by an admin of the system's organisation, identified by
+     * email + password/pin. Shared by the legacy and the /api/v1 routes.
+     */
+    public function forceReactivate(Request $request, mixed $systemId)
+    {
         [$actor, $errorResponse] = $this->resolveForceActor($request);
         if ($errorResponse) {
             return $errorResponse;
+        }
+
+        if ($forbidden = $this->forbidForceActor($actor, null)) {
+            return $forbidden;
         }
         
         // Find the system by ID
@@ -479,6 +525,10 @@ class SystemRegisterController extends Controller
             return response()->json([
                 'message' => 'System not found'
             ], 404);
+        }
+
+        if ($forbidden = $this->forbidForceActor($actor, $system)) {
+            return $forbidden;
         }
 
         // Check if system is already active
@@ -492,7 +542,6 @@ class SystemRegisterController extends Controller
             ], 200);
         }
 
-        // Force reactivate - no ownership check required
         $system->status = 'active';
         $system->save();
 
