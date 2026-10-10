@@ -5,7 +5,10 @@ namespace App\Providers;
 use App\Models\AdminSetting;
 use App\Models\Workspace;
 use App\Support\SiteProfile;
+use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\ServiceProvider;
@@ -13,6 +16,20 @@ use Illuminate\Support\Facades\View;
 
 class AppServiceProvider extends ServiceProvider
 {
+    /**
+     * Named limiters, so each has its own counter (unnamed throttle:N,M share one
+     * counter per IP across routes). Behind Kong every caller has the gateway's IP,
+     * so v1-force also keys on the email being tried.
+     */
+    private function configureRateLimiters(): void
+    {
+        RateLimiter::for('v1-meta', fn (Request $request) => Limit::perMinute(60)->by('v1-meta|' . $request->ip()));
+
+        RateLimiter::for('v1-force', fn (Request $request) => Limit::perMinute(10)->by(
+            'v1-force|' . $request->ip() . '|' . strtolower(trim((string) $request->input('email', '')))
+        ));
+    }
+
     /**
      * Register any application services.
      */
@@ -27,6 +44,8 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         \App\Support\DomainSettings::applyRuntimeAppUrl();
+
+        $this->configureRateLimiters();
 
         // The first successful login (password or SSO) closes /install/info.
         \Illuminate\Support\Facades\Event::listen(

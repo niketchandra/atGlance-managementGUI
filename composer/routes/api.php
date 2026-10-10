@@ -61,12 +61,13 @@ Route::post('/system-reactive', [SystemRegisterController::class, 'reactive'])->
 Route::get('/system-reactive', [SystemRegisterController::class, 'reactive'])->middleware('auth.pat');
 
 // Force system deregistration - no bearer token required; uses email + password/pin
-Route::post('/system-deregister-force', [SystemRegisterController::class, 'deregisterForce']);
-Route::get('/system-deregister-force', [SystemRegisterController::class, 'deregisterForce']);
+// (rate limiter v1-force, shared with the /api/v1 force routes: AppServiceProvider)
+Route::post('/system-deregister-force', [SystemRegisterController::class, 'deregisterForce'])->middleware('throttle:v1-force');
+Route::get('/system-deregister-force', [SystemRegisterController::class, 'deregisterForce'])->middleware('throttle:v1-force');
 
 // Force system reactivation - no bearer token required; uses email + password/pin
-Route::post('/system-reactivate-force', [SystemRegisterController::class, 'reactiveForce']);
-Route::get('/system-reactivate-force', [SystemRegisterController::class, 'reactiveForce']);
+Route::post('/system-reactivate-force', [SystemRegisterController::class, 'reactiveForce'])->middleware('throttle:v1-force');
+Route::get('/system-reactivate-force', [SystemRegisterController::class, 'reactiveForce'])->middleware('throttle:v1-force');
 
 // Built-in proxy (Caddy) only; see DomainTlsController::isLocal().
 Route::get('/internal/domain/tls-allowed', [DomainTlsController::class, 'allowed']);
@@ -89,7 +90,7 @@ Route::prefix('mcp')->middleware(['auth.pat', 'throttle:120,1'])->group(function
 // on the gateway (:8002) and on the app (:8000). System-scoped routes identify the host
 // with X-Atglance-System-Id + X-Atglance-System-Key (atglance.system, after auth.pat).
 Route::prefix('v1')->name('v1.')->group(function () {
-    Route::get('/meta', [V1MetaController::class, 'meta'])->middleware('throttle:60,1')->name('meta');
+    Route::get('/meta', [V1MetaController::class, 'meta'])->middleware('throttle:v1-meta')->name('meta');
     Route::get('/whoami', [V1MetaController::class, 'whoami'])->middleware(['auth.pat', 'active.user'])->name('whoami');
 
     Route::post('/systems', [V1SystemController::class, 'store'])->middleware(['auth.pat', 'active.user'])->name('systems.store');
@@ -103,7 +104,7 @@ Route::prefix('v1')->name('v1.')->group(function () {
     });
 
     // No bearer token: an admin of the system's organisation signs in with email + password/pin.
-    Route::middleware('throttle:10,1')->group(function () {
+    Route::middleware('throttle:v1-force')->group(function () {
         Route::post('/systems/{id}/deregister-force', [V1SystemController::class, 'deregisterForce'])->whereNumber('id')->name('systems.deregister-force');
         Route::post('/systems/{id}/reactivate-force', [V1SystemController::class, 'reactivateForce'])->whereNumber('id')->name('systems.reactivate-force');
     });

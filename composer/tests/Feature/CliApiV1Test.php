@@ -571,4 +571,45 @@ class CliApiV1Test extends TestCase
         ConfigurationFile::whereKey($fileId)->update(['status' => 'inactive']);
         $this->get('/api/v1/config-files/' . $fileId, $pat + $this->systemHeaders($other, $otherKey))->assertNotFound();
     }
+
+    // ---------------------------------------------------------------- fix round: rate limits
+
+    public function test_meta_calls_do_not_consume_the_force_limit(): void
+    {
+        $owner = $this->user('owner@example.test');
+        $admin = $this->user('admin@example.test', 101);
+        $system = $this->system($owner);
+
+        for ($i = 0; $i < 12; $i++) {
+            $this->getJson('/api/v1/meta')->assertOk();
+        }
+
+        $this->postJson('/api/v1/systems/' . $system->id . '/deregister-force', ['email' => $admin->email, 'password' => 'secret-pass'])
+            ->assertOk();
+    }
+
+    public function test_force_limit_is_per_ip_and_email_and_covers_legacy_routes(): void
+    {
+        $owner = $this->user('owner@example.test');
+        $admin = $this->user('admin@example.test', 101);
+        $system = $this->system($owner);
+
+        for ($i = 0; $i < 5; $i++) {
+            $this->postJson('/api/v1/systems/' . $system->id . '/deregister-force', ['email' => 'Admin@Example.test', 'password' => 'wrong'])
+                ->assertUnauthorized();
+            $this->postJson('/api/system-deregister-force', ['system_id' => $system->id, 'email' => 'admin@example.test', 'password' => 'wrong'])
+                ->assertUnauthorized();
+        }
+
+        // 11th attempt for the same email (any case, legacy or v1 route) is limited.
+        $this->postJson('/api/system-reactivate-force', ['system_id' => $system->id, 'email' => 'ADMIN@example.test', 'password' => 'secret-pass'])
+            ->assertStatus(429);
+        $this->postJson('/api/v1/systems/' . $system->id . '/reactivate-force', ['email' => $admin->email, 'password' => 'secret-pass'])
+            ->assertStatus(429)->assertJsonStructure(['message']);
+
+        // Another email from the same IP is not.
+        $this->user('admin2@example.test', 101);
+        $this->postJson('/api/v1/systems/' . $system->id . '/deregister-force', ['email' => 'admin2@example.test', 'password' => 'secret-pass'])
+            ->assertOk();
+    }
 }
