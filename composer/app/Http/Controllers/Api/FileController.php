@@ -533,6 +533,35 @@ class FileController extends Controller
     }
 
     /**
+     * Raw content of an active configuration file of $systemId, whoever uploaded it
+     * (/api/v1/config-files/{id}; the caller has already verified the system).
+     */
+    public function downloadSystemConfigFile(int $systemId, int $fileId)
+    {
+        $configFile = ConfigurationFile::query()
+            ->whereKey($fileId)
+            ->where('system_register_id', $systemId)
+            ->where('status', 'active')
+            ->first();
+
+        if (!$configFile) {
+            return response()->json(['message' => 'Configuration file not found'], 404);
+        }
+
+        [$disk, $path] = $this->resolveDiskAndPath($configFile->storage_disk ?? null, (string) $configFile->file_location);
+
+        if ($path === '' || !Storage::disk($disk)->exists($path)) {
+            return response()->json(['message' => 'File not found in storage'], 404);
+        }
+
+        $fileName = str_replace(['"', '\\', "\r", "\n"], '', (string) $configFile->file_name);
+
+        return response(Storage::disk($disk)->get($path), 200)
+            ->header('Content-Type', 'application/octet-stream')
+            ->header('Content-Disposition', 'attachment; filename="' . $fileName . '"');
+    }
+
+    /**
      * Download configuration file by configuration file ID (active only)
      */
     public function downloadConfigFileById(Request $request, $id)

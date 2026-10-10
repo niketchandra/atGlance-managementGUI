@@ -8,6 +8,7 @@ use App\Models\PatToken;
 use App\Models\SystemRegister;
 use App\Models\User;
 use App\Models\Workspace;
+use App\Support\ActivityRecorder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 
@@ -15,8 +16,9 @@ class SystemRegisterController extends Controller
 {
     /**
      * Require either password or PIN for sensitive system state changes.
+     * Returns the error response, or null when the credentials are valid.
      */
-    private function validatePasswordOrPin(Request $request)
+    public function validatePasswordOrPin(Request $request)
     {
         $user = $request->user();
 
@@ -216,33 +218,30 @@ class SystemRegisterController extends Controller
         ]);
     }
 
-    public function store(Request $request)
+    /**
+     * Rules shared by the legacy and the /api/v1 register endpoints.
+     *
+     * @return array<string, array<int, mixed>>
+     */
+    public static function systemFieldRules(): array
     {
-        $data = $request->validate([
+        return [
             'system_name' => ['required', 'string', 'max:255'],
             'os_type' => ['required', 'string', 'max:100'],
             'ip_address' => ['required', 'string', 'max:45'],
-            'workspace_id' => [
-                'nullable',
-                'integer',
-                'min:0',
-                function (string $attribute, mixed $value, \Closure $fail): void {
-                    $workspaceId = (int) $value;
-                    if ($workspaceId > 0 && !Workspace::query()->whereKey($workspaceId)->exists()) {
-                        $fail('The selected workspace is invalid.');
-                    }
-                },
-            ],
-            'public_ip' => ['nullable', 'string', 'max:45'],
-            'public_facing' => ['nullable', 'boolean'],
-            'description' => ['nullable', 'string'],
             'distro' => ['nullable', 'string', 'max:100'],
             'version' => ['nullable', 'string', 'max:100'],
             'tags' => ['nullable', 'string', 'max:512'],
             'metadata' => ['nullable', 'string'],
-            'validation_hash' => ['nullable', 'string', 'max:255'],
-        ]);
+        ];
+    }
 
+    /**
+     * Creates a system for the PAT's user from validated $data. Shared by the legacy
+     * and the /api/v1 register endpoints. Returns the 401 response without a PAT.
+     */
+    public function createSystem(Request $request, array $data)
+    {
         $user = $request->user();
         $patToken = $request->attributes->get('patToken');
 
@@ -267,7 +266,7 @@ class SystemRegisterController extends Controller
             ? (int) $data['workspace_id']
             : (($sessionWorkspaceId !== null && $sessionWorkspaceId > 0) ? $sessionWorkspaceId : 0);
 
-        $system = SystemRegister::create([
+        return SystemRegister::create([
             'pat_token_id' => $patToken->id,
             'user_id' => $user->id,
             'org_id' => $resolvedOrgId,
@@ -284,6 +283,32 @@ class SystemRegisterController extends Controller
             'metadata' => $data['metadata'] ?? null,
             'validation_hash' => $data['validation_hash'] ?? null,
         ]);
+    }
+
+    public function store(Request $request)
+    {
+        $data = $request->validate(self::systemFieldRules() + [
+            'workspace_id' => [
+                'nullable',
+                'integer',
+                'min:0',
+                function (string $attribute, mixed $value, \Closure $fail): void {
+                    $workspaceId = (int) $value;
+                    if ($workspaceId > 0 && !Workspace::query()->whereKey($workspaceId)->exists()) {
+                        $fail('The selected workspace is invalid.');
+                    }
+                },
+            ],
+            'public_ip' => ['nullable', 'string', 'max:45'],
+            'public_facing' => ['nullable', 'boolean'],
+            'description' => ['nullable', 'string'],
+            'validation_hash' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        $system = $this->createSystem($request, $data);
+        if (!$system instanceof SystemRegister) {
+            return $system;
+        }
 
         return response()->json([
             'message' => 'System registered successfully',
@@ -350,7 +375,14 @@ class SystemRegisterController extends Controller
             ], 403);
         }
 
-        // Update the status to inactive
+        return $this->deregisterSystem($system);
+    }
+
+    /**
+     * Sets the system inactive. Shared by the legacy and the /api/v1 routes.
+     */
+    public function deregisterSystem(SystemRegister $system)
+    {
         $system->status = 'inactive';
         $system->save();
 
@@ -359,6 +391,62 @@ class SystemRegisterController extends Controller
             'system_id' => $system->id,
             'status' => $system->status,
         ], 200);
+    }
+
+    /**
+     * Sets the system active (200 with a message when it already is). Shared by the
+     * legacy and the /api/v1 routes.
+     */
+    public function reactivateSystem(SystemRegister $system)
+    {
+        if ($system->status === 'active') {
+            return response()->json([
+                'message' => 'System is already active',
+                'system_id' => $system->id,
+                'status' => $system->status,
+            ], 200);
+        }
+
+        $system->status = 'active';
+        $system->save();
+
+        return response()->json([
+            'message' => 'System reactivated successfully',
+            'system_id' => $system->id,
+            'status' => $system->status,
+        ], 200);
+    }
+
+    /**
+     * Who may change a system from the host (/api/v1/systems/self/*): its owner, or an
+     * admin of the system's organisation.
+     */
+    public function canManageSystem(User $user, SystemRegister $system): bool
+    {
+        if ((int) $system->user_id === (int) $user->id) {
+            return true;
+        }
+
+        return $user->isAdmin() && (int) ($system->org_id ?? 200) === (int) ($user->org_id ?? 200);
+    }
+
+    /**
+     * Replaces the system's key (validation_hash) and records it in the activity log.
+     */
+    public function rotateSystemKey(SystemRegister $system, string $newKey, User $actor): void
+    {
+        $system->validation_hash = $newKey;
+        $system->save();
+
+        ActivityRecorder::record(
+            (int) $actor->id,
+            'system.key_rotated',
+            'Rotated the key of system ' . $system->system_name,
+            ActivityRecorder::SUCCESS,
+            null,
+            $system->workspace_id ? (int) $system->workspace_id : null,
+            (int) $system->id,
+        );
     }
 
     /**
@@ -463,24 +551,7 @@ class SystemRegisterController extends Controller
             ], 403);
         }
 
-        // Check if system is already active
-        if ($system->status === 'active') {
-            return response()->json([
-                'message' => 'System is already active',
-                'system_id' => $system->id,
-                'status' => $system->status,
-            ], 200);
-        }
-
-        // Update the status to active
-        $system->status = 'active';
-        $system->save();
-
-        return response()->json([
-            'message' => 'System reactivated successfully',
-            'system_id' => $system->id,
-            'status' => $system->status,
-        ], 200);
+        return $this->reactivateSystem($system);
     }
 
     /**

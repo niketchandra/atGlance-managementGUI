@@ -8,6 +8,9 @@ use App\Http\Controllers\Api\ServiceController;
 use App\Http\Controllers\Api\SystemRegisterController;
 use App\Http\Controllers\Api\TokenValidationController;
 use App\Http\Controllers\Api\UserController;
+use App\Http\Controllers\Api\V1\ConfigFileController as V1ConfigFileController;
+use App\Http\Controllers\Api\V1\MetaController as V1MetaController;
+use App\Http\Controllers\Api\V1\SystemController as V1SystemController;
 use App\Http\Controllers\DomainTlsController;
 use Illuminate\Support\Facades\Route;
 
@@ -80,4 +83,33 @@ Route::prefix('mcp')->middleware(['auth.pat', 'throttle:120,1'])->group(function
     Route::get('/config-files/{id}/versions', [McpController::class, 'configVersions'])->whereNumber('id');
     Route::get('/vulnerabilities', [McpController::class, 'vulnerabilities']);
     Route::get('/dashboard', [McpController::class, 'dashboard']);
+});
+
+// API for the atglance CLI v2 (docs/api-reference.md, "CLI API v1"). Same /api/v1/* path
+// on the gateway (:8002) and on the app (:8000). System-scoped routes identify the host
+// with X-Atglance-System-Id + X-Atglance-System-Key (atglance.system, after auth.pat).
+Route::prefix('v1')->name('v1.')->group(function () {
+    Route::get('/meta', [V1MetaController::class, 'meta'])->middleware('throttle:60,1')->name('meta');
+    Route::get('/whoami', [V1MetaController::class, 'whoami'])->middleware(['auth.pat', 'active.user'])->name('whoami');
+
+    Route::post('/systems', [V1SystemController::class, 'store'])->middleware(['auth.pat', 'active.user'])->name('systems.store');
+    Route::get('/systems/self', [V1SystemController::class, 'show'])->middleware(['auth.pat', 'atglance.system'])->name('systems.self');
+
+    Route::middleware(['auth.pat', 'active.user', 'atglance.system'])->group(function () {
+        Route::post('/systems/self/deregister', [V1SystemController::class, 'deregister'])->name('systems.deregister');
+        Route::post('/systems/self/reactivate', [V1SystemController::class, 'reactivate'])->name('systems.reactivate');
+        Route::post('/systems/self/rotate-key', [V1SystemController::class, 'rotateKey'])->name('systems.rotate-key');
+        Route::post('/config-files', [V1ConfigFileController::class, 'store'])->name('config-files.store');
+    });
+
+    // No bearer token: an admin of the system's organisation signs in with email + password/pin.
+    Route::middleware('throttle:10,1')->group(function () {
+        Route::post('/systems/{id}/deregister-force', [V1SystemController::class, 'deregisterForce'])->whereNumber('id')->name('systems.deregister-force');
+        Route::post('/systems/{id}/reactivate-force', [V1SystemController::class, 'reactivateForce'])->whereNumber('id')->name('systems.reactivate-force');
+    });
+
+    Route::middleware(['auth.pat', 'atglance.system'])->group(function () {
+        Route::get('/config-files', [V1ConfigFileController::class, 'index'])->name('config-files.index');
+        Route::get('/config-files/{id}', [V1ConfigFileController::class, 'show'])->whereNumber('id')->name('config-files.show');
+    });
 });
