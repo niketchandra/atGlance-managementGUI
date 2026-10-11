@@ -899,4 +899,90 @@ class CliApiV1Test extends TestCase
         $this->postJson('/api/system-deregister-force', ['system_id' => $system->id, 'email' => 'probe31@example.test', 'password' => 'x'])
             ->assertStatus(429);
     }
+
+    // ---------------------------------------------------------------- round 4: access rule pinned, service_id upload path
+
+    public function test_org_admin_outside_the_workspace_can_use_and_rotate_the_key(): void
+    {
+        $owner = $this->user('owner@example.test');
+        $system = $this->system($owner);
+        $admin = $this->user('admin@example.test', 101);
+        $this->assertFalse($admin->workspaces()->whereKey($this->workspace->id)->exists());
+        $pat = $this->pat($admin);
+
+        $this->getJson('/api/v1/systems/self', $pat + $this->systemHeaders($system))->assertOk();
+        $this->postJson('/api/v1/systems/self/rotate-key', ['password' => 'secret-pass', 'new_key' => str_repeat('a', 40)], $pat + $this->systemHeaders($system))
+            ->assertOk()->assertJsonPath('rotated', true);
+        $this->getJson('/api/v1/systems/self', $pat + $this->systemHeaders($system, str_repeat('a', 40)))->assertOk();
+    }
+
+    public function test_owner_removed_from_the_workspace_keeps_access(): void
+    {
+        $owner = $this->user('owner@example.test');
+        $this->workspace->addUser($owner->id, false);
+        $system = $this->system($owner);
+        $this->workspace->removeUser($owner->id);
+
+        $this->getJson('/api/v1/systems/self', $this->pat($owner) + $this->systemHeaders($system))->assertOk();
+    }
+
+    public function test_member_of_an_inactive_workspace_keeps_access(): void
+    {
+        $owner = $this->user('owner@example.test');
+        $system = $this->system($owner);
+        $member = $this->user('member@example.test');
+        $this->workspace->addUser($member->id, false);
+        $this->workspace->update(['status' => 'inactive']);
+
+        $this->getJson('/api/v1/systems/self', $this->pat($member) + $this->systemHeaders($system))->assertOk();
+    }
+
+    public function test_member_of_another_orgs_workspace_is_stopped_by_the_org_check(): void
+    {
+        $registrar = $this->user('registrar@example.test');
+        // Legacy store accepts any workspace, so the system (org 200) can sit in org 300's workspace.
+        $systemId = $this->postJson('/api/system-register', [
+            'system_name' => 'cross-org', 'os_type' => 'linux', 'ip_address' => '10.0.0.8',
+            'workspace_id' => $this->foreignWorkspace->id, 'validation_hash' => self::KEY,
+        ], $this->pat($registrar))->assertCreated()->json('system.id');
+        $system = SystemRegister::find($systemId);
+        $this->assertSame(200, (int) $system->org_id);
+
+        $foreignMember = $this->user('them@example.test', 102, 300);
+        $this->foreignWorkspace->addUser($foreignMember->id, false);
+
+        $this->getJson('/api/v1/systems/self', $this->pat($foreignMember) + $this->systemHeaders($system))
+            ->assertNotFound()->assertExactJson(['message' => 'System not found']);
+    }
+
+    public function test_foreign_service_id_of_a_deregistered_system_is_not_found_not_conflict(): void
+    {
+        $other = $this->user('other@example.test');
+        $otherSystem = $this->system($other, ['system_name' => 'others-host']);
+        $serviceId = ConfigurationFile::find(
+            $this->post('/api/config-files/upload', ['file' => $this->configFile(), 'system_id' => $otherSystem->id, 'service_name' => 'ssh'], $this->pat($other) + ['Accept' => 'application/json'])
+                ->assertCreated()->json('file.id')
+        )->service_id;
+        $otherSystem->update(['status' => 'inactive']);
+
+        $this->post('/api/config-files/upload', ['file' => $this->configFile(), 'service_id' => $serviceId], $this->pat($this->user('me@example.test')) + ['Accept' => 'application/json'])
+            ->assertNotFound()->assertExactJson(['message' => 'service_id not found or does not belong to you.']);
+    }
+
+    public function test_unresolved_service_id_stores_no_file(): void
+    {
+        $other = $this->user('other@example.test');
+        $otherSystem = $this->system($other, ['system_name' => 'others-host']);
+        $serviceId = ConfigurationFile::find(
+            $this->post('/api/config-files/upload', ['file' => $this->configFile(), 'system_id' => $otherSystem->id, 'service_name' => 'ssh'], $this->pat($other) + ['Accept' => 'application/json'])
+                ->assertCreated()->json('file.id')
+        )->service_id;
+        $filesBefore = count(Storage::disk('local')->allFiles());
+
+        $this->post('/api/config-files/upload', ['file' => $this->configFile(), 'service_id' => $serviceId], $this->pat($this->user('me@example.test')) + ['Accept' => 'application/json'])
+            ->assertNotFound();
+
+        $this->assertSame($filesBefore, count(Storage::disk('local')->allFiles()));
+        $this->assertSame(1, ConfigurationFile::count());
+    }
 }

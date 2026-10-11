@@ -77,11 +77,26 @@ class FileController extends Controller
             }
         }
 
+        // service_id must be an active service of the caller; resolved before anything is
+        // stored, so a 404 leaves no file behind. The upload then goes to its system.
+        $service = null;
+
+        if ($request->filled('service_id')) {
+            $service = Service::where('service_id', $request->input('service_id'))
+                ->where('user_id', $user->id)
+                ->where('status', 'active')
+                ->first();
+
+            if (!$service) {
+                return response()->json([
+                    'message' => 'service_id not found or does not belong to you.',
+                ], 404);
+            }
+        }
+
         // A deregistered system takes no new backups (checked before anything is stored).
-        // With service_id the upload goes to that service's system.
-        $targetSystemId = $request->filled('service_id')
-            ? Service::where('service_id', $request->input('service_id'))->value('system_id')
-            : $systemId;
+        // A foreign service_id was already refused above, so its system's status never shows.
+        $targetSystemId = $service ? $service->system_id : $systemId;
         if ($targetSystemId) {
             $targetStatus = SystemRegister::query()->whereKey((int) $targetSystemId)->value('status');
             if ($targetStatus !== null && $targetStatus !== 'active') {
@@ -113,20 +128,7 @@ class FileController extends Controller
         // Read file content for raw_data table
         $fileContent = Storage::disk($storageDisk)->get($filePath);
 
-        $service = null;
-
-        if ($request->filled('service_id')) {
-            $service = Service::where('service_id', $request->input('service_id'))
-                ->where('user_id', $user->id)
-                ->where('status', 'active')
-                ->first();
-
-            if (!$service) {
-                return response()->json([
-                    'message' => 'service_id not found or does not belong to you.',
-                ], 404);
-            }
-
+        if ($service) {
             $systemId = $service->system_id;
         }
 
