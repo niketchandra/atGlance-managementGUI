@@ -20,6 +20,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Symfony\Component\HttpFoundation\HeaderUtils;
 
 class FileController extends Controller
 {
@@ -559,11 +560,25 @@ class FileController extends Controller
             return response()->json(['message' => 'File not found in storage'], 404);
         }
 
-        $fileName = str_replace(['"', '\\', "\r", "\n"], '', (string) $configFile->file_name);
-
         return response(Storage::disk($disk)->get($path), 200)
             ->header('Content-Type', 'application/octet-stream')
-            ->header('Content-Disposition', 'attachment; filename="' . $fileName . '"');
+            ->header('Content-Disposition', $this->attachmentDisposition((string) $configFile->file_name));
+    }
+
+    /**
+     * attachment Content-Disposition with a UTF-8 filename* and an ASCII fallback.
+     * Control characters are dropped and path separators replaced.
+     */
+    private function attachmentDisposition(string $fileName): string
+    {
+        $name = str_replace(['/', '\\'], '_', (string) preg_replace('/[\x00-\x1F\x7F]/u', '', $fileName));
+        if ($name === '') {
+            $name = 'config';
+        }
+
+        $fallback = (string) preg_replace('/[^\x20-\x7E]|[%"]/', '_', Str::ascii($name));
+
+        return HeaderUtils::makeDisposition(HeaderUtils::DISPOSITION_ATTACHMENT, $name, $fallback);
     }
 
     /**

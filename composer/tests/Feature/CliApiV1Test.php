@@ -539,7 +539,7 @@ class CliApiV1Test extends TestCase
         $download = $this->get('/api/v1/config-files/' . $fileId, $headers)->assertOk();
         $this->assertSame($content, $download->getContent());
         $download->assertHeader('Content-Type', 'application/octet-stream');
-        $download->assertHeader('Content-Disposition', 'attachment; filename="sshd_config"');
+        $download->assertHeader('Content-Disposition', 'attachment; filename=sshd_config');
     }
 
     public function test_upload_ignores_a_spoofed_system_id(): void
@@ -723,5 +723,38 @@ class CliApiV1Test extends TestCase
         $this->getJson($url, $this->pat($this->user('mate@example.test')))->assertOk()->assertJsonPath('total', 1);
         $this->getJson($url, $this->pat($this->user('them@example.test', 101, 300)))
             ->assertOk()->assertJsonPath('total', 0)->assertJsonPath('versions', []);
+    }
+
+    // ---------------------------------------------------------------- fix round: log redaction, download filename
+
+    public function test_activity_log_does_not_store_keys_from_legacy_requests(): void
+    {
+        $owner = $this->user('owner@example.test');
+
+        // A failed register is logged by ActivityLogger with its request payload.
+        $this->postJson('/api/system-register', [
+            'os_type' => 'linux', 'ip_address' => '10.0.0.9',
+            'validation_hash' => 'legacy-secret-hash', 'system_key' => 'v2-secret-key', 'new_key' => 'v2-new-secret', 'system_hash' => 'legacy-secret-system-hash',
+        ], $this->pat($owner))->assertStatus(422);
+
+        $payload = (string) \DB::table('activity_logs')->where('path', '/api/system-register')->value('request_payload');
+        $this->assertStringContainsString('10.0.0.9', $payload);
+        foreach (['legacy-secret-hash', 'v2-secret-key', 'v2-new-secret', 'legacy-secret-system-hash'] as $secret) {
+            $this->assertStringNotContainsString($secret, $payload);
+        }
+    }
+
+    public function test_download_filename_is_safe_with_ascii_fallback(): void
+    {
+        $owner = $this->user('owner@example.test');
+        $system = $this->system($owner);
+        $headers = $this->pat($owner) + $this->systemHeaders($system) + ['Accept' => 'application/json'];
+        $fileId = $this->post('/api/v1/config-files', ['file' => $this->configFile(), 'service_name' => 'ssh'], $headers)
+            ->assertCreated()->json('file.id');
+        ConfigurationFile::whereKey($fileId)->update(['file_name' => "we\"ird\r\nname-\u{00e9}.conf"]);
+
+        $disposition = $this->get('/api/v1/config-files/' . $fileId, $headers)->assertOk()->headers->get('Content-Disposition');
+
+        $this->assertSame("attachment; filename=we_irdname-e.conf; filename*=utf-8''we%22irdname-%C3%A9.conf", $disposition);
     }
 }
