@@ -1059,7 +1059,7 @@ curl -X POST "http://localhost:8002/system-deregister" \
 
 **Endpoint**: `POST /system-deregister-force`
 
-**Current behaviour**: this endpoint takes no bearer token (the session-token text below is out of date); the caller sends `email` + `password` or `pin`. Since October 2026 the caller must also be an admin of the system's organisation (a super admin may act on any organisation), else `403` (see [Security fixes in the 1.x routes](#security-fixes-in-the-1x-routes-october-2026)).
+**Current behaviour**: this endpoint takes no bearer token (the session-token text below is out of date); the caller sends `email` + `password` or `pin`. Since October 2026: a deactivated account gets `401 Invalid credentials`; a non-admin gets `403`; an admin of another organisation gets the same `404 System not found` as an unknown id (a super admin may act on any organisation); and the route uses the `v1-force` rate limit (10/min per IP + email). See [Security fixes in the 1.x routes](#security-fixes-in-the-1x-routes-october-2026).
 
 **Description**: Force deregister any system by changing its status from `active` to `inactive`. This endpoint requires session token authentication and does not validate system ownership. Intended for administrative use.
 
@@ -1173,7 +1173,7 @@ Admin-level endpoints that require session token authentication and operate with
 
 **Endpoint**: `POST /system-reactivate-force` or `GET /system-reactivate-force`
 
-**Current behaviour**: this endpoint takes no bearer token (the session-token text below is out of date); the caller sends `email` + `password` or `pin`. Since October 2026 the caller must also be an admin of the system's organisation (a super admin may act on any organisation), else `403` (see [Security fixes in the 1.x routes](#security-fixes-in-the-1x-routes-october-2026)).
+**Current behaviour**: this endpoint takes no bearer token (the session-token text below is out of date); the caller sends `email` + `password` or `pin`. Since October 2026: a deactivated account gets `401 Invalid credentials`; a non-admin gets `403`; an admin of another organisation gets the same `404 System not found` as an unknown id (a super admin may act on any organisation); and the route uses the `v1-force` rate limit (10/min per IP + email). See [Security fixes in the 1.x routes](#security-fixes-in-the-1x-routes-october-2026).
 
 **Description**: Force reactivate any system by changing its status from `inactive` to `active`. This endpoint requires session token authentication and does not validate system ownership. Intended for administrative use.
 
@@ -1249,7 +1249,7 @@ curl -X POST "http://localhost:8002/system-reactivate-force" \
 
 **Endpoint**: `POST /system-deregister-force` or `GET /system-deregister-force`
 
-**Current behaviour**: this endpoint takes no bearer token (the session-token text below is out of date); the caller sends `email` + `password` or `pin`. Since October 2026 the caller must also be an admin of the system's organisation (a super admin may act on any organisation), else `403` (see [Security fixes in the 1.x routes](#security-fixes-in-the-1x-routes-october-2026)).
+**Current behaviour**: this endpoint takes no bearer token (the session-token text below is out of date); the caller sends `email` + `password` or `pin`. Since October 2026: a deactivated account gets `401 Invalid credentials`; a non-admin gets `403`; an admin of another organisation gets the same `404 System not found` as an unknown id (a super admin may act on any organisation); and the route uses the `v1-force` rate limit (10/min per IP + email). See [Security fixes in the 1.x routes](#security-fixes-in-the-1x-routes-october-2026).
 
 **Description**: Force deregister any system by changing its status from `active` to `inactive`. This endpoint requires session token authentication and does not validate system ownership. Intended for administrative use.
 
@@ -1750,24 +1750,34 @@ System-scoped routes check, after the PAT:
 - unknown system, system without a key, wrong key, or a system of another organisation than the PAT's user: always the same `404 {"message":"System not found"}`, so the response does not reveal which systems exist
 - the system's status is not checked, so an inactive system can call `reactivate`
 
-Routes marked "active user" answer `403 {"message":"User is inactive"}` when the PAT's user is inactive.
+Routes marked "active user" answer `403 {"message":"User is inactive"}` when the PAT's user is inactive. Every PAT route of v1 is marked so, reads included.
+
+Path ids (`{id}`) and `X-Atglance-System-Id` are 1 to 18 digits; a longer or non-numeric id is a `404`.
+
+### Rate limits
+
+Named limiters, each with its own counter:
+- `v1-meta`: `GET /api/v1/meta`, 60 requests per minute per IP.
+- `v1-force`: the v1 force routes and the legacy `/system-deregister-force` and `/system-reactivate-force`, 10 requests per minute per IP and lower-cased `email`.
+
+Behind Kong every request reaches the app from the gateway's IP, so all clients share the IP part of the key; for `v1-force` the email part is what separates callers, and `v1-meta` is effectively one counter for all clients of the gateway. Over the limit: `429` JSON.
 
 ### Endpoints
 
 | Method and path | Auth | Purpose |
 |---|---|---|
-| `GET /api/v1/meta` | none (60/min) | API and console version |
+| `GET /api/v1/meta` | none (`v1-meta`, 60/min) | API and console version |
 | `GET /api/v1/whoami` | PAT, active user | The PAT's user and token |
 | `POST /api/v1/systems` | PAT, active user | Register a system |
-| `GET /api/v1/systems/self` | PAT, system | The calling system |
+| `GET /api/v1/systems/self` | PAT, active user, system | The calling system |
 | `POST /api/v1/systems/self/deregister` | PAT, active user, system | Set the system inactive |
 | `POST /api/v1/systems/self/reactivate` | PAT, active user, system | Set the system active |
 | `POST /api/v1/systems/self/rotate-key` | PAT, active user, system | Replace the system key |
-| `POST /api/v1/systems/{id}/deregister-force` | email + password/pin (10/min) | Admin force deregister |
-| `POST /api/v1/systems/{id}/reactivate-force` | email + password/pin (10/min) | Admin force reactivate |
+| `POST /api/v1/systems/{id}/deregister-force` | email + password/pin (`v1-force`, 10/min) | Admin force deregister |
+| `POST /api/v1/systems/{id}/reactivate-force` | email + password/pin (`v1-force`, 10/min) | Admin force reactivate |
 | `POST /api/v1/config-files` | PAT, active user, system | Upload a config backup |
-| `GET /api/v1/config-files` | PAT, system | List the system's config backups |
-| `GET /api/v1/config-files/{id}` | PAT, system | Download one config backup |
+| `GET /api/v1/config-files` | PAT, active user, system | List the system's config backups |
+| `GET /api/v1/config-files/{id}` | PAT, active user, system | Download one config backup |
 
 ### GET /api/v1/meta
 
@@ -1847,7 +1857,7 @@ Errors: `422 {"message":"Either password or pin is required"}` / `422 {"message"
 
 ### POST /api/v1/systems/self/rotate-key
 
-Body: `password` or `pin`, and `new_key` (string, 32 to 255 characters, different from the current key). Same permission rule as deregister. The change is recorded in the activity log (`system.key_rotated`). Afterwards the old key gets `404` and the host must send the new key.
+Body: `password` or `pin`, and `new_key` (string, 32 to 255 characters, different from the current key). Same permission rule as deregister. The change is recorded in the activity log (`system.key_rotated`). In the same transaction the stored copies of the key are updated too: `validation_hash` of the system's `configuration_files` and `raw_data` rows that held the old key, and `system_hash` of the system's `services`, so legacy lookups by key (for example `GET /config-files/config-show`) keep finding the backups with the new key. Afterwards the old key gets `404` and the host must send the new key.
 
 ```bash
 curl -X POST http://localhost:8002/api/v1/systems/self/rotate-key \
@@ -1862,7 +1872,7 @@ Errors: `422` credentials or `new_key` (missing, too short, same as current), `4
 
 ### POST /api/v1/systems/{id}/deregister-force and /reactivate-force
 
-No bearer token. Body: `email` and `password` or `pin` of an admin. The admin must belong to the system's organisation; a super admin may act on any organisation. Rate limited to 10 requests per minute. The system id comes from the path only.
+No bearer token. Body: `email` and `password` or `pin` of an admin. The admin must be active and belong to the system's organisation; a super admin may act on any organisation. Rate limit `v1-force` (10 per minute per IP + email, shared with the legacy force routes). The system id comes from the path only (1 to 18 digits).
 
 ```bash
 curl -X POST http://localhost:8002/api/v1/systems/4057010410/deregister-force \
@@ -1873,7 +1883,7 @@ curl -X POST http://localhost:8002/api/v1/systems/4057010410/deregister-force \
 ```
 Reactivate answers `{"message":"System force reactivated successfully","reactivated_by_user_id":...}` (or `"System is already active"`).
 
-Errors: `422` email or password/pin missing, `401 {"message":"Invalid credentials"}`, `403 {"message":"Only an admin of the system's organisation can force this action"}`, `404 {"message":"System not found"}`, `429` rate limit.
+Errors: `422` email or password/pin missing; `401 {"message":"Invalid credentials"}` (unknown email, wrong password/pin, or a deactivated account); `403 {"message":"Only an admin of the system's organisation can force this action"}` (not an admin); `404 {"message":"System not found"}` (unknown id, or a system of another organisation for a non-super admin); `429` rate limit.
 
 ### POST /api/v1/config-files
 
@@ -1918,7 +1928,7 @@ curl -OJ http://localhost:8002/api/v1/config-files/2051 \
   -H "Authorization: Bearer atgla-xPyt2TeLn3TbbalkBMN" \
   -H "X-Atglance-System-Id: 4057010410" -H "X-Atglance-System-Key: 3f9c2b..."
 ```
-Response `200` with `Content-Type: application/octet-stream` and `Content-Disposition: attachment; filename="sshd_config"`.
+Response `200` with `Content-Type: application/octet-stream` and `Content-Disposition: attachment; filename=sshd_config`. Names that are not plain ASCII tokens get a quoted ASCII fallback plus a UTF-8 `filename*` (for example `attachment; filename=nginx-e.conf; filename*=utf-8''nginx-%C3%A9.conf`); control characters are dropped and `/` `\` replaced.
 
 Errors: `404 {"message":"Configuration file not found"}` (unknown, inactive, or another system's file), `404 {"message":"File not found in storage"}`.
 
@@ -1927,6 +1937,9 @@ Errors: `404 {"message":"Configuration file not found"}` (unknown, inactive, or 
 Shipped with v1, because the code is shared:
 - `POST/GET /system-deregister-force` and `/system-reactivate-force` (and the v1 force routes) now need an admin (`rbac_id` 100 or 101) of the system's organisation; a super admin may act on any organisation. Others get `403 {"message":"Only an admin of the system's organisation can force this action"}`. Before, any user with a valid email and password/PIN could force any system in any organisation.
 - `POST /config-files/upload` with a `system_id`/`system_register_id` of another organisation now returns `404 {"message":"System not found"}` and stores nothing. Teammates in the same organisation can still upload.
+- Force routes: a deactivated account gets `401 Invalid credentials`; an admin of another organisation gets `404 System not found` (as for an unknown id) instead of `403`; an unknown email costs the same bcrypt check as a known one; the routes use the `v1-force` rate limit (10/min per IP + email).
+- `GET /config-files/config-show` returns only systems of the caller's organisation; for a system of another organisation the response is the usual shape with `total: 0` and `versions: []`.
+- The activity log no longer stores `system_key`, `new_key`, `validation_hash` or `system_hash` from request payloads.
 
 ---
 
@@ -2026,6 +2039,10 @@ Shipped with v1, because the code is shared:
 - New versioned API under `/api/v1` for the atglance CLI v2 (see [CLI API v1](#cli-api-v1-apiv1))
 - Force deregister/reactivate restricted to admins of the system's organisation (super admin: any)
 - Config upload rejects systems of another organisation (404)
+- Named rate limiters `v1-meta` and `v1-force` (force: per IP + email, also on the legacy force routes)
+- Force: deactivated accounts rejected (401); other-organisation systems answer 404
+- `GET /config-files/config-show` scoped to the caller's organisation
+- Key rotation also updates the key stored on config files, raw data and services
 
 **Version 1.0** - February 28, 2026
 - Initial API release

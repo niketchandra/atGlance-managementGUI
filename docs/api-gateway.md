@@ -27,7 +27,9 @@ This project runs Kong in DB-less mode and loads kong/kong.yml at startup.
       - /api/v1/ (GET, POST), strip_path false
     - The atglance CLI v2 API. The path is the same on the gateway (:8002) and on the app (:8000),
       so the CLI needs only a base URL. Endpoints: docs/api-reference.md, "CLI API v1 (/api/v1)".
-    - No gateway plugin; the app rate limits /api/v1/meta (60/min) and the force routes (10/min).
+    - No gateway plugin; the app rate limits with named limiters: v1-meta (/api/v1/meta, 60/min per IP)
+      and v1-force (v1 and legacy force routes, 10/min per IP + email). Behind Kong the app sees the
+      gateway's IP for every client, so the email part of the v1-force key is what separates callers.
 
 ## Adding new routes (examples)
 Below are examples for adding product APIs and file upload/download APIs to kong/kong.yml.
