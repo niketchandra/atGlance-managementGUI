@@ -264,6 +264,32 @@ class SystemRegisterController extends Controller
     }
 
     /**
+     * workspace_id rule for register: 0/empty means none; a positive id must be an
+     * existing workspace, and when $orgId is given, one of that organisation (null
+     * workspace org counts as 200). Legacy store passes no org (any workspace).
+     *
+     * @return array<int, mixed>
+     */
+    public static function workspaceIdRule(?int $orgId = null): array
+    {
+        return [
+            'nullable',
+            'integer',
+            'min:0',
+            function (string $attribute, mixed $value, \Closure $fail) use ($orgId): void {
+                $workspaceId = (int) $value;
+                if ($workspaceId <= 0) {
+                    return;
+                }
+                $workspace = Workspace::query()->find($workspaceId);
+                if (!$workspace || ($orgId !== null && (int) ($workspace->org_id ?? 200) !== $orgId)) {
+                    $fail('The selected workspace is invalid.');
+                }
+            },
+        ];
+    }
+
+    /**
      * Creates a system for the PAT's user from validated $data. Shared by the legacy
      * and the /api/v1 register endpoints. Returns the 401 response without a PAT.
      */
@@ -315,17 +341,7 @@ class SystemRegisterController extends Controller
     public function store(Request $request)
     {
         $data = $request->validate(self::systemFieldRules() + [
-            'workspace_id' => [
-                'nullable',
-                'integer',
-                'min:0',
-                function (string $attribute, mixed $value, \Closure $fail): void {
-                    $workspaceId = (int) $value;
-                    if ($workspaceId > 0 && !Workspace::query()->whereKey($workspaceId)->exists()) {
-                        $fail('The selected workspace is invalid.');
-                    }
-                },
-            ],
+            'workspace_id' => self::workspaceIdRule(),
             'public_ip' => ['nullable', 'string', 'max:45'],
             'public_facing' => ['nullable', 'boolean'],
             'description' => ['nullable', 'string'],

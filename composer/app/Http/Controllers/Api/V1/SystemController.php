@@ -5,7 +5,6 @@ namespace App\Http\Controllers\Api\V1;
 use App\Http\Controllers\Api\SystemRegisterController;
 use App\Http\Controllers\Controller;
 use App\Models\SystemRegister;
-use App\Models\Workspace;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -25,21 +24,7 @@ class SystemController extends Controller
         $orgId = (int) ($request->user()->org_id ?? 200);
 
         $data = $request->validate(SystemRegisterController::systemFieldRules() + [
-            'workspace_id' => [
-                'nullable',
-                'integer',
-                'min:0',
-                function (string $attribute, mixed $value, \Closure $fail) use ($orgId): void {
-                    $workspaceId = (int) $value;
-                    if ($workspaceId <= 0) {
-                        return;
-                    }
-                    $workspace = Workspace::query()->find($workspaceId);
-                    if (!$workspace || (int) ($workspace->org_id ?? 200) !== $orgId) {
-                        $fail('The selected workspace is invalid.');
-                    }
-                },
-            ],
+            'workspace_id' => SystemRegisterController::workspaceIdRule($orgId),
             'system_key' => ['required', 'string', 'min:32', 'max:255'],
         ]);
 
