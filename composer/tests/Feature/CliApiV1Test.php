@@ -884,4 +884,19 @@ class CliApiV1Test extends TestCase
         $this->getJson('/api/v1/config-files', $headers)->assertOk()->assertJsonPath('files.0.id', $fileId);
         $this->assertSame("Port 22\n", $this->get('/api/v1/config-files/' . $fileId, $headers)->assertOk()->getContent());
     }
+
+    // ---------------------------------------------------------------- round 3: per-IP force cap
+
+    public function test_force_attempts_across_emails_are_capped_per_ip(): void
+    {
+        $system = $this->system($this->user('owner@example.test'));
+
+        for ($i = 1; $i <= 30; $i++) {
+            $this->postJson('/api/v1/systems/' . $system->id . '/deregister-force', ['email' => "probe{$i}@example.test", 'password' => 'x'])
+                ->assertUnauthorized();
+        }
+
+        $this->postJson('/api/system-deregister-force', ['system_id' => $system->id, 'email' => 'probe31@example.test', 'password' => 'x'])
+            ->assertStatus(429);
+    }
 }

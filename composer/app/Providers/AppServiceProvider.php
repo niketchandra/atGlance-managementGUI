@@ -19,15 +19,17 @@ class AppServiceProvider extends ServiceProvider
     /**
      * Named limiters, so each has its own counter (unnamed throttle:N,M share one
      * counter per IP across routes). Behind Kong every caller has the gateway's IP,
-     * so v1-force also keys on the email being tried.
+     * so v1-force also keys on the email being tried, with a per-IP cap on top so one
+     * source cannot spread attempts over many emails.
      */
     private function configureRateLimiters(): void
     {
         RateLimiter::for('v1-meta', fn (Request $request) => Limit::perMinute(60)->by('v1-meta|' . $request->ip()));
 
-        RateLimiter::for('v1-force', fn (Request $request) => Limit::perMinute(10)->by(
-            'v1-force|' . $request->ip() . '|' . strtolower(trim((string) $request->input('email', '')))
-        ));
+        RateLimiter::for('v1-force', fn (Request $request) => [
+            Limit::perMinute(10)->by('v1-force|' . $request->ip() . '|' . strtolower(trim((string) $request->input('email', '')))),
+            Limit::perMinute(30)->by('v1-force-ip|' . $request->ip()),
+        ]);
     }
 
     /**
