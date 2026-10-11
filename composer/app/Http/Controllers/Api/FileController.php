@@ -77,6 +77,18 @@ class FileController extends Controller
             }
         }
 
+        // A deregistered system takes no new backups (checked before anything is stored).
+        // With service_id the upload goes to that service's system.
+        $targetSystemId = $request->filled('service_id')
+            ? Service::where('service_id', $request->input('service_id'))->value('system_id')
+            : $systemId;
+        if ($targetSystemId) {
+            $targetStatus = SystemRegister::query()->whereKey((int) $targetSystemId)->value('status');
+            if ($targetStatus !== null && $targetStatus !== 'active') {
+                return response()->json(['message' => 'System is deregistered; reactivate it first'], 409);
+            }
+        }
+
         if (!$request->filled('service_id') && (!$systemId || !$request->filled('service_name'))) {
             return response()->json([
                 'message' => 'service_name and system_id (or system_register_id) are required when service_id is not provided.',

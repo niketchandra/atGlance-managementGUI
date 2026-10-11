@@ -841,4 +841,47 @@ class CliApiV1Test extends TestCase
         $this->postJson('/api/v1/systems', ['workspace_id' => 0] + $body, $this->pat($this->user('plain@example.test')))
             ->assertCreated();
     }
+
+    // ---------------------------------------------------------------- round 3: deregistered systems
+
+    public function test_deregistered_system_cannot_upload_on_v1_or_legacy(): void
+    {
+        $owner = $this->user('owner@example.test');
+        $system = $this->system($owner);
+        $pat = $this->pat($owner);
+
+        // A service of this system from an earlier upload, to try the legacy service_id path too.
+        $serviceId = ConfigurationFile::find(
+            $this->post('/api/config-files/upload', ['file' => $this->configFile(), 'system_id' => $system->id, 'service_name' => 'ssh'], $pat + ['Accept' => 'application/json'])
+                ->assertCreated()->json('file.id')
+        )->service_id;
+        $filesBefore = count(Storage::disk('local')->allFiles());
+        $system->update(['status' => 'inactive']);
+        $conflict = ['message' => 'System is deregistered; reactivate it first'];
+
+        $this->post('/api/v1/config-files', ['file' => $this->configFile(), 'service_name' => 'ssh'], $pat + $this->systemHeaders($system) + ['Accept' => 'application/json'])
+            ->assertStatus(409)->assertExactJson($conflict);
+        $this->post('/api/config-files/upload', ['file' => $this->configFile(), 'system_id' => $system->id, 'service_name' => 'ssh'], $pat + ['Accept' => 'application/json'])
+            ->assertStatus(409)->assertExactJson($conflict);
+        $this->post('/api/config-files/upload', ['file' => $this->configFile(), 'service_id' => $serviceId], $pat + ['Accept' => 'application/json'])
+            ->assertStatus(409)->assertExactJson($conflict);
+
+        $this->assertSame(1, ConfigurationFile::count());
+        $this->assertSame(1, \DB::table('raw_data')->count());
+        $this->assertSame($filesBefore, count(Storage::disk('local')->allFiles()));
+    }
+
+    public function test_deregistered_system_can_still_list_and_download(): void
+    {
+        $owner = $this->user('owner@example.test');
+        $system = $this->system($owner);
+        $headers = $this->pat($owner) + $this->systemHeaders($system) + ['Accept' => 'application/json'];
+        $fileId = $this->post('/api/v1/config-files', ['file' => $this->configFile('sshd_config', "Port 22\n"), 'service_name' => 'ssh'], $headers)
+            ->assertCreated()->json('file.id');
+
+        $this->postJson('/api/v1/systems/self/deregister', ['password' => 'secret-pass'], $headers)->assertOk();
+
+        $this->getJson('/api/v1/config-files', $headers)->assertOk()->assertJsonPath('files.0.id', $fileId);
+        $this->assertSame("Port 22\n", $this->get('/api/v1/config-files/' . $fileId, $headers)->assertOk()->getContent());
+    }
 }
