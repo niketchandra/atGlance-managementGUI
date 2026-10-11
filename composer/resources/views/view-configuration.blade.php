@@ -79,10 +79,10 @@
                     <i class="fas fa-download"></i> Download Configuration
                 </a>
                 @if($config->validation_hash)
-                    <button class="ag-btn ag-btn--ghost" onclick="alert('Validation Hash:\n{{ $config->validation_hash }}')"
-                            style="display: inline-flex; align-items: center; gap: 8px; transition: background 0.2s ease, box-shadow 0.2s ease;">
-                        <i class="fas fa-fingerprint"></i> View Hash
-                    </button>
+                    <span class="ag-btn ag-btn--ghost" title="System key (only the last 4 characters are shown)"
+                          style="display: inline-flex; align-items: center; gap: 8px; cursor: default;">
+                        <i class="fas fa-fingerprint"></i> Key <code>{{ \App\Support\SecretMask::key($config->validation_hash) }}</code>
+                    </span>
                 @endif
                 @if($aiEnabled && $config->data)
                     <button type="button" id="aiValidateBtn" class="ag-btn ag-btn--accent"
