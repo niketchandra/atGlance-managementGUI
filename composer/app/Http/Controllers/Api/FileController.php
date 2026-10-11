@@ -437,8 +437,13 @@ class FileController extends Controller
             'service_name' => ['required', 'string', 'max:255'],
         ]);
 
+        // Only systems of the caller's organisation (null org counts as 200).
+        $orgId = (int) ($request->user()->org_id ?? 200);
+
         $files = ConfigurationFile::query()
             ->leftJoin('users', 'users.id', '=', 'configuration_files.user_id')
+            ->join('system_register', 'system_register.id', '=', 'configuration_files.system_register_id')
+            ->whereRaw('COALESCE(system_register.org_id, 200) = ?', [$orgId])
             ->where('configuration_files.system_register_id', $data['system_id'])
             ->where('configuration_files.validation_hash', $data['validation_key'])
             ->where('configuration_files.service_name', $data['service_name'])

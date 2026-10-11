@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Models\Workspace;
 use App\Support\ActivityRecorder;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 
 class SystemRegisterController extends Controller
@@ -461,8 +462,21 @@ class SystemRegisterController extends Controller
      */
     public function rotateSystemKey(SystemRegister $system, string $newKey, User $actor): void
     {
-        $system->validation_hash = $newKey;
-        $system->save();
+        DB::transaction(function () use ($system, $newKey): void {
+            $oldKey = (string) $system->validation_hash;
+
+            // Copies of the key stored with this system's backups and services.
+            foreach (['configuration_files', 'raw_data'] as $table) {
+                DB::table($table)
+                    ->where('system_register_id', $system->id)
+                    ->where('validation_hash', $oldKey)
+                    ->update(['validation_hash' => $newKey]);
+            }
+            DB::table('services')->where('system_id', $system->id)->update(['system_hash' => $newKey]);
+
+            $system->validation_hash = $newKey;
+            $system->save();
+        });
 
         ActivityRecorder::record(
             (int) $actor->id,

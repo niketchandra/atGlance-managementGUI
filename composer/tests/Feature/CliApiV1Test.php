@@ -679,4 +679,49 @@ class CliApiV1Test extends TestCase
         $this->getJson('/api/v1/systems/self', $this->pat($owner) + ['X-Atglance-System-Id' => $long, 'X-Atglance-System-Key' => self::KEY])
             ->assertNotFound()->assertExactJson(['message' => 'System not found']);
     }
+
+    // ---------------------------------------------------------------- fix round: key copies, config-show scope
+
+    public function test_rotate_key_updates_stored_hash_copies(): void
+    {
+        $owner = $this->user('owner@example.test');
+        $system = $this->system($owner);
+        $pat = $this->pat($owner);
+        $newKey = str_repeat('n', 40);
+
+        $fileId = $this->post('/api/v1/config-files', ['file' => $this->configFile(), 'service_name' => 'ssh'], $pat + $this->systemHeaders($system) + ['Accept' => 'application/json'])
+            ->assertCreated()->json('file.id');
+        // A row of the same system with some other hash is left alone.
+        $legacyId = $this->post('/api/config-files/upload', ['file' => $this->configFile('other.conf'), 'system_id' => $system->id, 'service_name' => 'nginx', 'validation_hash' => 'unrelated-hash'], $pat + ['Accept' => 'application/json'])
+            ->assertCreated()->json('file.id');
+        $showUrl = fn (string $key) => '/api/config-files/config-show?' . http_build_query(['system_id' => $system->id, 'validation_key' => $key, 'service_name' => 'ssh']);
+
+        $this->getJson($showUrl(self::KEY), $pat)->assertOk()->assertJsonPath('total', 1);
+
+        $this->postJson('/api/v1/systems/self/rotate-key', ['password' => 'secret-pass', 'new_key' => $newKey], $pat + $this->systemHeaders($system))
+            ->assertOk();
+
+        $this->assertSame($newKey, ConfigurationFile::find($fileId)->validation_hash);
+        $this->assertSame($newKey, \DB::table('raw_data')->where('file_id', $fileId)->value('validation_hash'));
+        $this->assertSame(0, \DB::table('services')->where('system_id', $system->id)->where('system_hash', self::KEY)->count());
+        $this->assertSame($newKey, \DB::table('services')->where('system_id', $system->id)->where('service_name', 'ssh')->value('system_hash'));
+        $this->assertSame('unrelated-hash', ConfigurationFile::find($legacyId)->validation_hash);
+        $this->assertSame('unrelated-hash', \DB::table('raw_data')->where('file_id', $legacyId)->value('validation_hash'));
+
+        $this->getJson($showUrl(self::KEY), $pat)->assertOk()->assertJsonPath('total', 0);
+        $this->getJson($showUrl($newKey), $pat)->assertOk()->assertJsonPath('total', 1)->assertJsonPath('versions.0.id', $fileId);
+    }
+
+    public function test_legacy_config_show_is_scoped_to_the_callers_org(): void
+    {
+        $owner = $this->user('owner@example.test');
+        $system = $this->system($owner);
+        $this->post('/api/v1/config-files', ['file' => $this->configFile(), 'service_name' => 'ssh'], $this->pat($owner) + $this->systemHeaders($system) + ['Accept' => 'application/json'])
+            ->assertCreated();
+        $url = '/api/config-files/config-show?' . http_build_query(['system_id' => $system->id, 'validation_key' => self::KEY, 'service_name' => 'ssh']);
+
+        $this->getJson($url, $this->pat($this->user('mate@example.test')))->assertOk()->assertJsonPath('total', 1);
+        $this->getJson($url, $this->pat($this->user('them@example.test', 101, 300)))
+            ->assertOk()->assertJsonPath('total', 0)->assertJsonPath('versions', []);
+    }
 }
