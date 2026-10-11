@@ -141,9 +141,41 @@ class CliApiV1Test extends TestCase
             ->assertForbidden()->assertJsonPath('message', $message);
         $this->postJson('/api/system-deregister-force', ['system_id' => $system->id, 'email' => $teammate->email, 'password' => 'secret-pass'])
             ->assertForbidden();
-        $this->postJson('/api/system-reactivate-force', ['system_id' => $system->id, 'email' => $foreignAdmin->email, 'password' => 'secret-pass'])
+        // Non-admins get 403 even for an unknown id.
+        $this->postJson('/api/system-deregister-force', ['system_id' => 99999999, 'email' => $teammate->email, 'password' => 'secret-pass'])
             ->assertForbidden()->assertJsonPath('message', $message);
+        // An admin of another org cannot tell its system from an unknown one.
+        $this->postJson('/api/system-deregister-force', ['system_id' => $system->id, 'email' => $foreignAdmin->email, 'password' => 'secret-pass'])
+            ->assertNotFound()->assertExactJson(['message' => 'System not found']);
+        $this->postJson('/api/system-reactivate-force', ['system_id' => 99999999, 'email' => $foreignAdmin->email, 'password' => 'secret-pass'])
+            ->assertNotFound()->assertExactJson(['message' => 'System not found']);
         $this->assertSame('active', $system->fresh()->status);
+    }
+
+    public function test_inactive_admin_cannot_force_on_legacy_or_v1(): void
+    {
+        $owner = $this->user('owner@example.test');
+        $admin = $this->user('gone-admin@example.test', 101, 200, 'inactive');
+        $super = $this->user('gone-super@example.test', 100, 200, 'inactive');
+        $system = $this->system($owner);
+
+        $this->postJson('/api/system-deregister-force', ['system_id' => $system->id, 'email' => $admin->email, 'password' => 'secret-pass'])
+            ->assertUnauthorized()->assertExactJson(['message' => 'Invalid credentials']);
+        $this->postJson('/api/system-reactivate-force', ['system_id' => $system->id, 'email' => $super->email, 'pin' => '1234'])
+            ->assertUnauthorized()->assertExactJson(['message' => 'Invalid credentials']);
+        $this->postJson('/api/v1/systems/' . $system->id . '/deregister-force', ['email' => $admin->email, 'password' => 'secret-pass'])
+            ->assertUnauthorized()->assertExactJson(['message' => 'Invalid credentials']);
+        $this->postJson('/api/v1/systems/' . $system->id . '/reactivate-force', ['email' => $super->email, 'password' => 'secret-pass'])
+            ->assertUnauthorized();
+        $this->assertSame('active', $system->fresh()->status);
+    }
+
+    public function test_force_with_unknown_email_is_invalid_credentials(): void
+    {
+        $system = $this->system($this->user('owner@example.test'));
+
+        $this->postJson('/api/v1/systems/' . $system->id . '/deregister-force', ['email' => 'nobody@example.test', 'password' => 'secret-pass'])
+            ->assertUnauthorized()->assertExactJson(['message' => 'Invalid credentials']);
     }
 
     public function test_legacy_force_keeps_credential_errors(): void
@@ -445,13 +477,14 @@ class CliApiV1Test extends TestCase
         $url = fn (string $action) => '/api/v1/systems/' . $system->id . '/' . $action;
 
         $this->postJson($url('deregister-force'), ['email' => $owner->email, 'password' => 'secret-pass'])->assertForbidden();
-        $this->postJson($url('deregister-force'), ['email' => $foreignAdmin->email, 'password' => 'secret-pass'])->assertForbidden();
+        $this->postJson($url('deregister-force'), ['email' => $foreignAdmin->email, 'password' => 'secret-pass'])
+            ->assertNotFound()->assertExactJson(['message' => 'System not found']);
         $this->postJson($url('deregister-force'), ['email' => $admin->email, 'password' => 'wrong'])->assertUnauthorized();
         $this->assertSame('active', $system->fresh()->status);
 
         $this->postJson($url('deregister-force'), ['email' => $admin->email, 'password' => 'secret-pass'])
             ->assertOk()->assertJsonPath('status', 'inactive');
-        $this->postJson($url('reactivate-force'), ['email' => $foreignAdmin->email, 'pin' => '1234'])->assertForbidden();
+        $this->postJson($url('reactivate-force'), ['email' => $foreignAdmin->email, 'pin' => '1234'])->assertNotFound();
         $this->postJson($url('reactivate-force'), ['email' => $super->email, 'pin' => '1234'])
             ->assertOk()->assertJsonPath('status', 'active');
     }

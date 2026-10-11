@@ -74,11 +74,16 @@ class SystemRegisterController extends Controller
             ], 422)];
         }
 
+        $invalid = [null, response()->json([
+            'message' => 'Invalid credentials',
+        ], 401)];
+
         $user = User::where('email', $email)->first();
         if (!$user) {
-            return [null, response()->json([
-                'message' => 'Invalid credentials',
-            ], 401)];
+            // Same bcrypt work as for a real user, so timing does not reveal unknown emails.
+            Hash::check($password !== '' ? $password : $pin, self::DUMMY_HASH);
+
+            return $invalid;
         }
 
         $passwordHash = $user->password_hash ?? $user->password;
@@ -88,29 +93,50 @@ class SystemRegisterController extends Controller
         $pinValid = $pin !== '' && !empty($pinHash) && Hash::check($pin, $pinHash);
 
         if (!$passwordValid && !$pinValid) {
-            return [null, response()->json([
-                'message' => 'Invalid credentials',
-            ], 401)];
+            return $invalid;
+        }
+
+        // A deactivated account cannot act, whatever its role.
+        if (strtolower((string) ($user->status ?? 'active')) !== 'active') {
+            return $invalid;
         }
 
         return [$user, null];
     }
 
     /**
-     * Force actions are for admins of the system's organisation (a super admin may
-     * act on any organisation). Returns the 403 response, or null when allowed.
+     * bcrypt hash of a throwaway string, checked when the force email is unknown.
      */
-    private function forbidForceActor(User $actor, ?SystemRegister $system)
-    {
-        $allowed = $actor->isAdmin() && (
-            $system === null
-            || $actor->isSuperAdmin()
-            || (int) ($system->org_id ?? 200) === (int) ($actor->org_id ?? 200)
-        );
+    private const DUMMY_HASH = '$2y$12$sRjK8Xag9ld.yaq51LPq0e2feplggq12FD2Lr5rl6DZx0dQMdBLIq';
 
-        return $allowed ? null : response()->json([
+    /**
+     * Force actions are for admins only. Returns the 403 response, or null when allowed.
+     */
+    private function forbidForceActor(User $actor)
+    {
+        return $actor->isAdmin() ? null : response()->json([
             'message' => "Only an admin of the system's organisation can force this action",
         ], 403);
+    }
+
+    /**
+     * The system a force action targets: one of the admin's organisation (a super admin:
+     * any). Unknown ids and systems of other organisations both give null (404), so an
+     * admin cannot probe other organisations' system ids.
+     */
+    private function findForceTarget(User $actor, mixed $systemId): ?SystemRegister
+    {
+        $system = SystemRegister::find($systemId);
+
+        if ($system === null) {
+            return null;
+        }
+
+        if (!$actor->isSuperAdmin() && (int) ($system->org_id ?? 200) !== (int) ($actor->org_id ?? 200)) {
+            return null;
+        }
+
+        return $system;
     }
 
     private function logForceSystemAction(Request $request, User $actor, int $systemId, string $action): void
@@ -480,21 +506,16 @@ class SystemRegisterController extends Controller
             return $errorResponse;
         }
 
-        if ($forbidden = $this->forbidForceActor($actor, null)) {
+        if ($forbidden = $this->forbidForceActor($actor)) {
             return $forbidden;
         }
-        
-        // Find the system by ID
-        $system = SystemRegister::find($systemId);
+
+        $system = $this->findForceTarget($actor, $systemId);
 
         if (!$system) {
             return response()->json([
                 'message' => 'System not found'
             ], 404);
-        }
-
-        if ($forbidden = $this->forbidForceActor($actor, $system)) {
-            return $forbidden;
         }
 
         $system->status = 'inactive';
@@ -585,21 +606,16 @@ class SystemRegisterController extends Controller
             return $errorResponse;
         }
 
-        if ($forbidden = $this->forbidForceActor($actor, null)) {
+        if ($forbidden = $this->forbidForceActor($actor)) {
             return $forbidden;
         }
-        
-        // Find the system by ID
-        $system = SystemRegister::find($systemId);
+
+        $system = $this->findForceTarget($actor, $systemId);
 
         if (!$system) {
             return response()->json([
                 'message' => 'System not found'
             ], 404);
-        }
-
-        if ($forbidden = $this->forbidForceActor($actor, $system)) {
-            return $forbidden;
         }
 
         // Check if system is already active
