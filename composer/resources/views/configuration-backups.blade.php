@@ -38,7 +38,7 @@
                 </div>
                 <div>
                     <label class="ag-label">Hash</label>
-                    <input class="ag-input" type="text" name="hash" value="{{ request('hash') }}" placeholder="Search by hash" style="width: 100%; transition: border-color 0.2s;" onfocus="this.style.borderColor='#000000'" onblur="this.style.borderColor='#b3b3b3'">
+                    <input class="ag-input" type="text" name="hash" value="{{ request('hash') }}" placeholder="Full system key (exact match)" style="width: 100%; transition: border-color 0.2s;" onfocus="this.style.borderColor='#000000'" onblur="this.style.borderColor='#b3b3b3'">
                 </div>
             </div>
             <div style="display: flex; gap: 12px;">
@@ -201,62 +201,4 @@
     @endif
     @include('partials.simple-pager', ['pager' => $items])
 </div>
-
-<script>
-function toggleHash(contentId, linkEl) {
-    const content = document.getElementById(contentId);
-    if (!content) {
-        return;
-    }
-
-    const isHidden = content.style.display === 'none' || content.style.display === '';
-    content.style.display = isHidden ? 'block' : 'none';
-    linkEl.textContent = isHidden ? 'Hide hash' : 'Show hash';
-}
-
-function copyHashById(hashElementId, button) {
-    const hashElement = document.getElementById(hashElementId);
-    if (!hashElement) {
-        return;
-    }
-
-    const text = hashElement.textContent || '';
-
-    // Create a temporary textarea element
-    const textarea = document.createElement('textarea');
-    textarea.value = text;
-    textarea.style.position = 'fixed';
-    textarea.style.opacity = '0';
-    document.body.appendChild(textarea);
-    
-    // Select and copy the text
-    textarea.select();
-    textarea.setSelectionRange(0, 99999); // For mobile devices
-    
-    try {
-        document.execCommand('copy');
-        // Change button text to show success
-        const originalHTML = button.innerHTML;
-        button.innerHTML = '<i class="fas fa-check"></i> Copied!';
-        button.style.background = '#1fa874';
-        
-        // Reset button after 2 seconds
-        setTimeout(() => {
-            button.innerHTML = originalHTML;
-            button.style.background = '';
-        }, 2000);
-    } catch (err) {
-        console.error('Failed to copy:', err);
-        button.innerHTML = '<i class="fas fa-times"></i> Failed';
-        button.style.background = '#e45757';
-        
-        setTimeout(() => {
-            button.innerHTML = '<i class="fas fa-copy"></i> Copy';
-            button.style.background = '';
-        }, 2000);
-    } finally {
-        document.body.removeChild(textarea);
-    }
-}
-</script>
 @endsection

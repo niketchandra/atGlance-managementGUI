@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\ConfigurationFile;
 use App\Models\RawData;
 use App\Models\Service;
+use App\Models\SystemRegister;
 use App\Jobs\ValidateConfigWithAi;
 use App\Notifications\NotificationEvents;
 use App\Services\Notifier;
@@ -19,6 +20,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Symfony\Component\HttpFoundation\HeaderUtils;
 
 class FileController extends Controller
 {
@@ -67,6 +69,41 @@ class FileController extends Controller
 
         $systemId = $request->input('system_register_id', $request->input('system_id'));
 
+        // Only systems of the uploader's organisation (teammates included).
+        if ($systemId) {
+            $systemOrgId = SystemRegister::query()->whereKey((int) $systemId)->value('org_id');
+            if ((int) ($systemOrgId ?? 200) !== (int) ($user->org_id ?? 200)) {
+                return response()->json(['message' => 'System not found'], 404);
+            }
+        }
+
+        // service_id must be an active service of the caller; resolved before anything is
+        // stored, so a 404 leaves no file behind. The upload then goes to its system.
+        $service = null;
+
+        if ($request->filled('service_id')) {
+            $service = Service::where('service_id', $request->input('service_id'))
+                ->where('user_id', $user->id)
+                ->where('status', 'active')
+                ->first();
+
+            if (!$service) {
+                return response()->json([
+                    'message' => 'service_id not found or does not belong to you.',
+                ], 404);
+            }
+        }
+
+        // A deregistered system takes no new backups (checked before anything is stored).
+        // A foreign service_id was already refused above, so its system's status never shows.
+        $targetSystemId = $service ? $service->system_id : $systemId;
+        if ($targetSystemId) {
+            $targetStatus = SystemRegister::query()->whereKey((int) $targetSystemId)->value('status');
+            if ($targetStatus !== null && $targetStatus !== 'active') {
+                return response()->json(['message' => 'System is deregistered; reactivate it first'], 409);
+            }
+        }
+
         if (!$request->filled('service_id') && (!$systemId || !$request->filled('service_name'))) {
             return response()->json([
                 'message' => 'service_name and system_id (or system_register_id) are required when service_id is not provided.',
@@ -91,20 +128,7 @@ class FileController extends Controller
         // Read file content for raw_data table
         $fileContent = Storage::disk($storageDisk)->get($filePath);
 
-        $service = null;
-
-        if ($request->filled('service_id')) {
-            $service = Service::where('service_id', $request->input('service_id'))
-                ->where('user_id', $user->id)
-                ->where('status', 'active')
-                ->first();
-
-            if (!$service) {
-                return response()->json([
-                    'message' => 'service_id not found or does not belong to you.',
-                ], 404);
-            }
-
+        if ($service) {
             $systemId = $service->system_id;
         }
 
@@ -428,8 +452,13 @@ class FileController extends Controller
             'service_name' => ['required', 'string', 'max:255'],
         ]);
 
+        // Only systems of the caller's organisation (null org counts as 200).
+        $orgId = (int) ($request->user()->org_id ?? 200);
+
         $files = ConfigurationFile::query()
             ->leftJoin('users', 'users.id', '=', 'configuration_files.user_id')
+            ->join('system_register', 'system_register.id', '=', 'configuration_files.system_register_id')
+            ->whereRaw('COALESCE(system_register.org_id, 200) = ?', [$orgId])
             ->where('configuration_files.system_register_id', $data['system_id'])
             ->where('configuration_files.validation_hash', $data['validation_key'])
             ->where('configuration_files.service_name', $data['service_name'])
@@ -521,6 +550,49 @@ class FileController extends Controller
         return response($fileContent, 200)
             ->header('Content-Type', $mimeType)
             ->header('Content-Disposition', 'attachment; filename="' . $configFile->file_name . '"');
+    }
+
+    /**
+     * Raw content of an active configuration file of $systemId, whoever uploaded it
+     * (/api/v1/config-files/{id}; the caller has already verified the system).
+     */
+    public function downloadSystemConfigFile(int $systemId, int $fileId)
+    {
+        $configFile = ConfigurationFile::query()
+            ->whereKey($fileId)
+            ->where('system_register_id', $systemId)
+            ->where('status', 'active')
+            ->first();
+
+        if (!$configFile) {
+            return response()->json(['message' => 'Configuration file not found'], 404);
+        }
+
+        [$disk, $path] = $this->resolveDiskAndPath($configFile->storage_disk ?? null, (string) $configFile->file_location);
+
+        if ($path === '' || !Storage::disk($disk)->exists($path)) {
+            return response()->json(['message' => 'File not found in storage'], 404);
+        }
+
+        return response(Storage::disk($disk)->get($path), 200)
+            ->header('Content-Type', 'application/octet-stream')
+            ->header('Content-Disposition', $this->attachmentDisposition((string) $configFile->file_name));
+    }
+
+    /**
+     * attachment Content-Disposition with a UTF-8 filename* and an ASCII fallback.
+     * Control characters are dropped and path separators replaced.
+     */
+    private function attachmentDisposition(string $fileName): string
+    {
+        $name = str_replace(['/', '\\'], '_', (string) preg_replace('/[\x00-\x1F\x7F]/u', '', $fileName));
+        if ($name === '') {
+            $name = 'config';
+        }
+
+        $fallback = (string) preg_replace('/[^\x20-\x7E]|[%"]/', '_', Str::ascii($name));
+
+        return HeaderUtils::makeDisposition(HeaderUtils::DISPOSITION_ATTACHMENT, $name, $fallback);
     }
 
     /**

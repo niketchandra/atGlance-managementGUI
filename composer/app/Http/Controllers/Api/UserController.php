@@ -23,12 +23,38 @@ class UserController extends Controller
         $this->circuitBreaker = $circuitBreaker;
     }
 
-    public function index()
+    /** Only an admin (rbac_id 100/101) may manage users. Returns the caller. */
+    private function authorizeAdmin(Request $request): User
     {
+        $caller = $request->user();
+        abort_unless($caller !== null, 401, 'Authentication required');
+        abort_unless(in_array((int) $caller->rbac_id, [100, 101], true), 403, 'Administrator role required');
+
+        return $caller;
+    }
+
+    /** A user may only act within their own organisation. */
+    private function assertSameOrg(User $caller, User $target): void
+    {
+        abort_unless((int) $target->org_id === (int) $caller->org_id, 403, 'User is outside your organisation');
+    }
+
+    /** A super administrator (rbac_id 100) may not be modified by anyone else. */
+    private function guardSuperAdminTarget(User $caller, User $target): void
+    {
+        if ((int) $target->rbac_id === 100 && (int) $caller->id !== (int) $target->id) {
+            abort(403, 'A super administrator cannot be modified by another user');
+        }
+    }
+
+    public function index(Request $request)
+    {
+        $caller = $this->authorizeAdmin($request);
+
         try {
-            // Read operations with circuit breaker
-            return $this->circuitBreaker->query(function () {
-                return User::query()->get();
+            // Read operations with circuit breaker; scoped to the caller's organisation.
+            return $this->circuitBreaker->query(function () use ($caller) {
+                return User::query()->where('org_id', $caller->org_id)->get();
             });
         } catch (\Exception $e) {
             return response()->json([
@@ -41,6 +67,8 @@ class UserController extends Controller
 
     public function store(Request $request)
     {
+        $caller = $this->authorizeAdmin($request);
+
         if (!License::isActive()) {
             return response()->json(['message' => License::REQUIRED_MESSAGE], 403);
         }
@@ -70,6 +98,7 @@ class UserController extends Controller
                 'name' => $data['name'],
                 'email' => $data['email'],
                 'password_hash' => Hash::make($data['password']),
+                'org_id' => $caller->org_id,
             ];
 
             CreateUserJob::dispatch($userData, $requestId);
@@ -86,8 +115,8 @@ class UserController extends Controller
             'name' => $data['name'],
             'email' => $data['email'],
             'dob' => $data['dob'],
-            'dob' => $data['dob'],
             'password_hash' => Hash::make($data['password']),
+            'org_id' => $caller->org_id,
         ];
 
         // Check if database is available
@@ -124,8 +153,11 @@ class UserController extends Controller
         }
     }
 
-    public function show(User $user)
+    public function show(Request $request, User $user)
     {
+        $caller = $this->authorizeAdmin($request);
+        $this->assertSameOrg($caller, $user);
+
         try {
             // Read operations with circuit breaker
             return $this->circuitBreaker->query(function () use ($user) {
@@ -142,6 +174,10 @@ class UserController extends Controller
 
     public function update(Request $request, User $user)
     {
+        $caller = $this->authorizeAdmin($request);
+        $this->assertSameOrg($caller, $user);
+        $this->guardSuperAdminTarget($caller, $user);
+
         $data = $request->validate([
             'name' => ['sometimes', 'string', 'max:100'],
             'email' => ['sometimes', 'email', 'max:255', Rule::unique('users', 'email')->ignore($user->id)],
@@ -193,8 +229,12 @@ class UserController extends Controller
         }
     }
 
-    public function destroy(User $user)
+    public function destroy(Request $request, User $user)
     {
+        $caller = $this->authorizeAdmin($request);
+        $this->assertSameOrg($caller, $user);
+        abort_if((int) $user->rbac_id === 100, 403, 'A super administrator cannot be deleted via the API');
+
         $requestId = Str::uuid()->toString();
         $userId = $user->id;
 

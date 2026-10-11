@@ -30,7 +30,7 @@ Both ways use the same images from Docker Hub. After either part, finish with [A
 | MCP server | `atglance/ce-atglance-mcp` | default command | No published port; reached at `<host>:8002/mcp` through the gateway. Off by default (Site Setting > Plugins > MCP Server). |
 | Controller | `nginx:1.27-alpine` | config in `docker-compose.yml` | Container `ce-atglance-controller`. Lets the console start and stop the MCP server; mounts the Docker socket but allows only start/stop/status of `ce-atglance-mcp`. No port. |
 
-Images are published for `linux/amd64` only. The installers always deploy the `latest` tag; release tags such as `2.0.0` also exist for manual deployments.
+Images are published for `linux/amd64` only. The installers always deploy the `latest` tag; release tags such as `2.1.1` also exist for manual deployments.
 
 > [!IMPORTANT]
 > The `atglance` CLI sends its API calls to the Kong gateway on port **8002** of the management host, and logs out through the app on port **8000** of the same host. Both ports must be reachable from your servers on the same host name. Set the CLI's management URL to `http://<host>:8002` (or `https://<host>:8002` behind TLS).
@@ -462,7 +462,7 @@ Replace the values in `<...>`.
   "containerDefinitions": [
     {
       "name": "app",
-      "image": "atglance/ce-atglance-app:2.0.0",
+      "image": "atglance/ce-atglance-app:2.1.1",
       "essential": true,
       "portMappings": [{ "name": "app", "containerPort": 8000, "protocol": "tcp" }],
       "mountPoints": [{ "sourceVolume": "app-storage", "containerPath": "/app/storage" }],
@@ -546,7 +546,7 @@ Keep the same EFS volume and mount point. All three must share `/app/storage`.
 
 #### Step 7: API gateway
 
-1. Create a task definition `ce-atglance-gateway` with image `atglance/ce-atglance-gateway:2.0.0`, port 8002, 256 CPU / 512 MB. It needs no volume and no environment variables. Health check: `["CMD", "kong", "health"]`.
+1. Create a task definition `ce-atglance-gateway` with image `atglance/ce-atglance-gateway:2.1.1`, port 8002, 256 CPU / 512 MB. It needs no volume and no environment variables. Health check: `["CMD", "kong", "health"]`.
 2. Create a service, desired count 1 or more, with Service Connect as a client, so `app` resolves to the app service. Attach it to the `atglance-gateway` target group on container port 8002.
 
 Your servers set the CLI management URL to `https://<your-domain>:8002`.
@@ -600,7 +600,7 @@ spec:
     spec:
       containers:
         - name: app
-          image: atglance/ce-atglance-app:2.0.0
+          image: atglance/ce-atglance-app:2.1.1
           ports: [{ containerPort: 8000 }]
           env:
             - { name: ATGLANCE_ROLE, value: app }

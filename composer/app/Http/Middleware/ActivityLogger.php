@@ -77,6 +77,11 @@ class ActivityLogger
                 'pin',
                 'pin_confirmation',
                 'ai_api_key',
+                // System keys (atglance CLI) and their stored copies.
+                'system_key',
+                'new_key',
+                'validation_hash',
+                'system_hash',
             ]);
 
             ActivityLog::create([

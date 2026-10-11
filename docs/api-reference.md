@@ -26,11 +26,12 @@
   - [Raw Data](#get-configuration-file-raw-data)
   - [Delete](#delete-configuration-file)
 11. [File Operations](#file-operations)
-12. [Error Responses](#error-responses)
-13. [Authentication Notes](#authentication-notes)
-14. [Rate Limiting](#rate-limiting)
-15. [Data Storage](#data-storage)
-16. [Changelog](#changelog)
+12. [CLI API v1 (/api/v1)](#cli-api-v1-apiv1)
+13. [Error Responses](#error-responses)
+14. [Authentication Notes](#authentication-notes)
+15. [Rate Limiting](#rate-limiting)
+16. [Data Storage](#data-storage)
+17. [Changelog](#changelog)
 
 ---
 
@@ -1058,6 +1059,8 @@ curl -X POST "http://localhost:8002/system-deregister" \
 
 **Endpoint**: `POST /system-deregister-force`
 
+**Current behaviour**: this endpoint takes no bearer token (the session-token text below is out of date); the caller sends `email` + `password` or `pin`. Since October 2026: a deactivated account gets `401 Invalid credentials`; a non-admin gets `403`; an admin of another organisation gets the same `404 System not found` as an unknown id (a super admin may act on any organisation); and the route uses the `v1-force` rate limit (10/min per IP + email). See [Security fixes in the 1.x routes](#security-fixes-in-the-1x-routes-october-2026).
+
 **Description**: Force deregister any system by changing its status from `active` to `inactive`. This endpoint requires session token authentication and does not validate system ownership. Intended for administrative use.
 
 **Headers**:
@@ -1170,6 +1173,8 @@ Admin-level endpoints that require session token authentication and operate with
 
 **Endpoint**: `POST /system-reactivate-force` or `GET /system-reactivate-force`
 
+**Current behaviour**: this endpoint takes no bearer token (the session-token text below is out of date); the caller sends `email` + `password` or `pin`. Since October 2026: a deactivated account gets `401 Invalid credentials`; a non-admin gets `403`; an admin of another organisation gets the same `404 System not found` as an unknown id (a super admin may act on any organisation); and the route uses the `v1-force` rate limit (10/min per IP + email). See [Security fixes in the 1.x routes](#security-fixes-in-the-1x-routes-october-2026).
+
 **Description**: Force reactivate any system by changing its status from `inactive` to `active`. This endpoint requires session token authentication and does not validate system ownership. Intended for administrative use.
 
 **Headers**:
@@ -1243,6 +1248,8 @@ curl -X POST "http://localhost:8002/system-reactivate-force" \
 ### Force Deregister System (Admin)
 
 **Endpoint**: `POST /system-deregister-force` or `GET /system-deregister-force`
+
+**Current behaviour**: this endpoint takes no bearer token (the session-token text below is out of date); the caller sends `email` + `password` or `pin`. Since October 2026: a deactivated account gets `401 Invalid credentials`; a non-admin gets `403`; an admin of another organisation gets the same `404 System not found` as an unknown id (a super admin may act on any organisation); and the route uses the `v1-force` rate limit (10/min per IP + email). See [Security fixes in the 1.x routes](#security-fixes-in-the-1x-routes-october-2026).
 
 **Description**: Force deregister any system by changing its status from `active` to `inactive`. This endpoint requires session token authentication and does not validate system ownership. Intended for administrative use.
 
@@ -1347,6 +1354,8 @@ Content-Type: application/json
 ### Upload Configuration File
 
 **Endpoint**: `POST /config-files/upload`
+
+**Since October 2026**: a `system_id`/`system_register_id` of another organisation returns `404 {"message":"System not found"}`; teammates in the same organisation can still upload.
 
 **Description**: Save configuration using service-first flow and upload a configuration file (text, .config, .conf, .cfg)
 
@@ -1722,6 +1731,235 @@ curl -X GET http://localhost:8002/files/1 \
 
 ---
 
+## CLI API v1 (/api/v1)
+
+Versioned API for the atglance CLI v2. Every path starts with `/api/v1/` and is the same on the gateway (`http://localhost:8002/api/v1/...`) and on the app (`http://localhost:8000/api/v1/...`). The 1.x routes above keep working for 1.x hosts.
+
+Responses are always JSON (validation errors, 404, 429) whether or not the client sends `Accept: application/json`; the one exception is the config file download, which returns the raw file.
+
+### Headers
+
+| Header | When | Value |
+|---|---|---|
+| `Authorization: Bearer atgla-...` | every route except `meta` and the two `*-force` routes | a PAT of the user |
+| `X-Atglance-System-Id` | system-scoped routes (`systems/self*`, `config-files*`) | the system's id (from register) |
+| `X-Atglance-System-Key` | system-scoped routes | the system's key (`system_key` from register; for a host registered by 1.x, the `validation_hash` it stored) |
+
+System-scoped routes check, after the PAT:
+- either header missing: `400 {"message":"X-Atglance-System-Id and X-Atglance-System-Key headers are required"}`
+- unknown system, system without a key, wrong key, or a system of another organisation than the PAT's user: always the same `404 {"message":"System not found"}`, so the response does not reveal which systems exist
+- the PAT's user must also be the system's owner, an admin (`rbac_id` 100/101), or a member of the system's workspace; a system outside any workspace (`workspace_id` 0) is owner or admin only. Anyone else in the organisation gets the same `404`. Membership is checked on every request, so a user removed from the workspace loses access at once (the owner keeps access)
+
+**Access rule for system-scoped v1 routes** (`systems/self*`, `config-files*`), in full:
+
+| Caller (same organisation as the system) | Access |
+|---|---|
+| Admin, `rbac_id` 100 or 101 | every system of the organisation, in any workspace or none, including `rotate-key`, `deregister` and `reactivate` |
+| The system's owner | always, even after leaving the system's workspace |
+| Member of the system's workspace | that workspace's systems, also while the workspace is inactive; `deregister`, `reactivate` and `rotate-key` still need owner or admin (`403`) |
+| Anyone else | `404 System not found` |
+
+A caller from another organisation always gets `404`, even as a member of the workspace the system sits in (the organisation check comes first).
+
+This intentionally differs from the web console, which scopes by workspace: an `rbac_id` 101 Admin sees only the systems of their own workspaces, and an owner sees their systems only while they are unassigned (no workspace) or in one of their workspaces. The v1 rule is wider for admins, so an org admin can operate any host of the organisation from the CLI, and it lets owners keep control of their hosts.
+- the system's status is not checked, so an inactive system can call `reactivate`
+
+Routes marked "active user" answer `403 {"message":"User is inactive"}` when the PAT's user is inactive. Every PAT route of v1 is marked so, reads included.
+
+Path ids (`{id}`) and `X-Atglance-System-Id` are 1 to 18 digits; a longer or non-numeric id is a `404`.
+
+### Rate limits
+
+Named limiters, each with its own counter:
+- `v1-meta`: `GET /api/v1/meta`, 60 requests per minute per IP.
+- `v1-force`: the v1 force routes and the legacy `/system-deregister-force` and `/system-reactivate-force`, 10 requests per minute per IP and lower-cased `email`, and at most 30 per minute per IP across all emails.
+
+Behind Kong every request reaches the app from the gateway's IP unless `ATGLANCE_TRUSTED_PROXIES` includes Kong's Docker network (see [Client IPs behind Kong](api-gateway.md#client-ips-behind-kong)). Until then all clients share the IP part of the key: for `v1-force` the email part is what separates callers, while the per-IP caps (`v1-meta`, the 30/min force cap) are effectively one counter for all clients of the gateway. Over the limit: `429` JSON.
+
+### Endpoints
+
+| Method and path | Auth | Purpose |
+|---|---|---|
+| `GET /api/v1/meta` | none (`v1-meta`, 60/min) | API and console version |
+| `GET /api/v1/whoami` | PAT, active user | The PAT's user and token |
+| `POST /api/v1/systems` | PAT, active user | Register a system |
+| `GET /api/v1/systems/self` | PAT, active user, system | The calling system |
+| `POST /api/v1/systems/self/deregister` | PAT, active user, system | Set the system inactive |
+| `POST /api/v1/systems/self/reactivate` | PAT, active user, system | Set the system active |
+| `POST /api/v1/systems/self/rotate-key` | PAT, active user, system | Replace the system key |
+| `POST /api/v1/systems/{id}/deregister-force` | email + password/pin (`v1-force`, 10/min) | Admin force deregister |
+| `POST /api/v1/systems/{id}/reactivate-force` | email + password/pin (`v1-force`, 10/min) | Admin force reactivate |
+| `POST /api/v1/config-files` | PAT, active user, system | Upload a config backup |
+| `GET /api/v1/config-files` | PAT, active user, system | List the system's config backups |
+| `GET /api/v1/config-files/{id}` | PAT, active user, system | Download one config backup |
+
+### GET /api/v1/meta
+
+```bash
+curl http://localhost:8002/api/v1/meta
+```
+```json
+{"api": "atglance", "api_version": 1, "console_version": "2.0.0"}
+```
+The atglance v2 CLI caches this response for 24 hours, so a console upgrade can take up to a day to show in the CLI's version check.
+
+### GET /api/v1/whoami
+
+```bash
+curl http://localhost:8002/api/v1/whoami -H "Authorization: Bearer atgla-xPyt2TeLn3TbbalkBMN"
+```
+```json
+{
+  "user": {"id": 1010, "name": "Jane Ops", "status": "active", "org_id": 200},
+  "token": {"id": 7, "name": "web-01 cli", "expires_at": "2099-12-31T23:59:59+00:00"}
+}
+```
+No email, date of birth or workspaces. Errors: `401` missing/invalid/expired PAT, `403` inactive user.
+
+### POST /api/v1/systems
+
+Body (JSON or form):
+- `system_name` (required, string, max 255), `os_type` (required, max 100), `ip_address` (required, max 45)
+- `distro`, `version` (max 100), `tags` (max 512), `metadata` (string): optional
+- `workspace_id` (optional integer): when greater than 0 it must be a workspace of the user's organisation that the user is a member of (admins may use any workspace of their organisation)
+- `system_key` (required, string, 32 to 255 characters): generated by the host and kept secret; stored as the system's `validation_hash`
+
+```bash
+curl -X POST http://localhost:8002/api/v1/systems \
+  -H "Authorization: Bearer atgla-xPyt2TeLn3TbbalkBMN" -H "Content-Type: application/json" \
+  -d '{"system_name":"web-01","os_type":"linux","ip_address":"10.0.0.5","distro":"ubuntu","version":"24.04","workspace_id":3,"system_key":"3f9c2b...64 hex chars..."}'
+```
+Response `201` (the key is never echoed):
+```json
+{"system": {"id": 4057010410, "system_name": "web-01", "status": "active", "workspace_id": 3, "created_at": "2026-10-11T09:30:00.000000Z"}}
+```
+Errors: `401` PAT, `403` inactive user, `422` validation (`system_key` missing or too short, `workspace_id` of another organisation or of a workspace the user is not in, ...).
+
+### GET /api/v1/systems/self
+
+```bash
+curl http://localhost:8002/api/v1/systems/self \
+  -H "Authorization: Bearer atgla-xPyt2TeLn3TbbalkBMN" \
+  -H "X-Atglance-System-Id: 4057010410" -H "X-Atglance-System-Key: 3f9c2b..."
+```
+```json
+{
+  "system": {
+    "id": 4057010410, "system_name": "web-01", "status": "active",
+    "workspace_id": 3, "workspace_name": "ansible",
+    "ip_address": "10.0.0.5", "os_type": "linux", "distro": "ubuntu", "version": "24.04", "tags": "prod",
+    "created_at": "2026-10-11T09:30:00.000000Z", "updated_at": "2026-10-11T09:30:00.000000Z"
+  }
+}
+```
+
+### POST /api/v1/systems/self/deregister and /reactivate
+
+Body: `password` or `pin` of the PAT's user. Allowed for the system's owner or an admin of its organisation.
+
+```bash
+curl -X POST http://localhost:8002/api/v1/systems/self/deregister \
+  -H "Authorization: Bearer atgla-xPyt2TeLn3TbbalkBMN" \
+  -H "X-Atglance-System-Id: 4057010410" -H "X-Atglance-System-Key: 3f9c2b..." \
+  -H "Content-Type: application/json" -d '{"password":"..."}'
+```
+```json
+{"message": "System deregistered successfully", "system_id": 4057010410, "status": "inactive"}
+```
+Reactivate answers `{"message":"System reactivated successfully", ...,"status":"active"}`, or `200 {"message":"System is already active", ...}` when it already was.
+
+Errors: `422 {"message":"Either password or pin is required"}` / `422 {"message":"Invalid password or pin"}`, `403 {"message":"Only the system owner or an admin of its organisation can change this system"}`, plus the header errors above.
+
+### POST /api/v1/systems/self/rotate-key
+
+Body: `password` or `pin`, and `new_key` (string, 32 to 255 characters, different from the current key). Same permission rule as deregister. The change is recorded in the activity log (`system.key_rotated`). In the same transaction the stored copies of the key are updated too: `validation_hash` of the system's `configuration_files` and `raw_data` rows that held the old key, and `system_hash` of the system's `services`, so legacy lookups by key (for example `GET /config-files/config-show`) keep finding the backups with the new key. Afterwards the old key gets `404` and the host must send the new key.
+
+```bash
+curl -X POST http://localhost:8002/api/v1/systems/self/rotate-key \
+  -H "Authorization: Bearer atgla-xPyt2TeLn3TbbalkBMN" \
+  -H "X-Atglance-System-Id: 4057010410" -H "X-Atglance-System-Key: 3f9c2b..." \
+  -H "Content-Type: application/json" -d '{"pin":"1234","new_key":"a81d07...64 hex chars..."}'
+```
+```json
+{"system_id": 4057010410, "rotated": true}
+```
+Errors: `422` credentials or `new_key` (missing, too short, same as current), `403` permission.
+
+### POST /api/v1/systems/{id}/deregister-force and /reactivate-force
+
+No bearer token. Body: `email` and `password` or `pin` of an admin. The admin must be active and belong to the system's organisation; a super admin may act on any organisation. Rate limit `v1-force` (10 per minute per IP + email, shared with the legacy force routes). The system id comes from the path only (1 to 18 digits).
+
+```bash
+curl -X POST http://localhost:8002/api/v1/systems/4057010410/deregister-force \
+  -H "Content-Type: application/json" -d '{"email":"admin@example.com","password":"..."}'
+```
+```json
+{"message": "System force deregistered successfully", "deregistered_by_user_id": 1011, "system_id": 4057010410, "system_user_id": 1010, "status": "inactive"}
+```
+Reactivate answers `{"message":"System force reactivated successfully","reactivated_by_user_id":...}` (or `"System is already active"`).
+
+Errors: `422` email or password/pin missing; `401 {"message":"Invalid credentials"}` (unknown email, wrong password/pin, or a deactivated account); `403 {"message":"Only an admin of the system's organisation can force this action"}` (not an admin); `404 {"message":"System not found"}` (unknown id, or a system of another organisation for a non-super admin); `429` rate limit.
+
+### POST /api/v1/config-files
+
+Multipart: `file` (text/config file, max 10 MB) and `service_name`. The system comes from the headers; any `system_id`, `system_register_id` or `service_id` in the body is ignored. Versions are numbered per service (`v1`, `v2`, ...).
+
+```bash
+curl -X POST http://localhost:8002/api/v1/config-files \
+  -H "Authorization: Bearer atgla-xPyt2TeLn3TbbalkBMN" \
+  -H "X-Atglance-System-Id: 4057010410" -H "X-Atglance-System-Key: 3f9c2b..." \
+  -F "file=@/etc/ssh/sshd_config" -F "service_name=ssh"
+```
+Response `201` (no hash, no storage paths):
+```json
+{"file": {"id": 2051, "file_name": "sshd_config", "service_name": "ssh", "version": "v3", "created_at": "2026-10-11T09:31:00.000000Z"}}
+```
+Errors: `409 {"message":"System is deregistered; reactivate it first"}` when the system is inactive (nothing is stored; listing and downloading still work), `422` (no file, wrong type, missing `service_name`), `403` inactive user, header errors above.
+
+### GET /api/v1/config-files
+
+Active config backups of the calling system, whoever uploaded them, newest first. Optional query `service_name`.
+
+```bash
+curl "http://localhost:8002/api/v1/config-files?service_name=ssh" \
+  -H "Authorization: Bearer atgla-xPyt2TeLn3TbbalkBMN" \
+  -H "X-Atglance-System-Id: 4057010410" -H "X-Atglance-System-Key: 3f9c2b..."
+```
+```json
+{
+  "files": [
+    {"id": 2051, "file_name": "sshd_config", "service_name": "ssh", "version": "v3",
+     "created_at": "2026-10-11T09:31:00.000000Z", "created_by": {"id": 1010, "name": "Jane Ops"}}
+  ]
+}
+```
+
+### GET /api/v1/config-files/{id}
+
+Raw content of an active config backup of the calling system.
+
+```bash
+curl -OJ http://localhost:8002/api/v1/config-files/2051 \
+  -H "Authorization: Bearer atgla-xPyt2TeLn3TbbalkBMN" \
+  -H "X-Atglance-System-Id: 4057010410" -H "X-Atglance-System-Key: 3f9c2b..."
+```
+Response `200` with `Content-Type: application/octet-stream` and `Content-Disposition: attachment; filename=sshd_config`. Names that are not plain ASCII tokens get a quoted ASCII fallback plus a UTF-8 `filename*` (for example `attachment; filename=nginx-e.conf; filename*=utf-8''nginx-%C3%A9.conf`); control characters are dropped and `/` `\` replaced.
+
+Errors: `404 {"message":"Configuration file not found"}` (unknown, inactive, or another system's file), `404 {"message":"File not found in storage"}`.
+
+### Security fixes in the 1.x routes (October 2026)
+
+Shipped with v1, because the code is shared:
+- `POST/GET /system-deregister-force` and `/system-reactivate-force` (and the v1 force routes) now need an admin (`rbac_id` 100 or 101) of the system's organisation; a super admin may act on any organisation. Others get `403 {"message":"Only an admin of the system's organisation can force this action"}`. Before, any user with a valid email and password/PIN could force any system in any organisation.
+- `POST /config-files/upload` with a `system_id`/`system_register_id` of another organisation now returns `404 {"message":"System not found"}` and stores nothing. Teammates in the same organisation can still upload.
+- Force routes: a deactivated account gets `401 Invalid credentials`; an admin of another organisation gets `404 System not found` (as for an unknown id) instead of `403`; an unknown email costs the same bcrypt check as a known one; the routes use the `v1-force` rate limit (10/min per IP + email).
+- `GET /config-files/config-show` returns only systems of the caller's organisation; for a system of another organisation the response is the usual shape with `total: 0` and `versions: []`.
+- The activity log no longer stores `system_key`, `new_key`, `validation_hash` or `system_hash` from request payloads.
+- `POST /config-files/upload` for a deregistered system (by `system_id`/`system_register_id` or by `service_id`) returns `409 {"message":"System is deregistered; reactivate it first"}` and stores nothing.
+- The web console shows a system key only masked (`••••••••` plus the last 4 characters) and no longer offers to copy it.
+
+---
+
 ## Error Responses
 
 ### 400 Bad Request
@@ -1813,6 +2051,20 @@ curl -X GET http://localhost:8002/files/1 \
 ---
 
 ## Changelog
+
+**CLI API v1** - October 11, 2026
+- New versioned API under `/api/v1` for the atglance CLI v2 (see [CLI API v1](#cli-api-v1-apiv1))
+- Force deregister/reactivate restricted to admins of the system's organisation (super admin: any)
+- Config upload rejects systems of another organisation (404)
+- Named rate limiters `v1-meta` and `v1-force` (force: per IP + email, also on the legacy force routes)
+- Force: deactivated accounts rejected (401); other-organisation systems answer 404
+- `GET /config-files/config-show` scoped to the caller's organisation
+- Key rotation also updates the key stored on config files, raw data and services
+- System key usable only by the system's owner, admins and members of its workspace (others: 404)
+- v1 register into a workspace requires membership (admins exempt)
+- Uploads for deregistered systems return 409 (v1 and legacy)
+- `v1-force` also capped at 30/min per IP
+- Web console masks system keys
 
 **Version 1.0** - February 28, 2026
 - Initial API release
