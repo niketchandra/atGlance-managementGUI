@@ -1748,7 +1748,20 @@ Responses are always JSON (validation errors, 404, 429) whether or not the clien
 System-scoped routes check, after the PAT:
 - either header missing: `400 {"message":"X-Atglance-System-Id and X-Atglance-System-Key headers are required"}`
 - unknown system, system without a key, wrong key, or a system of another organisation than the PAT's user: always the same `404 {"message":"System not found"}`, so the response does not reveal which systems exist
-- the PAT's user must also be the system's owner, an admin (`rbac_id` 100/101), or a member of the system's workspace; a system outside any workspace (`workspace_id` 0) is owner or admin only. Anyone else in the organisation gets the same `404`. Membership is checked on every request, so a user removed from the workspace loses access at once
+- the PAT's user must also be the system's owner, an admin (`rbac_id` 100/101), or a member of the system's workspace; a system outside any workspace (`workspace_id` 0) is owner or admin only. Anyone else in the organisation gets the same `404`. Membership is checked on every request, so a user removed from the workspace loses access at once (the owner keeps access)
+
+**Access rule for system-scoped v1 routes** (`systems/self*`, `config-files*`), in full:
+
+| Caller (same organisation as the system) | Access |
+|---|---|
+| Admin, `rbac_id` 100 or 101 | every system of the organisation, in any workspace or none, including `rotate-key`, `deregister` and `reactivate` |
+| The system's owner | always, even after leaving the system's workspace |
+| Member of the system's workspace | that workspace's systems, also while the workspace is inactive; `deregister`, `reactivate` and `rotate-key` still need owner or admin (`403`) |
+| Anyone else | `404 System not found` |
+
+A caller from another organisation always gets `404`, even as a member of the workspace the system sits in (the organisation check comes first).
+
+This intentionally differs from the web console, which scopes by workspace: an `rbac_id` 101 Admin sees only the systems of their own workspaces, and an owner sees their systems only while they are unassigned (no workspace) or in one of their workspaces. The v1 rule is wider for admins, so an org admin can operate any host of the organisation from the CLI, and it lets owners keep control of their hosts.
 - the system's status is not checked, so an inactive system can call `reactivate`
 
 Routes marked "active user" answer `403 {"message":"User is inactive"}` when the PAT's user is inactive. Every PAT route of v1 is marked so, reads included.
