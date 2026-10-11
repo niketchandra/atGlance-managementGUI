@@ -1,0 +1,327 @@
+version: "2.4"
+
+services:
+  mysql:
+    image: niketchandra/atglance-mysql:1.4
+    restart: unless-stopped
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ALLOW_EMPTY_PASSWORD: "1"
+      MYSQL_DATABASE: atglance
+      MYSQL_ROOT_HOST: "%"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "--password="]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 120s
+
+  redis:
+    image: niketchandra/atglance-redis:1.4
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    image: niketchandra/atglance-api:1.4
+    restart: unless-stopped
+    ports:
+      - "80:8000"
+    environment:
+      APP_ENV: local
+      APP_DEBUG: "false"
+      APP_URL: http://localhost
+      DB_CONNECTION: mysql
+      DB_HOST: mysql
+      DB_PORT: "3306"
+      DB_DATABASE: atglance
+      DB_USERNAME: root
+      DB_PASSWORD: ""
+      CACHE_STORE: redis
+      QUEUE_CONNECTION: redis
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+    volumes:
+      - app_storage:/app/storage
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  queue-worker:
+    image: niketchandra/atglance-queue-worker:1.4
+    restart: unless-stopped
+    working_dir: /app
+    command:
+      - php
+      - artisan
+      - queue:work
+      - redis
+      - --tries=5
+      - --backoff=30,60,120,300,600
+      - --timeout=60
+      - --sleep=3
+      - --max-jobs=1000
+      - --verbose
+    environment:
+      APP_ENV: local
+      APP_DEBUG: "false"
+      APP_URL: http://localhost
+      DB_CONNECTION: mysql
+      DB_HOST: mysql
+      DB_PORT: "3306"
+      DB_DATABASE: atglance
+      DB_USERNAME: root
+      DB_PASSWORD: ""
+      CACHE_STORE: redis
+      QUEUE_CONNECTION: redis
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+    volumes:
+      - app_storage:/app/storage
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  phpmyadmin:
+    image: niketchandra/atglance-phpmyadmin:1.4
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    environment:
+      PMA_HOST: mysql
+      PMA_PORT: "3306"
+      PMA_USER: root
+      PMA_PASSWORD: ""
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  kong:
+    image: niketchandra/atglance-kong:1.4
+    restart: unless-stopped
+    command:
+      - sh
+      - -lc
+      - |
+        cat > /tmp/kong.yml <<'KONGEOF'
+        _format_version: "3.0"
+
+        services:
+          - name: users-service
+            url: http://api:8000/api
+            routes:
+              - name: users-route
+                paths:
+                  - /users
+                strip_path: false
+                methods:
+                  - GET
+                  - POST
+                  - PUT
+                  - DELETE
+              - name: products-route
+                paths:
+                  - /products
+                strip_path: false
+                methods:
+                  - GET
+                  - POST
+                  - PUT
+                  - DELETE
+            plugins:
+              - name: rate-limiting
+                config:
+                  minute: 4
+                  policy: local
+          - name: auth-service
+            url: http://api:8000/api
+            routes:
+              - name: auth-register-route
+                paths:
+                  - /auth/register
+                strip_path: false
+                methods:
+                  - POST
+              - name: auth-login-route
+                paths:
+                  - /auth/login
+                strip_path: false
+                methods:
+                  - POST
+              - name: auth-logout-route
+                paths:
+                  - /auth/logout
+                strip_path: false
+                methods:
+                  - POST
+              - name: auth-pat-tokens-route
+                paths:
+                  - /auth/pat-tokens
+                strip_path: false
+                methods:
+                  - POST
+                  - GET
+              - name: auth-validate-token-post-route
+                paths:
+                  - /auth/validate-token
+                strip_path: false
+                methods:
+                  - POST
+              - name: auth-validate-token-get-route
+                paths:
+                  - /auth/validate-token
+                strip_path: false
+                methods:
+                  - GET
+          - name: files-service
+            url: http://api:8000/api
+            routes:
+              - name: system-register-route
+                paths:
+                  - /system-register
+                strip_path: false
+                methods:
+                  - POST
+                  - GET
+              - name: system-register-pat-route
+                paths:
+                  - /system-register/pat
+                strip_path: false
+                methods:
+                  - GET
+              - name: system-register-user-route
+                paths:
+                  - /system-register/user
+                strip_path: false
+                methods:
+                  - GET
+              - name: system-deregister-route
+                paths:
+                  - /system-deregister
+                strip_path: false
+                methods:
+                  - POST
+              - name: system-reactive-route
+                paths:
+                  - /system-reactive
+                strip_path: false
+                methods:
+                  - POST
+                  - GET
+              - name: system-deregister-force-route
+                paths:
+                  - /system-deregister-force
+                strip_path: false
+                methods:
+                  - POST
+                  - GET
+              - name: files-upload-route
+                paths:
+                  - /files/upload
+                strip_path: false
+                methods:
+                  - POST
+              - name: files-download-route
+                paths:
+                  - /files
+                strip_path: false
+                methods:
+                  - GET
+              - name: config-files-upload-route
+                paths:
+                  - /config-files/upload
+                strip_path: false
+                methods:
+                  - POST
+              - name: config-files-list-route
+                paths:
+                  - /config-files
+                strip_path: false
+                methods:
+                  - GET
+              - name: config-files-download-route
+                paths:
+                  - /config-files/
+                strip_path: false
+                methods:
+                  - GET
+                  - DELETE
+              - name: services-list-route
+                paths:
+                  - /services
+                strip_path: false
+                methods:
+                  - GET
+              - name: services-create-route
+                paths:
+                  - /services
+                strip_path: false
+                methods:
+                  - POST
+              - name: services-show-route
+                paths:
+                  - /services/
+                strip_path: false
+                methods:
+                  - GET
+
+          - name: force-deregister-api-prefix-service
+            url: http://api:8000
+            routes:
+              - name: force-deregister-api-prefix-route
+                paths:
+                  - /api/system-deregister-force
+                strip_path: false
+                methods:
+                  - POST
+                  - GET
+
+          - name: force-reactivate-api-prefix-service
+            url: http://api:8000
+            routes:
+              - name: force-reactivate-api-prefix-route
+                paths:
+                  - /api/system-reactivate-force
+                strip_path: false
+                methods:
+                  - POST
+                  - GET
+
+          - name: reactive-api-prefix-service
+            url: http://api:8000
+            routes:
+              - name: reactive-api-prefix-route
+                paths:
+                  - /api/system-reactive
+                strip_path: false
+                methods:
+                  - POST
+                  - GET
+        KONGEOF
+        exec /docker-entrypoint.sh kong docker-start
+    environment:
+      KONG_DATABASE: "off"
+      KONG_DECLARATIVE_CONFIG: /tmp/kong.yml
+      KONG_PROXY_LISTEN: 0.0.0.0:8002
+      KONG_ADMIN_LISTEN: 0.0.0.0:8001
+    ports:
+      - "8002:8002"
+      - "8001:8001"
+    depends_on:
+      - api
+
+volumes:
+  mysql_data:
+  app_storage:

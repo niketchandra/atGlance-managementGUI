@@ -43,9 +43,15 @@ return Application::configure(basePath: dirname(__DIR__))
             'active.user' => \App\Http\Middleware\EnsureUserIsActive::class,
             'profile.completed' => \App\Http\Middleware\EnsureProfileSetupComplete::class,
             'app.installed' => \App\Http\Middleware\EnsureApplicationInstalled::class,
+            'atglance.system' => \App\Http\Middleware\AuthenticateSystemKey::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
+        // The CLI v2 API always answers JSON (validation, 404, 429), Accept header or not.
+        $exceptions->shouldRenderJsonWhen(
+            fn (\Illuminate\Http\Request $request) => $request->is('api/v1/*') || $request->expectsJson()
+        );
+
         $exceptions->respond(function (Response $response) {
             if ($response->getStatusCode() === 419) {
                 return redirect()->route('home');

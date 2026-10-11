@@ -8,15 +8,18 @@ use App\Models\PatToken;
 use App\Models\SystemRegister;
 use App\Models\User;
 use App\Models\Workspace;
+use App\Support\ActivityRecorder;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 
 class SystemRegisterController extends Controller
 {
     /**
      * Require either password or PIN for sensitive system state changes.
+     * Returns the error response, or null when the credentials are valid.
      */
-    private function validatePasswordOrPin(Request $request)
+    public function validatePasswordOrPin(Request $request)
     {
         $user = $request->user();
 
@@ -72,11 +75,16 @@ class SystemRegisterController extends Controller
             ], 422)];
         }
 
+        $invalid = [null, response()->json([
+            'message' => 'Invalid credentials',
+        ], 401)];
+
         $user = User::where('email', $email)->first();
         if (!$user) {
-            return [null, response()->json([
-                'message' => 'Invalid credentials',
-            ], 401)];
+            // Same bcrypt work as for a real user, so timing does not reveal unknown emails.
+            Hash::check($password !== '' ? $password : $pin, self::DUMMY_HASH);
+
+            return $invalid;
         }
 
         $passwordHash = $user->password_hash ?? $user->password;
@@ -86,12 +94,50 @@ class SystemRegisterController extends Controller
         $pinValid = $pin !== '' && !empty($pinHash) && Hash::check($pin, $pinHash);
 
         if (!$passwordValid && !$pinValid) {
-            return [null, response()->json([
-                'message' => 'Invalid credentials',
-            ], 401)];
+            return $invalid;
+        }
+
+        // A deactivated account cannot act, whatever its role.
+        if (strtolower((string) ($user->status ?? 'active')) !== 'active') {
+            return $invalid;
         }
 
         return [$user, null];
+    }
+
+    /**
+     * bcrypt hash of a throwaway string, checked when the force email is unknown.
+     */
+    private const DUMMY_HASH = '$2y$12$sRjK8Xag9ld.yaq51LPq0e2feplggq12FD2Lr5rl6DZx0dQMdBLIq';
+
+    /**
+     * Force actions are for admins only. Returns the 403 response, or null when allowed.
+     */
+    private function forbidForceActor(User $actor)
+    {
+        return $actor->isAdmin() ? null : response()->json([
+            'message' => "Only an admin of the system's organisation can force this action",
+        ], 403);
+    }
+
+    /**
+     * The system a force action targets: one of the admin's organisation (a super admin:
+     * any). Unknown ids and systems of other organisations both give null (404), so an
+     * admin cannot probe other organisations' system ids.
+     */
+    private function findForceTarget(User $actor, mixed $systemId): ?SystemRegister
+    {
+        $system = SystemRegister::find($systemId);
+
+        if ($system === null) {
+            return null;
+        }
+
+        if (!$actor->isSuperAdmin() && (int) ($system->org_id ?? 200) !== (int) ($actor->org_id ?? 200)) {
+            return null;
+        }
+
+        return $system;
     }
 
     private function logForceSystemAction(Request $request, User $actor, int $systemId, string $action): void
@@ -199,33 +245,56 @@ class SystemRegisterController extends Controller
         ]);
     }
 
-    public function store(Request $request)
+    /**
+     * Rules shared by the legacy and the /api/v1 register endpoints.
+     *
+     * @return array<string, array<int, mixed>>
+     */
+    public static function systemFieldRules(): array
     {
-        $data = $request->validate([
+        return [
             'system_name' => ['required', 'string', 'max:255'],
             'os_type' => ['required', 'string', 'max:100'],
             'ip_address' => ['required', 'string', 'max:45'],
-            'workspace_id' => [
-                'nullable',
-                'integer',
-                'min:0',
-                function (string $attribute, mixed $value, \Closure $fail): void {
-                    $workspaceId = (int) $value;
-                    if ($workspaceId > 0 && !Workspace::query()->whereKey($workspaceId)->exists()) {
-                        $fail('The selected workspace is invalid.');
-                    }
-                },
-            ],
-            'public_ip' => ['nullable', 'string', 'max:45'],
-            'public_facing' => ['nullable', 'boolean'],
-            'description' => ['nullable', 'string'],
             'distro' => ['nullable', 'string', 'max:100'],
             'version' => ['nullable', 'string', 'max:100'],
             'tags' => ['nullable', 'string', 'max:512'],
             'metadata' => ['nullable', 'string'],
-            'validation_hash' => ['nullable', 'string', 'max:255'],
-        ]);
+        ];
+    }
 
+    /**
+     * workspace_id rule for register: 0/empty means none; a positive id must be an
+     * existing workspace, and when $orgId is given, one of that organisation (null
+     * workspace org counts as 200). Legacy store passes no org (any workspace).
+     *
+     * @return array<int, mixed>
+     */
+    public static function workspaceIdRule(?int $orgId = null): array
+    {
+        return [
+            'nullable',
+            'integer',
+            'min:0',
+            function (string $attribute, mixed $value, \Closure $fail) use ($orgId): void {
+                $workspaceId = (int) $value;
+                if ($workspaceId <= 0) {
+                    return;
+                }
+                $workspace = Workspace::query()->find($workspaceId);
+                if (!$workspace || ($orgId !== null && (int) ($workspace->org_id ?? 200) !== $orgId)) {
+                    $fail('The selected workspace is invalid.');
+                }
+            },
+        ];
+    }
+
+    /**
+     * Creates a system for the PAT's user from validated $data. Shared by the legacy
+     * and the /api/v1 register endpoints. Returns the 401 response without a PAT.
+     */
+    public function createSystem(Request $request, array $data)
+    {
         $user = $request->user();
         $patToken = $request->attributes->get('patToken');
 
@@ -250,7 +319,7 @@ class SystemRegisterController extends Controller
             ? (int) $data['workspace_id']
             : (($sessionWorkspaceId !== null && $sessionWorkspaceId > 0) ? $sessionWorkspaceId : 0);
 
-        $system = SystemRegister::create([
+        return SystemRegister::create([
             'pat_token_id' => $patToken->id,
             'user_id' => $user->id,
             'org_id' => $resolvedOrgId,
@@ -267,6 +336,22 @@ class SystemRegisterController extends Controller
             'metadata' => $data['metadata'] ?? null,
             'validation_hash' => $data['validation_hash'] ?? null,
         ]);
+    }
+
+    public function store(Request $request)
+    {
+        $data = $request->validate(self::systemFieldRules() + [
+            'workspace_id' => self::workspaceIdRule(),
+            'public_ip' => ['nullable', 'string', 'max:45'],
+            'public_facing' => ['nullable', 'boolean'],
+            'description' => ['nullable', 'string'],
+            'validation_hash' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        $system = $this->createSystem($request, $data);
+        if (!$system instanceof SystemRegister) {
+            return $system;
+        }
 
         return response()->json([
             'message' => 'System registered successfully',
@@ -333,7 +418,14 @@ class SystemRegisterController extends Controller
             ], 403);
         }
 
-        // Update the status to inactive
+        return $this->deregisterSystem($system);
+    }
+
+    /**
+     * Sets the system inactive. Shared by the legacy and the /api/v1 routes.
+     */
+    public function deregisterSystem(SystemRegister $system)
+    {
         $system->status = 'inactive';
         $system->save();
 
@@ -345,8 +437,77 @@ class SystemRegisterController extends Controller
     }
 
     /**
-     * Force deregister any system - change status to inactive
-     * Requires bearer token authentication
+     * Sets the system active (200 with a message when it already is). Shared by the
+     * legacy and the /api/v1 routes.
+     */
+    public function reactivateSystem(SystemRegister $system)
+    {
+        if ($system->status === 'active') {
+            return response()->json([
+                'message' => 'System is already active',
+                'system_id' => $system->id,
+                'status' => $system->status,
+            ], 200);
+        }
+
+        $system->status = 'active';
+        $system->save();
+
+        return response()->json([
+            'message' => 'System reactivated successfully',
+            'system_id' => $system->id,
+            'status' => $system->status,
+        ], 200);
+    }
+
+    /**
+     * Who may change a system from the host (/api/v1/systems/self/*): its owner, or an
+     * admin of the system's organisation.
+     */
+    public function canManageSystem(User $user, SystemRegister $system): bool
+    {
+        if ((int) $system->user_id === (int) $user->id) {
+            return true;
+        }
+
+        return $user->isAdmin() && (int) ($system->org_id ?? 200) === (int) ($user->org_id ?? 200);
+    }
+
+    /**
+     * Replaces the system's key (validation_hash) and records it in the activity log.
+     */
+    public function rotateSystemKey(SystemRegister $system, string $newKey, User $actor): void
+    {
+        DB::transaction(function () use ($system, $newKey): void {
+            $oldKey = (string) $system->validation_hash;
+
+            // Copies of the key stored with this system's backups and services.
+            foreach (['configuration_files', 'raw_data'] as $table) {
+                DB::table($table)
+                    ->where('system_register_id', $system->id)
+                    ->where('validation_hash', $oldKey)
+                    ->update(['validation_hash' => $newKey]);
+            }
+            DB::table('services')->where('system_id', $system->id)->update(['system_hash' => $newKey]);
+
+            $system->validation_hash = $newKey;
+            $system->save();
+        });
+
+        ActivityRecorder::record(
+            (int) $actor->id,
+            'system.key_rotated',
+            'Rotated the key of system ' . $system->system_name,
+            ActivityRecorder::SUCCESS,
+            null,
+            $system->workspace_id ? (int) $system->workspace_id : null,
+            (int) $system->id,
+        );
+    }
+
+    /**
+     * Force deregister a system - change status to inactive
+     * No bearer token; an admin of the system's organisation signs in with email + password/pin
      */
     public function deregisterForce(Request $request)
     {
@@ -361,13 +522,25 @@ class SystemRegisterController extends Controller
             ], 400);
         }
 
+        return $this->forceDeregister($request, $systemId);
+    }
+
+    /**
+     * Force deregister by an admin of the system's organisation, identified by
+     * email + password/pin. Shared by the legacy and the /api/v1 routes.
+     */
+    public function forceDeregister(Request $request, mixed $systemId)
+    {
         [$actor, $errorResponse] = $this->resolveForceActor($request);
         if ($errorResponse) {
             return $errorResponse;
         }
-        
-        // Find the system by ID
-        $system = SystemRegister::find($systemId);
+
+        if ($forbidden = $this->forbidForceActor($actor)) {
+            return $forbidden;
+        }
+
+        $system = $this->findForceTarget($actor, $systemId);
 
         if (!$system) {
             return response()->json([
@@ -375,7 +548,6 @@ class SystemRegisterController extends Controller
             ], 404);
         }
 
-        // Force deregister - no ownership check required
         $system->status = 'inactive';
         $system->save();
 
@@ -430,29 +602,12 @@ class SystemRegisterController extends Controller
             ], 403);
         }
 
-        // Check if system is already active
-        if ($system->status === 'active') {
-            return response()->json([
-                'message' => 'System is already active',
-                'system_id' => $system->id,
-                'status' => $system->status,
-            ], 200);
-        }
-
-        // Update the status to active
-        $system->status = 'active';
-        $system->save();
-
-        return response()->json([
-            'message' => 'System reactivated successfully',
-            'system_id' => $system->id,
-            'status' => $system->status,
-        ], 200);
+        return $this->reactivateSystem($system);
     }
 
     /**
      * Force reactivate any system - change status from inactive to active
-     * ADMIN-LEVEL endpoint: requires session bearer token, no ownership check
+     * ADMIN-LEVEL endpoint: no bearer token; an admin of the system's organisation signs in with email + password/pin
      */
     public function reactiveForce(Request $request)
     {
@@ -467,13 +622,25 @@ class SystemRegisterController extends Controller
             ], 400);
         }
 
+        return $this->forceReactivate($request, $systemId);
+    }
+
+    /**
+     * Force reactivate by an admin of the system's organisation, identified by
+     * email + password/pin. Shared by the legacy and the /api/v1 routes.
+     */
+    public function forceReactivate(Request $request, mixed $systemId)
+    {
         [$actor, $errorResponse] = $this->resolveForceActor($request);
         if ($errorResponse) {
             return $errorResponse;
         }
-        
-        // Find the system by ID
-        $system = SystemRegister::find($systemId);
+
+        if ($forbidden = $this->forbidForceActor($actor)) {
+            return $forbidden;
+        }
+
+        $system = $this->findForceTarget($actor, $systemId);
 
         if (!$system) {
             return response()->json([
@@ -492,7 +659,6 @@ class SystemRegisterController extends Controller
             ], 200);
         }
 
-        // Force reactivate - no ownership check required
         $system->status = 'active';
         $system->save();
 

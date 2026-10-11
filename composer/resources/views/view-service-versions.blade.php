@@ -80,11 +80,7 @@
                             <td style="padding: 14px 12px; color: var(--ag-muted); white-space: nowrap;">{{ \App\Support\UserPreferences::datetime($version->created_at) }}</td>
                             <td style="padding: 14px 12px; white-space: nowrap;">
                                 @if($version->validation_hash)
-                                    <code id="version-hash-value-{{ $version->id }}" title="{{ $version->validation_hash }}" style="font-size: 12px; color: var(--ag-muted);">{{ \Illuminate\Support\Str::limit($version->validation_hash, 10, '…') }}</code>
-                                    <span style="display: none;" id="version-hash-full-{{ $version->id }}">{{ $version->validation_hash }}</span>
-                                    <button type="button" class="ag-btn ag-btn--ghost" onclick="copyHashById('version-hash-full-{{ $version->id }}', this)" style="padding: 2px 8px; font-size: 11px; margin-left: 4px;" title="Copy hash">
-                                        <i class="fas fa-copy"></i>
-                                    </button>
+                                    <code title="System key (only the last 4 characters are shown)" style="font-size: 12px; color: var(--ag-muted);">{{ \App\Support\SecretMask::key($version->validation_hash) }}</code>
                                 @else
                                     <span style="color: var(--ag-subtle);">-</span>
                                 @endif
@@ -104,62 +100,4 @@
         </div>
     @endif
 </div>
-
-<script>
-function toggleHash(contentId, linkEl) {
-    const content = document.getElementById(contentId);
-    if (!content) {
-        return;
-    }
-
-    const isHidden = content.style.display === 'none' || content.style.display === '';
-    content.style.display = isHidden ? 'block' : 'none';
-    linkEl.textContent = isHidden ? 'Hide hash' : 'Show hash';
-}
-
-function copyHashById(hashElementId, button) {
-    const hashElement = document.getElementById(hashElementId);
-    if (!hashElement) {
-        return;
-    }
-
-    const text = hashElement.textContent || '';
-
-    // Create a temporary textarea element
-    const textarea = document.createElement('textarea');
-    textarea.value = text;
-    textarea.style.position = 'fixed';
-    textarea.style.opacity = '0';
-    document.body.appendChild(textarea);
-    
-    // Select and copy the text
-    textarea.select();
-    textarea.setSelectionRange(0, 99999); // For mobile devices
-    
-    try {
-        document.execCommand('copy');
-        // Change button text to show success
-        const originalHTML = button.innerHTML;
-        button.innerHTML = '<i class="fas fa-check"></i> Copied!';
-        button.style.background = '#1fa874';
-        
-        // Reset button after 2 seconds
-        setTimeout(() => {
-            button.innerHTML = originalHTML;
-            button.style.background = '';
-        }, 2000);
-    } catch (err) {
-        console.error('Failed to copy:', err);
-        button.innerHTML = '<i class="fas fa-times"></i> Failed';
-        button.style.background = '#e45757';
-        
-        setTimeout(() => {
-            button.innerHTML = '<i class="fas fa-copy"></i> Copy';
-            button.style.background = '';
-        }, 2000);
-    } finally {
-        document.body.removeChild(textarea);
-    }
-}
-</script>
 @endsection

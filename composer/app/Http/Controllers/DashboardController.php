@@ -229,7 +229,7 @@ class DashboardController extends Controller
         }
 
         if ($request->filled('hash')) {
-            $query->where('cf.validation_hash', 'like', '%' . $request->hash . '%');
+            $this->filterByExactKey($query, 'cf.validation_hash', (string) $request->hash);
         }
 
         $items = $query->orderByDesc('cf.created_at')
@@ -239,6 +239,23 @@ class DashboardController extends Controller
         $aiStatus = $this->latestAiStatus('cf.id', $items->pluck('id')->all());
 
         return view('configuration-backups', compact('items', 'aiStatus'));
+    }
+
+    /**
+     * System keys are shown masked, so the search must not reveal them piece by piece:
+     * only the full key matches, and an input under 12 characters matches nothing.
+     */
+    private function filterByExactKey($query, string $column, string $value): void
+    {
+        $value = trim($value);
+
+        if (mb_strlen($value) < 12) {
+            $query->whereRaw('1 = 0');
+
+            return;
+        }
+
+        $query->where($column, '=', $value);
     }
 
     public function systemsRegistered(Request $request)
@@ -278,7 +295,7 @@ class DashboardController extends Controller
         }
 
         if ($request->filled('hash')) {
-            $query->where('sr.validation_hash', 'like', '%' . $request->hash . '%');
+            $this->filterByExactKey($query, 'sr.validation_hash', (string) $request->hash);
         }
 
         $items = $query->orderByDesc('sr.created_at')

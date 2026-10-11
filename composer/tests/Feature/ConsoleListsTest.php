@@ -133,6 +133,53 @@ class ConsoleListsTest extends TestCase
             ->assertDontSee('pi-beta');
     }
 
+    /**
+     * The masked key must not be recoverable by searching for parts of it: the hash
+     * filter matches the full key only (inputs under 12 characters match nothing).
+     */
+    public function test_systems_registered_hash_filter_matches_the_full_key_only(): void
+    {
+        $owner = $this->makeUser('owner@example.test');
+        $this->makeSystem(900001, $owner, 'pi-alpha');
+        $this->makeSystem(900002, $owner, 'pi-beta');
+        $key = 'alpha-key-0123456789abcdef0123456789';
+        DB::table('system_register')->where('id', 900001)->update(['validation_hash' => $key]);
+
+        $this->actingAs($owner)->get(route('systems-registered', ['hash' => $key]))
+            ->assertOk()->assertSee('pi-alpha')->assertDontSee('pi-beta');
+
+        foreach ([substr($key, 0, 20), substr($key, 0, 11), 'alpha', substr($key, 5)] as $partial) {
+            $this->actingAs($owner)->get(route('systems-registered', ['hash' => $partial]))
+                ->assertOk()->assertDontSee('pi-alpha')->assertDontSee('pi-beta');
+        }
+
+        // Other filters are unchanged (still partial).
+        $this->actingAs($owner)->get(route('systems-registered', ['name' => 'alph']))
+            ->assertOk()->assertSee('pi-alpha')->assertDontSee('pi-beta');
+    }
+
+    public function test_configuration_backups_hash_filter_matches_the_full_key_only(): void
+    {
+        $owner = $this->makeUser('owner@example.test');
+        $this->makeSystem(900001, $owner, 'pi-alpha');
+        $this->makeSystem(900002, $owner, 'pi-beta');
+        $this->makeConfig($owner, 900001, 'ssh', 'v1');
+        $this->makeConfig($owner, 900002, 'cron', 'v1');
+        $key = 'alpha-key-0123456789abcdef0123456789';
+        DB::table('configuration_files')->where('system_register_id', 900001)->update(['validation_hash' => $key]);
+
+        $this->actingAs($owner)->get(route('configuration-backups', ['hash' => $key]))
+            ->assertOk()->assertSee('pi-alpha')->assertDontSee('pi-beta');
+
+        foreach ([substr($key, 0, 20), substr($key, 0, 11), substr($key, -12)] as $partial) {
+            $this->actingAs($owner)->get(route('configuration-backups', ['hash' => $partial]))
+                ->assertOk()->assertDontSee('pi-alpha')->assertDontSee('pi-beta');
+        }
+
+        $this->actingAs($owner)->get(route('configuration-backups', ['service_name' => 'cro']))
+            ->assertOk()->assertSee('pi-beta')->assertDontSee('pi-alpha');
+    }
+
     public function test_settings_page_has_no_billing_tab(): void
     {
         $this->actingAsRole(102);
