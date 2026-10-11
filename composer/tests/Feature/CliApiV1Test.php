@@ -286,6 +286,7 @@ class CliApiV1Test extends TestCase
     public function test_register_stores_the_key_and_never_echoes_it(): void
     {
         $user = $this->user('me@example.test');
+        $this->workspace->addUser($user->id, false);
 
         $response = $this->postJson('/api/v1/systems', [
             'system_name' => 'web-02',
@@ -416,6 +417,7 @@ class CliApiV1Test extends TestCase
         $owner = $this->user('owner@example.test');
         $admin = $this->user('admin@example.test', 101);
         $teammate = $this->user('mate@example.test');
+        $this->workspace->addUser($teammate->id, false);
         $system = $this->system($owner);
 
         $this->postJson('/api/v1/systems/self/deregister', ['password' => 'secret-pass'], $this->pat($teammate) + $this->systemHeaders($system))
@@ -450,6 +452,7 @@ class CliApiV1Test extends TestCase
     {
         $owner = $this->user('owner@example.test');
         $teammate = $this->user('mate@example.test');
+        $this->workspace->addUser($teammate->id, false);
         $system = $this->system($owner);
         $headers = $this->pat($owner) + $this->systemHeaders($system);
 
@@ -574,6 +577,7 @@ class CliApiV1Test extends TestCase
     {
         $owner = $this->user('owner@example.test');
         $teammate = $this->user('mate@example.test');
+        $this->workspace->addUser($teammate->id, false);
         $system = $this->system($owner);
 
         $this->post('/api/v1/config-files', ['file' => $this->configFile(), 'service_name' => 'ssh'], $this->pat($teammate) + $this->systemHeaders($system) + ['Accept' => 'application/json'])
@@ -756,5 +760,85 @@ class CliApiV1Test extends TestCase
         $disposition = $this->get('/api/v1/config-files/' . $fileId, $headers)->assertOk()->headers->get('Content-Disposition');
 
         $this->assertSame("attachment; filename=we_irdname-e.conf; filename*=utf-8''we%22irdname-%C3%A9.conf", $disposition);
+    }
+
+    // ---------------------------------------------------------------- round 3: system key scope
+
+    /**
+     * Read, list and upload as $user with the system's key; returns the three status codes.
+     *
+     * @return array{0:int,1:int,2:int}
+     */
+    private function systemCallStatuses(User $user, SystemRegister $system): array
+    {
+        $headers = $this->pat($user) + $this->systemHeaders($system) + ['Accept' => 'application/json'];
+
+        return [
+            $this->getJson('/api/v1/systems/self', $headers)->status(),
+            $this->getJson('/api/v1/config-files', $headers)->status(),
+            $this->post('/api/v1/config-files', ['file' => $this->configFile(), 'service_name' => 'ssh'], $headers)->status(),
+        ];
+    }
+
+    public function test_same_org_non_member_cannot_use_the_system_key(): void
+    {
+        $owner = $this->user('owner@example.test');
+        $system = $this->system($owner);
+        $outsider = $this->user('outsider@example.test');
+
+        $this->assertSame([404, 404, 404], $this->systemCallStatuses($outsider, $system));
+        $this->getJson('/api/v1/systems/self', $this->pat($outsider) + $this->systemHeaders($system))
+            ->assertExactJson(['message' => 'System not found']);
+        $this->assertSame(0, ConfigurationFile::count());
+    }
+
+    public function test_owner_workspace_member_and_admin_can_use_the_system_key(): void
+    {
+        $owner = $this->user('owner@example.test');
+        $system = $this->system($owner);
+        $member = $this->user('member@example.test');
+        $this->workspace->addUser($member->id, false);
+        $admin = $this->user('admin@example.test', 101);
+
+        $this->assertSame([200, 200, 201], $this->systemCallStatuses($owner, $system));
+        $this->assertSame([200, 200, 201], $this->systemCallStatuses($member, $system));
+        $this->assertSame([200, 200, 201], $this->systemCallStatuses($admin, $system));
+    }
+
+    public function test_system_without_workspace_is_owner_or_admin_only(): void
+    {
+        $owner = $this->user('owner@example.test');
+        $system = $this->system($owner, ['workspace_id' => 0]);
+        $member = $this->user('member@example.test');
+        $this->workspace->addUser($member->id, false);
+
+        $this->assertSame([404, 404, 404], $this->systemCallStatuses($member, $system));
+        $this->assertSame(200, $this->getJson('/api/v1/systems/self', $this->pat($owner) + $this->systemHeaders($system))->status());
+        $this->assertSame(200, $this->getJson('/api/v1/systems/self', $this->pat($this->user('admin@example.test', 101)) + $this->systemHeaders($system))->status());
+    }
+
+    public function test_removed_workspace_member_loses_access_immediately(): void
+    {
+        $owner = $this->user('owner@example.test');
+        $system = $this->system($owner);
+        $member = $this->user('member@example.test');
+        $this->workspace->addUser($member->id, false);
+        $headers = $this->pat($member) + $this->systemHeaders($system);
+
+        $this->getJson('/api/v1/systems/self', $headers)->assertOk();
+        $this->workspace->removeUser($member->id);
+        $this->getJson('/api/v1/systems/self', $headers)->assertNotFound()->assertExactJson(['message' => 'System not found']);
+    }
+
+    public function test_register_into_a_workspace_needs_membership_or_admin(): void
+    {
+        $body = ['system_name' => 'web-02', 'os_type' => 'linux', 'ip_address' => '10.0.0.6', 'system_key' => self::KEY, 'workspace_id' => $this->workspace->id];
+
+        $this->postJson('/api/v1/systems', $body, $this->pat($this->user('outsider@example.test')))
+            ->assertStatus(422)->assertJsonValidationErrors('workspace_id');
+        $this->postJson('/api/v1/systems', $body, $this->pat($this->user('admin@example.test', 101)))
+            ->assertCreated();
+        $this->postJson('/api/v1/systems', ['workspace_id' => 0] + $body, $this->pat($this->user('plain@example.test')))
+            ->assertCreated();
     }
 }

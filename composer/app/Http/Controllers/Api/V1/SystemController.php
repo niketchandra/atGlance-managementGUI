@@ -21,10 +21,19 @@ class SystemController extends Controller
 
     public function store(Request $request): JsonResponse
     {
-        $orgId = (int) ($request->user()->org_id ?? 200);
+        $user = $request->user();
+        $orgId = (int) ($user->org_id ?? 200);
 
         $data = $request->validate(SystemRegisterController::systemFieldRules() + [
-            'workspace_id' => SystemRegisterController::workspaceIdRule($orgId),
+            // A workspace of the user's org, and one the user is a member of (admins: any).
+            'workspace_id' => array_merge(SystemRegisterController::workspaceIdRule($orgId), [
+                function (string $attribute, mixed $value, \Closure $fail) use ($user): void {
+                    $workspaceId = (int) $value;
+                    if ($workspaceId > 0 && !$user->isAdmin() && !$user->workspaces()->whereKey($workspaceId)->exists()) {
+                        $fail('The selected workspace is invalid.');
+                    }
+                },
+            ]),
             'system_key' => ['required', 'string', 'min:32', 'max:255'],
         ]);
 
