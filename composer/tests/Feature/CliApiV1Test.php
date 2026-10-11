@@ -645,4 +645,38 @@ class CliApiV1Test extends TestCase
         $this->postJson('/api/v1/systems/' . $system->id . '/deregister-force', ['email' => 'admin2@example.test', 'password' => 'secret-pass'])
             ->assertOk();
     }
+
+    // ---------------------------------------------------------------- fix round: inactive users on reads, long ids
+
+    public function test_inactive_user_cannot_read_system_or_config_files(): void
+    {
+        $owner = $this->user('owner@example.test');
+        $system = $this->system($owner);
+        $fileId = $this->post('/api/v1/config-files', ['file' => $this->configFile(), 'service_name' => 'ssh'], $this->pat($owner) + $this->systemHeaders($system) + ['Accept' => 'application/json'])
+            ->assertCreated()->json('file.id');
+
+        $gone = $this->user('gone@example.test', 102, 200, 'inactive');
+        $headers = $this->pat($gone) + $this->systemHeaders($system);
+
+        $this->getJson('/api/v1/systems/self', $headers)->assertForbidden()->assertExactJson(['message' => 'User is inactive']);
+        $this->getJson('/api/v1/config-files', $headers)->assertForbidden()->assertExactJson(['message' => 'User is inactive']);
+        $this->get('/api/v1/config-files/' . $fileId, $headers)->assertForbidden()->assertExactJson(['message' => 'User is inactive']);
+    }
+
+    public function test_ids_longer_than_18_digits_are_not_found(): void
+    {
+        $owner = $this->user('owner@example.test');
+        $admin = $this->user('admin@example.test', 101);
+        $system = $this->system($owner);
+        $long = str_repeat('9', 25);
+
+        $this->postJson('/api/v1/systems/' . $long . '/deregister-force', ['email' => $admin->email, 'password' => 'secret-pass'])
+            ->assertNotFound()->assertJsonStructure(['message']);
+        $this->post('/api/v1/systems/' . $long . '/reactivate-force', ['email' => $admin->email, 'password' => 'secret-pass'])
+            ->assertNotFound()->assertJsonStructure(['message']);
+        $this->get('/api/v1/config-files/' . $long, $this->pat($owner) + $this->systemHeaders($system))
+            ->assertNotFound()->assertJsonStructure(['message']);
+        $this->getJson('/api/v1/systems/self', $this->pat($owner) + ['X-Atglance-System-Id' => $long, 'X-Atglance-System-Key' => self::KEY])
+            ->assertNotFound()->assertExactJson(['message' => 'System not found']);
+    }
 }

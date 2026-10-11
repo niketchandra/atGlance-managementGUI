@@ -94,23 +94,21 @@ Route::prefix('v1')->name('v1.')->group(function () {
     Route::get('/whoami', [V1MetaController::class, 'whoami'])->middleware(['auth.pat', 'active.user'])->name('whoami');
 
     Route::post('/systems', [V1SystemController::class, 'store'])->middleware(['auth.pat', 'active.user'])->name('systems.store');
-    Route::get('/systems/self', [V1SystemController::class, 'show'])->middleware(['auth.pat', 'atglance.system'])->name('systems.self');
 
+    // Ids are at most 18 digits (fits a signed 64-bit integer); longer ones are a 404.
     Route::middleware(['auth.pat', 'active.user', 'atglance.system'])->group(function () {
+        Route::get('/systems/self', [V1SystemController::class, 'show'])->name('systems.self');
         Route::post('/systems/self/deregister', [V1SystemController::class, 'deregister'])->name('systems.deregister');
         Route::post('/systems/self/reactivate', [V1SystemController::class, 'reactivate'])->name('systems.reactivate');
         Route::post('/systems/self/rotate-key', [V1SystemController::class, 'rotateKey'])->name('systems.rotate-key');
         Route::post('/config-files', [V1ConfigFileController::class, 'store'])->name('config-files.store');
+        Route::get('/config-files', [V1ConfigFileController::class, 'index'])->name('config-files.index');
+        Route::get('/config-files/{id}', [V1ConfigFileController::class, 'show'])->where('id', '[0-9]{1,18}')->name('config-files.show');
     });
 
     // No bearer token: an admin of the system's organisation signs in with email + password/pin.
     Route::middleware('throttle:v1-force')->group(function () {
-        Route::post('/systems/{id}/deregister-force', [V1SystemController::class, 'deregisterForce'])->whereNumber('id')->name('systems.deregister-force');
-        Route::post('/systems/{id}/reactivate-force', [V1SystemController::class, 'reactivateForce'])->whereNumber('id')->name('systems.reactivate-force');
-    });
-
-    Route::middleware(['auth.pat', 'atglance.system'])->group(function () {
-        Route::get('/config-files', [V1ConfigFileController::class, 'index'])->name('config-files.index');
-        Route::get('/config-files/{id}', [V1ConfigFileController::class, 'show'])->whereNumber('id')->name('config-files.show');
+        Route::post('/systems/{id}/deregister-force', [V1SystemController::class, 'deregisterForce'])->where('id', '[0-9]{1,18}')->name('systems.deregister-force');
+        Route::post('/systems/{id}/reactivate-force', [V1SystemController::class, 'reactivateForce'])->where('id', '[0-9]{1,18}')->name('systems.reactivate-force');
     });
 });

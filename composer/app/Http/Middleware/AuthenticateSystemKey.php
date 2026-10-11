@@ -28,7 +28,7 @@ class AuthenticateSystemKey
         }
 
         $user = $request->user();
-        $system = ctype_digit($systemId) ? SystemRegister::find((int) $systemId) : null;
+        $system = preg_match('/^[0-9]{1,18}$/', $systemId) ? SystemRegister::find((int) $systemId) : null;
 
         if (
             $user === null
