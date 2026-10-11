@@ -1,32 +1,11 @@
 _format_version: "3.0"
 
 services:
-  - name: users-service
-    url: http://app:8000/api
-    routes:
-      - name: users-route
-        paths:
-          - /users
-        strip_path: false
-        methods:
-          - GET
-          - POST
-          - PUT
-          - DELETE
-      - name: products-route
-        paths:
-          - /products
-        strip_path: false
-        methods:
-          - GET
-          - POST
-          - PUT
-          - DELETE
-    plugins:
-      - name: rate-limiting
-        config:
-          minute: 4
-          policy: local
+  # User management is not a machine-client function: it is handled by the web
+  # console (session auth) on :8000, never by the atglance CLI. The /users and
+  # /products routes were removed from the public gateway so the user API is not
+  # reachable on port 8002. The API itself is also behind auth.pat + an
+  # admin/org authorization check (routes/api.php, Api\UserController).
   - name: auth-service
     url: http://app:8000/api
     routes:

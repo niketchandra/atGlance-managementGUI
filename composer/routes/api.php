@@ -26,7 +26,9 @@ Route::get('/auth/validate-token', [TokenValidationController::class, 'validateF
 Route::post('/auth/pat-tokens', [PatTokenController::class, 'store'])->middleware('auth.session');
 Route::get('/auth/pat-tokens', [PatTokenController::class, 'index'])->middleware('auth.session');
 
-Route::apiResource('users', UserController::class);
+// User management: admin PAT only, scoped to the caller's org (authorization in
+// Api\UserController). Removed from the Kong gateway (not a machine-client route).
+Route::apiResource('users', UserController::class)->middleware(['auth.pat', 'active.user']);
 
 // File operations - require PAT token only (permanent token with atgla- prefix)
 Route::post('/files/upload', [FileController::class, 'upload'])->middleware('auth.pat');
