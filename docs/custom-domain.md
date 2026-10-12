@@ -119,6 +119,8 @@ one machine first, add the hosts-file line the page shows.
   default, so no client can forge its IP with `X-Forwarded-For`. A platform
   load balancer is added with `ATGLANCE_TRUSTED_PROXIES` (comma-separated
   IPs or CIDRs; it replaces the default, so keep `127.0.0.1,::1` in it).
+  API calls through Kong arrive from the gateway's container IP; to see real
+  client IPs there, see "Client IPs behind Kong" in docs/api-gateway.md.
   Redirects happen only for requests from a trusted proxy.
 - **Saving the domain applies at once.** The app reads `APP_URL` from the
   database when it boots, and saving restarts the queue worker.
