@@ -9,6 +9,7 @@ use App\Http\Controllers\Api\SystemRegisterController;
 use App\Http\Controllers\Api\TokenValidationController;
 use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\V1\ConfigFileController as V1ConfigFileController;
+use App\Http\Controllers\Api\V1\CredentialController as V1CredentialController;
 use App\Http\Controllers\Api\V1\MetaController as V1MetaController;
 use App\Http\Controllers\Api\V1\SystemController as V1SystemController;
 use App\Http\Controllers\DomainTlsController;
@@ -94,6 +95,8 @@ Route::prefix('mcp')->middleware(['auth.pat', 'throttle:120,1'])->group(function
 Route::prefix('v1')->name('v1.')->group(function () {
     Route::get('/meta', [V1MetaController::class, 'meta'])->middleware('throttle:v1-meta')->name('meta');
     Route::get('/whoami', [V1MetaController::class, 'whoami'])->middleware(['auth.pat:service', 'active.user'])->name('whoami');
+    Route::get('/credentials/status', [V1CredentialController::class, 'status'])->middleware(['auth.pat:service', 'active.user'])->name('credentials.status');
+    Route::post('/credentials/expiry-notice', [V1CredentialController::class, 'expiryNotice'])->middleware(['auth.pat:service', 'active.user', 'throttle:6,1'])->name('credentials.expiry-notice');
 
     Route::post('/systems', [V1SystemController::class, 'store'])->middleware(['auth.pat', 'active.user'])->name('systems.store');
 

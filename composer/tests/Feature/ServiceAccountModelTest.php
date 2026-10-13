@@ -71,7 +71,7 @@ class ServiceAccountModelTest extends TestCase
         $this->assertSame(365, ServiceAccountSettings::maxKeyDays());
         $this->assertSame(10, ServiceAccountSettings::orgQuota());
         $this->assertSame(5, ServiceAccountSettings::workspaceQuota());
-        $this->assertSame([14, 3], ServiceAccountSettings::noticeDays());
+        $this->assertSame([15, 7, 3, 2, 1, 0], ServiceAccountSettings::noticeDays());
         $this->assertFalse(ServiceAccountSettings::requireForRegistration());
 
         ServiceAccountSettings::save(['sa_max_key_days' => 5000, 'sa_expiry_notice_days' => '3, 30,x', 'sa_require_for_registration' => true]);

@@ -17,7 +17,7 @@ final class ServiceAccountSettings
         'sa_max_key_days' => 365,
         'sa_org_quota' => 10,
         'sa_workspace_quota' => 5,
-        'sa_expiry_notice_days' => '14,3',
+        'sa_expiry_notice_days' => '15,7,3,2,1,0',
         'sa_require_for_registration' => '0',
     ];
 
@@ -42,14 +42,12 @@ final class ServiceAccountSettings
     }
 
     /**
-     * @return list<int> days before expiry, largest first
+     * @return list<int> days before expiry, largest first; 0 is the day the key expires
      */
     public static function noticeDays(): array
     {
-        $days = array_filter(
-            array_map(fn ($part) => (int) trim($part), explode(',', (string) self::raw('sa_expiry_notice_days'))),
-            fn (int $day) => $day > 0 && $day <= 365,
-        );
+        $parts = array_filter(array_map('trim', explode(',', (string) self::raw('sa_expiry_notice_days'))), 'ctype_digit');
+        $days = array_filter(array_map('intval', $parts), fn (int $day) => $day <= 365);
         $days = array_values(array_unique($days));
         rsort($days);
 

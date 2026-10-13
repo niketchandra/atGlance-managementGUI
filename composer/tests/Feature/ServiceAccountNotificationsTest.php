@@ -94,16 +94,16 @@ class ServiceAccountNotificationsTest extends TestCase
 
         $first = app(CredentialSweep::class)->run();
         $this->assertSame(['expiring' => 3, 'expired' => 1], $first);
-        $this->assertSame(14, (int) $soon->fresh()->expiry_notified_stage);
-        $this->assertSame(3, (int) $late->fresh()->expiry_notified_stage);
+        $this->assertSame(15, (int) $soon->fresh()->expiry_notified_stage);
+        $this->assertSame(2, (int) $late->fresh()->expiry_notified_stage);
         $this->assertNotNull($expiredKey->fresh()->expired_notified_at);
 
         $this->assertSame(['expiring' => 0, 'expired' => 0], app(CredentialSweep::class)->run());
 
-        // 8 days on: $soon has 2 days left (enters the 3-day window), $late has expired,
-        // $userKey has 5 days left (still in the 14-day window it was already told about).
+        // 8 days on: $soon has 2 days left (2-day notice), $userKey has 5 (7-day notice),
+        // $late has expired.
         $this->travel(8)->days();
-        $this->assertSame(['expiring' => 1, 'expired' => 1], app(CredentialSweep::class)->run());
+        $this->assertSame(['expiring' => 2, 'expired' => 1], app(CredentialSweep::class)->run());
     }
 
     public function test_user_keys_revoked_notice(): void

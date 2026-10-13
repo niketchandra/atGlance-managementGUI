@@ -35,6 +35,7 @@ final class NotificationEvents
     public const SERVICE_ACCOUNT_KEY_EXPIRING = 'service_account.key_expiring';
     public const SERVICE_ACCOUNT_KEY_EXPIRED = 'service_account.key_expired';
     public const SERVICE_ACCOUNT_KEY_REVOKED = 'service_account.key_revoked';
+    public const USER_KEY_EXPIRING = 'api_key.expiring';
     // One key maps to one scope, so organization-level service account events get their own keys.
     public const ORG_SERVICE_ACCOUNT_CREATED = 'organization.service_account_created';
     public const ORG_SERVICE_ACCOUNT_DISABLED = 'organization.service_account_disabled';
@@ -43,6 +44,7 @@ final class NotificationEvents
     public const ORG_SERVICE_ACCOUNT_KEY_REVOKED = 'organization.service_account_key_revoked';
     public const ORG_SERVICE_ACCOUNT_OWNER_MISSING = 'organization.service_account_owner_missing';
     public const ORG_USER_KEYS_REVOKED = 'organization.user_keys_revoked';
+    public const ORG_USER_KEY_EXPIRING = 'organization.user_key_expiring';
 
     private const EVENTS = [
         self::SYSTEM_REGISTERED => ['label' => 'System registered', 'scope' => self::SCOPE_WORKSPACE],
@@ -56,6 +58,7 @@ final class NotificationEvents
         self::SERVICE_ACCOUNT_KEY_EXPIRING => ['label' => 'Service account key expires soon', 'scope' => self::SCOPE_WORKSPACE],
         self::SERVICE_ACCOUNT_KEY_EXPIRED => ['label' => 'Service account key expired', 'scope' => self::SCOPE_WORKSPACE],
         self::SERVICE_ACCOUNT_KEY_REVOKED => ['label' => 'Service account key revoked', 'scope' => self::SCOPE_WORKSPACE],
+        self::USER_KEY_EXPIRING => ['label' => "A user's API key used by systems here expires soon", 'scope' => self::SCOPE_WORKSPACE],
         self::CONFIG_UPLOADED => ['label' => 'Config backup uploaded', 'scope' => self::SCOPE_WORKSPACE],
         self::CONFIG_UPLOAD_FAILED => ['label' => 'Config backup upload failed', 'scope' => self::SCOPE_WORKSPACE],
         self::AI_ISSUES_FOUND => ['label' => 'AI check found errors or warnings', 'scope' => self::SCOPE_WORKSPACE],
@@ -72,6 +75,7 @@ final class NotificationEvents
         self::ORG_SERVICE_ACCOUNT_KEY_REVOKED => ['label' => 'Organization service account key revoked', 'scope' => self::SCOPE_ORGANIZATION],
         self::ORG_SERVICE_ACCOUNT_OWNER_MISSING => ['label' => 'Service account has no owner', 'scope' => self::SCOPE_ORGANIZATION],
         self::ORG_USER_KEYS_REVOKED => ['label' => "A user's API keys were revoked", 'scope' => self::SCOPE_ORGANIZATION],
+        self::ORG_USER_KEY_EXPIRING => ['label' => "A user's API key expires soon", 'scope' => self::SCOPE_ORGANIZATION],
     ];
 
     /**

@@ -4,16 +4,17 @@ namespace App\Services;
 
 use App\Models\PatToken;
 use App\Models\ServiceAccount;
+use App\Models\SystemRegister;
 use App\Models\User;
-use App\Support\AccountAlerts;
 use App\Support\ActivityRecorder;
 use App\Support\ServiceAccountNotices;
 use App\Support\ServiceAccountSettings;
 
 /**
- * Daily: expiry notices for person and service account keys at each notice day
- * (default 14 and 3 days before), and one "expired" notice per key. The stored
- * stage makes reruns send nothing new.
+ * Expiry notices for person and service account keys on each notice day (default 15,
+ * 7, 3, 2, 1 and 0 days before, in calendar days), and one "expired" notice per
+ * service account key. The daily sweep and the CLI's expiry-notice call share
+ * notifyIfDue(), and the stored stage makes every notice go out once.
  */
 class CredentialSweep
 {
@@ -31,19 +32,13 @@ class CredentialSweep
                 ->whereNull('revoked_at')
                 ->whereNotNull('expires_at')
                 ->where('expires_at', '>', now())
-                ->where('expires_at', '<=', now()->addDays($windows[0]))
+                ->where('expires_at', '<=', now()->startOfDay()->addDays($windows[0] + 1))
                 ->get();
 
             foreach ($keys as $key) {
-                $daysLeft = (int) ceil(now()->diffInHours($key->expires_at) / 24);
-                $stage = $this->smallestWindowCovering($windows, $daysLeft);
-                if ($stage === null || ($key->expiry_notified_stage !== null && (int) $key->expiry_notified_stage <= $stage)) {
-                    continue;
+                if ($this->notifyIfDue($key)['sent']) {
+                    $expiring++;
                 }
-
-                $this->notifyExpiring($key);
-                $key->forceFill(['expiry_notified_stage' => $stage])->save();
-                $expiring++;
             }
         }
 
@@ -69,27 +64,63 @@ class CredentialSweep
     }
 
     /**
-     * @param list<int> $windows largest first
+     * Calendar days until the key expires: 0 on the expiry day itself.
      */
-    private function smallestWindowCovering(array $windows, int $daysLeft): ?int
+    public static function daysLeft(PatToken $key): ?int
     {
-        $covering = array_filter($windows, fn (int $window) => $daysLeft <= $window);
+        if ($key->expires_at === null) {
+            return null;
+        }
+
+        return (int) now()->startOfDay()->diffInDays($key->expires_at->copy()->startOfDay(), false);
+    }
+
+    /**
+     * The notice day the key is in (smallest notice day >= days left), or null when it is
+     * not expiring yet.
+     */
+    public static function stageFor(PatToken $key): ?int
+    {
+        $daysLeft = self::daysLeft($key);
+        if ($daysLeft === null || $daysLeft < 0) {
+            return null;
+        }
+
+        $covering = array_filter(ServiceAccountSettings::noticeDays(), fn (int $window) => $daysLeft <= $window);
 
         return $covering === [] ? null : min($covering);
     }
 
-    private function notifyExpiring(PatToken $key): void
+    /**
+     * Sends the notices for the key's current notice day unless already sent.
+     *
+     * @return array{sent: bool, stage: ?int, reason: ?string}
+     */
+    public function notifyIfDue(PatToken $key, ?SystemRegister $system = null): array
     {
+        $stage = self::stageFor($key);
+        if ($stage === null) {
+            return ['sent' => false, 'stage' => null, 'reason' => 'not_expiring'];
+        }
+
+        // Atomic claim of the stage, so the sweep and a CLI call cannot both send it.
+        $claimed = PatToken::query()
+            ->whereKey($key->id)
+            ->where(fn ($query) => $query->whereNull('expiry_notified_stage')->orWhere('expiry_notified_stage', '>', $stage))
+            ->update(['expiry_notified_stage' => $stage]);
+        if ($claimed === 0) {
+            return ['sent' => false, 'stage' => $stage, 'reason' => 'already_sent'];
+        }
+        $key->expiry_notified_stage = $stage;
+
         if ($key->isServiceAccountKey()) {
             if ($account = ServiceAccount::find($key->tokenable_id)) {
-                ServiceAccountNotices::keyEvent($account, $key, 'expiring');
+                ServiceAccountNotices::keyEvent($account, $key, 'expiring', $system);
             }
-
-            return;
+        } elseif ($user = User::find($key->tokenable_id)) {
+            ServiceAccountNotices::userKeyExpiring($user, $key, $system);
         }
 
-        if ($user = User::find($key->tokenable_id)) {
-            AccountAlerts::apiKeyExpiring($user, $key);
-        }
+        return ['sent' => true, 'stage' => $stage, 'reason' => null];
     }
 }

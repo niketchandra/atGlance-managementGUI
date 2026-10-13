@@ -31,7 +31,7 @@ final class ServiceAccountNotices
         self::send($what === 'created' ? E::SERVICE_ACCOUNT_CREATED : E::SERVICE_ACCOUNT_DISABLED, (int) $account->workspace_id, $title, $facts);
     }
 
-    public static function keyEvent(ServiceAccount $account, PatToken $key, string $what): void
+    public static function keyEvent(ServiceAccount $account, PatToken $key, string $what, ?SystemRegister $system = null): void
     {
         $title = match ($what) {
             'expiring' => 'Service account key expires soon: ' . $account->name,
@@ -44,6 +44,9 @@ final class ServiceAccountNotices
         ];
         if ($what === 'revoked' && $key->revoke_reason) {
             $facts['Reason'] = (string) $key->revoke_reason;
+        }
+        if ($system) {
+            $facts['System'] = (string) $system->system_name;
         }
 
         [$orgEvent, $workspaceEvent] = match ($what) {
@@ -63,6 +66,38 @@ final class ServiceAccountNotices
         if ($what === 'expiring' && $account->owner) {
             AccountAlerts::serviceAccountKeyExpiring($account->owner, $account, $key);
         }
+    }
+
+    /**
+     * A person's key nears expiry: the person, the organization, and every workspace that
+     * has an active system registered with this key (plus the reporting system's).
+     */
+    public static function userKeyExpiring(User $user, PatToken $key, ?SystemRegister $system = null): void
+    {
+        $title = 'API key expires soon: ' . $user->email;
+        $facts = [
+            'User' => (string) $user->email,
+            'Key' => $key->name . ' (…' . ($key->last_four ?? '????') . ')',
+            'Expires' => (string) $key->expires_at?->toDateString(),
+        ];
+
+        self::send(E::ORG_USER_KEY_EXPIRING, null, $title, $facts + ($system ? ['System' => (string) $system->system_name] : []));
+
+        $systems = SystemRegister::query()
+            ->where('pat_token_id', $key->id)
+            ->where('status', 'active')
+            ->where('workspace_id', '>', 0)
+            ->get(['id', 'workspace_id', 'system_name']);
+        if ($system && (int) $system->workspace_id > 0) {
+            $systems->prepend($system);
+        }
+
+        foreach ($systems->groupBy('workspace_id') as $workspaceId => $inWorkspace) {
+            $names = $inWorkspace->pluck('system_name')->unique()->implode(', ');
+            self::send(E::USER_KEY_EXPIRING, (int) $workspaceId, $title, $facts + ['System' => (string) $names]);
+        }
+
+        AccountAlerts::apiKeyExpiring($user, $key);
     }
 
     public static function grantChanged(ServiceAccount $account, Workspace $workspace, bool $added): void
