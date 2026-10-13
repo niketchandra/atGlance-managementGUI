@@ -31,6 +31,7 @@ class ConfigurationFile extends Model
     use HasFactory;
 
     protected $fillable = [
+        'service_account_id',
         'user_id',
         'system_register_id',
         'service_id',
@@ -61,5 +62,10 @@ class ConfigurationFile extends Model
     public function service(): BelongsTo
     {
         return $this->belongsTo(Service::class, 'service_id', 'service_id');
+    }
+
+    public function serviceAccount(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(ServiceAccount::class, 'service_account_id');
     }
 }

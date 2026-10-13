@@ -22,6 +22,20 @@ class PatToken extends PersonalAccessToken
 		'status',
 		'last_used_at',
 		'expires_at',
+		'last_four',
+		'revoked_at',
+		'revoked_by_user_id',
+		'revoke_reason',
+		'expiry_notified_stage',
+		'expired_notified_at',
+	];
+
+	protected $casts = [
+		'abilities' => 'json',
+		'last_used_at' => 'datetime',
+		'expires_at' => 'datetime',
+		'revoked_at' => 'datetime',
+		'expired_notified_at' => 'datetime',
 	];
 
 	protected static function booted(): void
@@ -36,6 +50,11 @@ class PatToken extends PersonalAccessToken
 	public function tokenable(): MorphTo
 	{
 		return $this->morphTo();
+	}
+
+	public function isServiceAccountKey(): bool
+	{
+		return $this->tokenable_type === ServiceAccount::class;
 	}
 
 	public function user()

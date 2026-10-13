@@ -22,6 +22,7 @@ class SystemRegister extends Model
     protected $keyType = 'int';
 
     protected $fillable = [
+        'service_account_id',
         'id',
         'pat_token_id',
         'user_id',
@@ -150,5 +151,10 @@ class SystemRegister extends Model
                 $model->id = self::generateUniqueId();
             }
         });
+    }
+
+    public function serviceAccount(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(ServiceAccount::class, 'service_account_id');
     }
 }
