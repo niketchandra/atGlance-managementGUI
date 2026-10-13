@@ -1741,7 +1741,8 @@ Responses are always JSON (validation errors, 404, 429) whether or not the clien
 
 | Header | When | Value |
 |---|---|---|
-| `Authorization: Bearer atgla-...` | every route except `meta` and the two `*-force` routes | a PAT of the user |
+| `Authorization: Bearer atgla-...` or `atgsa-...` | every route except `meta` and the two `*-force` routes | a person's PAT (`atgla-`) or, where the table below says so, a service account key (`atgsa-`) |
+| `X-Atglance-Service-Account-Key: atgsa-...` | `POST /api/v1/systems` (optional unless an admin requires it) | the service account the new server runs as |
 | `X-Atglance-System-Id` | system-scoped routes (`systems/self*`, `config-files*`) | the system's id (from register) |
 | `X-Atglance-System-Key` | system-scoped routes | the system's key (`system_key` from register; for a host registered by 1.x, the `validation_hash` it stored) |
 
@@ -1764,7 +1765,26 @@ A caller from another organisation always gets `404`, even as a member of the wo
 This intentionally differs from the web console, which scopes by workspace: an `rbac_id` 101 Admin sees only the systems of their own workspaces, and an owner sees their systems only while they are unassigned (no workspace) or in one of their workspaces. The v1 rule is wider for admins, so an org admin can operate any host of the organisation from the CLI, and it lets owners keep control of their hosts.
 - the system's status is not checked, so an inactive system can call `reactivate`
 
-Routes marked "active user" answer `403 {"message":"User is inactive"}` when the PAT's user is inactive. Every PAT route of v1 is marked so, reads included.
+Key errors (every route that takes a key, from 2.1.2):
+- `401 {"message":"Invalid key"}`: unknown key, or a prefix that does not match the key's owner
+- `401 {"message":"Key is revoked"}` / `401 {"message":"Key has expired"}`
+- `401 {"message":"Identity is disabled"}`: the PAT's user is inactive, or the service account is disabled (this was `403 User is inactive` before 2.1.2)
+- `401 {"message":"Service account keys work only with the atglance CLI API (/api/v1)"}`: an `atgsa-` key on a route that does not take one (all 1.x routes and `/api/mcp/*`)
+
+A failed check never falls back to another identity.
+
+**Service account keys** on system-scoped routes: the system must run as that service account (`service_account_id`), and the account must have an active grant on the system's workspace; otherwise the same `404 System not found`. Each route then needs a permission on that grant, or answers `403 {"message":"Service account lacks <permission> in this workspace"}`:
+
+| Route | Permission |
+|---|---|
+| `POST /api/v1/config-files` | `configs.write` |
+| `GET /api/v1/config-files`, `GET /api/v1/config-files/{id}` | `configs.read` |
+| `POST /api/v1/systems/self/rotate-key` | `systems.rotate_key` (no password or PIN for a service account) |
+| `GET /api/v1/systems/self` | any active grant |
+
+`deregister` and `reactivate` with a service account key: `403 {"message":"Deregister and reactivate need a user key with password or PIN"}`. With a PAT they need password or PIN, and the caller must be the system's owner, an admin of its organisation, or (since 2.1.2) a workspace admin of the system's workspace, for example after the owner left. The audit log and the notification name the actor and the original owner.
+
+See [service-accounts.md](service-accounts.md) for scopes and permissions.
 
 Path ids (`{id}`) and `X-Atglance-System-Id` are 1 to 18 digits; a longer or non-numeric id is a `404`.
 
@@ -1781,17 +1801,19 @@ Behind Kong every request reaches the app from the gateway's IP unless `ATGLANCE
 | Method and path | Auth | Purpose |
 |---|---|---|
 | `GET /api/v1/meta` | none (`v1-meta`, 60/min) | API and console version |
-| `GET /api/v1/whoami` | PAT, active user | The PAT's user and token |
-| `POST /api/v1/systems` | PAT, active user | Register a system |
-| `GET /api/v1/systems/self` | PAT, active user, system | The calling system |
-| `POST /api/v1/systems/self/deregister` | PAT, active user, system | Set the system inactive |
-| `POST /api/v1/systems/self/reactivate` | PAT, active user, system | Set the system active |
-| `POST /api/v1/systems/self/rotate-key` | PAT, active user, system | Replace the system key |
+| `GET /api/v1/whoami` | PAT or service account key | The key's user or service account, and the key |
+| `GET /api/v1/credentials/status` | PAT or service account key; system headers optional | Days left before the key expires |
+| `POST /api/v1/credentials/expiry-notice` | PAT or service account key; system headers optional (6/min) | Send the key's expiry notices now |
+| `POST /api/v1/systems` | PAT, active user; optional service account key header | Register a system |
+| `GET /api/v1/systems/self` | PAT or service account key, system | The calling system |
+| `POST /api/v1/systems/self/deregister` | PAT (password or PIN), system | Set the system inactive |
+| `POST /api/v1/systems/self/reactivate` | PAT (password or PIN), system | Set the system active |
+| `POST /api/v1/systems/self/rotate-key` | PAT (password or PIN) or service account key with `systems.rotate_key`, system | Replace the system key |
 | `POST /api/v1/systems/{id}/deregister-force` | email + password/pin (`v1-force`, 10/min) | Admin force deregister |
 | `POST /api/v1/systems/{id}/reactivate-force` | email + password/pin (`v1-force`, 10/min) | Admin force reactivate |
-| `POST /api/v1/config-files` | PAT, active user, system | Upload a config backup |
-| `GET /api/v1/config-files` | PAT, active user, system | List the system's config backups |
-| `GET /api/v1/config-files/{id}` | PAT, active user, system | Download one config backup |
+| `POST /api/v1/config-files` | PAT or service account key (`configs.write`), system | Upload a config backup |
+| `GET /api/v1/config-files` | PAT or service account key (`configs.read`), system | List the system's config backups |
+| `GET /api/v1/config-files/{id}` | PAT or service account key (`configs.read`), system | Download one config backup |
 
 ### GET /api/v1/meta
 
@@ -1810,11 +1832,49 @@ curl http://localhost:8002/api/v1/whoami -H "Authorization: Bearer atgla-xPyt2Te
 ```
 ```json
 {
+  "identity_type": "user",
   "user": {"id": 1010, "name": "Jane Ops", "status": "active", "org_id": 200},
-  "token": {"id": 7, "name": "web-01 cli", "expires_at": "2099-12-31T23:59:59+00:00"}
+  "token": {"id": 7, "name": "web-01 cli", "expires_at": "2027-01-11T23:59:59+00:00"}
 }
 ```
-No email, date of birth or workspaces. Errors: `401` missing/invalid/expired PAT, `403` inactive user.
+No email, date of birth or workspaces. With a service account key:
+```json
+{
+  "identity_type": "service_account",
+  "service_account": {"id": 12, "name": "prod-backup", "scope": "workspace", "org_id": 200},
+  "workspaces": [{"id": 4, "name": "Production", "permissions": ["systems.register", "configs.write", "configs.read"]}],
+  "token": {"id": 88, "name": "fleet-a", "expires_at": "2027-01-11T00:00:00+00:00"}
+}
+```
+`workspaces` lists only active grants. Errors: the key errors above.
+
+### GET /api/v1/credentials/status
+
+For the CLI to warn before a key expires. Takes a PAT or a service account key. `X-Atglance-System-Id` and `X-Atglance-System-Key` are optional; when sent they must be valid for the key (`404 System not found` otherwise).
+
+```bash
+curl http://localhost:8002/api/v1/credentials/status -H "Authorization: Bearer atgsa-..." \
+  -H "X-Atglance-System-Id: 4057010410" -H "X-Atglance-System-Key: 3f9c2b..."
+```
+```json
+{
+  "identity_type": "service_account",
+  "key": {"id": 88, "name": "fleet-a", "last_four": "Xy12", "expires_at": "2026-10-20T00:00:00+00:00", "days_left": 7, "state": "expiring"},
+  "notice_days": [15, 7, 3, 2, 1, 0],
+  "system": {"id": 4057010410, "name": "web-01", "workspace_id": 4}
+}
+```
+`days_left` counts calendar days (0 on the expiry day). `state` is `expiring` when `days_left` is at most the largest notice day, else `active`. `system` is `null` without system headers. An expired or revoked key gets `401 Key has expired` / `Key is revoked` instead.
+
+### POST /api/v1/credentials/expiry-notice
+
+Sends the expiry notices for the calling key's current notice day, at once, if they were not sent yet (by the daily sweep or an earlier call): to the owner by email, to the organization, and to the workspaces (for a PAT: those with a server registered with it, plus the calling system's; for a service account: those it has access to). Same optional system headers as `status`; the system's name is put in the notice. Limited to 6 calls per minute.
+
+```json
+{"sent": true, "stage": 7}
+{"sent": false, "reason": "already_sent", "stage": 7}
+{"sent": false, "reason": "not_expiring"}
+```
 
 ### POST /api/v1/systems
 
@@ -1829,11 +1889,13 @@ curl -X POST http://localhost:8002/api/v1/systems \
   -H "Authorization: Bearer atgla-xPyt2TeLn3TbbalkBMN" -H "Content-Type: application/json" \
   -d '{"system_name":"web-01","os_type":"linux","ip_address":"10.0.0.5","distro":"ubuntu","version":"24.04","workspace_id":3,"system_key":"3f9c2b...64 hex chars..."}'
 ```
-Response `201` (the key is never echoed):
+To register the server as a service account (2.1.2), also send `X-Atglance-Service-Account-Key: atgsa-...`. The PAT authorizes; the service account is what the server runs as. The account must be active, of the same organisation, and have `systems.register` in `workspace_id`.
+
+Response `201` (the key is never echoed; `service_account_id` is `null` without the header):
 ```json
-{"system": {"id": 4057010410, "system_name": "web-01", "status": "active", "workspace_id": 3, "created_at": "2026-10-11T09:30:00.000000Z"}}
+{"system": {"id": 4057010410, "system_name": "web-01", "status": "active", "workspace_id": 3, "service_account_id": 12, "created_at": "2026-10-11T09:30:00.000000Z"}}
 ```
-Errors: `401` PAT, `403` inactive user, `422` validation (`system_key` missing or too short, `workspace_id` of another organisation or of a workspace the user is not in, ...).
+Errors: the key errors above (a service account key alone in `Authorization` is `401`), `401 Invalid service account key` (bad, revoked, expired, disabled or other-organisation account in the header), `403 Service account lacks systems.register in this workspace`, `422 Registration needs a user key and a service account key` (when the admin setting requires it; also on the 1.x `POST /api/system-register`), `422` validation (`system_key` missing or too short, `workspace_id` of another organisation or of a workspace the user is not in, ...).
 
 ### GET /api/v1/systems/self
 

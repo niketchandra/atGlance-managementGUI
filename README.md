@@ -232,6 +232,7 @@ All documents are in the [docs](docs/) folder:
 |---|---|---|
 | Install | [INSTALLATION-UPDATE.md](INSTALLATION-UPDATE.md) | VM installer and update scripts (`scripts/`), ECS Fargate walkthrough, Kubernetes and other platforms |
 | Use | [web-console.md](docs/web-console.md) | Web console layout, pages and white-label pages |
+| Use | [service-accounts.md](docs/service-accounts.md) | Service accounts (machine identities for the CLI), personal key rules, expiry notices |
 | Use | [notifications.md](docs/notifications.md) | Notification channels (Email, Teams, Slack, n8n, Telegram, webhooks, SMS) and events |
 | Use | [ai-connect.md](docs/ai-connect.md) | Connecting an AI provider, per-provider setup |
 | Use | [licence.md](docs/licence.md) | Licence key, verification, and what an unlicensed instance blocks |

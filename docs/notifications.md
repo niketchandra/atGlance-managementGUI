@@ -34,8 +34,18 @@ Earlier versions sent `message.{to, from, text}` to `api/1.0` without `consent`.
 
 | Event | Scope | Sent when |
 |---|---|---|
-| `system.registered` | Workspace | A host is registered or reactivated in the workspace |
-| `system.deregistered` | Workspace | A host in the workspace is deregistered |
+| `system.registered` | Workspace | A host is registered in the workspace |
+| `system.reactivated` | Workspace | A host in the workspace is reactivated (facts: Actor, Original owner) |
+| `system.deregistered` | Workspace | A host in the workspace is deregistered (facts: Actor, Original owner) |
+| `system.assigned_to_service_account` | Workspace | A host is moved from a person to a service account |
+| `service_account.created` | Workspace | A workspace service account is created |
+| `service_account.disabled` | Workspace | A workspace service account is disabled |
+| `service_account.grant_added` | Workspace | An organization service account is given access to the workspace |
+| `service_account.grant_removed` | Workspace | An organization service account loses access to the workspace |
+| `service_account.key_expiring` | Workspace | A key of a service account with access here expires in 15, 7, 3, 2, 1 or 0 days |
+| `service_account.key_expired` | Workspace | A key of a service account with access here expired |
+| `service_account.key_revoked` | Workspace | A key of a service account with access here was revoked |
+| `api_key.expiring` | Workspace | A person's key used by a host in the workspace expires in 15, 7, 3, 2, 1 or 0 days |
 | `config.uploaded` | Workspace | The CLI uploads a config file for a host in the workspace |
 | `config.upload_failed` | Workspace | The console could not save an upload for a known host |
 | `ai.issues_found` | Workspace | An AI review (manual or automatic) ends with status `error` or `warning` |
@@ -45,6 +55,18 @@ Earlier versions sent `message.{to, from, text}` to `api/1.0` without `consent`.
 | `workspace.member_removed` | Workspace | A member is removed from the workspace |
 | `backup.succeeded` | Organization | `backup:config` or `backup:database` (or Run now) saves a backup |
 | `backup.failed` | Organization | A scheduled backup fails |
+| `organization.service_account_created` | Organization | An organization service account is created |
+| `organization.service_account_disabled` | Organization | An organization service account is disabled |
+| `organization.service_account_key_expiring` | Organization | An organization service account key expires in 15, 7, 3, 2, 1 or 0 days |
+| `organization.service_account_key_expired` | Organization | An organization service account key expired |
+| `organization.service_account_key_revoked` | Organization | An organization service account key was revoked |
+| `organization.service_account_owner_missing` | Organization | A service account lost its owner (the owner left) |
+| `organization.user_keys_revoked` | Organization | A user was deactivated, deleted or moved, and their API keys were revoked |
+| `organization.user_key_expiring` | Organization | A person's API key expires in 15, 7, 3, 2, 1 or 0 days |
+
+Until 2.1.2, reactivations were sent as `system.registered`. Groups subscribed to `system.registered` were subscribed to `system.reactivated` on upgrade, so they keep receiving them.
+
+Expiry notices go out once per key and notice day, from the daily `atglance:credentials-sweep` (06:10) or when the CLI calls `POST /api/v1/credentials/expiry-notice`. The days come from the `sa_expiry_notice_days` setting (default `15,7,3,2,1,0`). Personal alerts (Settings > Preferences, **API keys**) go to the owner of the key or service account; the "Your API keys were revoked" alert is always sent. No notice contains a key, only its name and last 4 characters.
 
 Workspace events go to the groups of the host's workspace, and are sent only when the workspace has the event turned on (all are on until the Notifications tab is saved). Hosts with no workspace send nothing. Organization events go to organization groups.
 
