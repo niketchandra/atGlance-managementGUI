@@ -2,8 +2,10 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\ServiceAccount;
 use App\Models\SystemRegister;
 use App\Models\User;
+use App\Support\ApiIdentity;
 use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -12,9 +14,10 @@ use Symfony\Component\HttpFoundation\Response;
  * Identifies the calling host for /api/v1 system-scoped routes (alias atglance.system,
  * always after auth.pat). The host sends X-Atglance-System-Id and X-Atglance-System-Key;
  * the key is the system's validation_hash. Every mismatch answers the same 404 so the
- * response does not reveal which systems exist; that includes a same-organisation user
- * who is not the owner, an admin or a member of the system's workspace. Status is not
- * checked, so an inactive system can still be reactivated.
+ * response does not reveal which systems exist. A person must be the owner, an admin or
+ * a member of the system's workspace; a service account must be the one the system runs
+ * as, with an active grant on its workspace. Status is not checked, so an inactive
+ * system can still be reactivated.
  */
 class AuthenticateSystemKey
 {
@@ -29,17 +32,21 @@ class AuthenticateSystemKey
             ], 400);
         }
 
+        $identity = ApiIdentity::current($request);
         $user = $request->user();
         $system = preg_match('/^[0-9]{1,18}$/', $systemId) ? SystemRegister::find((int) $systemId) : null;
 
-        if (
-            $user === null
-            || $system === null
-            || empty($system->validation_hash)
-            || !hash_equals((string) $system->validation_hash, $key)
-            || (int) ($system->org_id ?? 200) !== (int) ($user->org_id ?? 200)
-            || !self::userMayUseSystem($user, $system)
-        ) {
+        $keyMatches = $system !== null
+            && !empty($system->validation_hash)
+            && hash_equals((string) $system->validation_hash, $key)
+            && $identity !== null
+            && (int) ($system->org_id ?? 200) === $identity->orgId();
+
+        $allowed = $keyMatches && ($identity->isServiceAccount()
+            ? self::accountMayUseSystem($identity->serviceAccount, $system)
+            : ($user !== null && self::userMayUseSystem($user, $system)));
+
+        if (!$allowed) {
             return response()->json(['message' => 'System not found'], 404);
         }
 
@@ -62,5 +69,16 @@ class AuthenticateSystemKey
         $workspaceId = (int) ($system->workspace_id ?? 0);
 
         return $workspaceId > 0 && $user->workspaces()->whereKey($workspaceId)->exists();
+    }
+
+    /**
+     * A service account acts only for systems it owns, and only while it holds an active
+     * grant on the system's workspace (any permission; each route checks its own).
+     */
+    public static function accountMayUseSystem(ServiceAccount $account, SystemRegister $system): bool
+    {
+        return (int) $system->service_account_id === (int) $account->id
+            && $account->isActive()
+            && $account->activeGrantFor((int) ($system->workspace_id ?? 0)) !== null;
     }
 }

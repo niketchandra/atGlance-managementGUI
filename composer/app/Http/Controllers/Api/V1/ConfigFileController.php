@@ -49,7 +49,7 @@ class ConfigFileController extends Controller
         $request->validate(['service_name' => ['nullable', 'string', 'max:255']]);
 
         $files = ConfigurationFile::query()
-            ->with('user:id,name')
+            ->with(['user:id,name', 'serviceAccount:id,name'])
             ->where('system_register_id', $this->system($request)->id)
             ->where('status', 'active')
             ->when($request->filled('service_name'), fn ($query) => $query->where('service_name', $request->query('service_name')))
@@ -62,7 +62,9 @@ class ConfigFileController extends Controller
                 'service_name' => $file->service_name,
                 'version' => $file->version,
                 'created_at' => $file->created_at,
-                'created_by' => $file->user ? ['id' => $file->user->id, 'name' => $file->user->name] : null,
+                'created_by' => $file->user
+                    ? ['id' => $file->user->id, 'name' => $file->user->name]
+                    : ($file->serviceAccount ? ['service_account' => ['id' => $file->serviceAccount->id, 'name' => $file->serviceAccount->name]] : null),
             ]);
 
         return response()->json(['files' => $files]);

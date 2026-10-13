@@ -12,6 +12,7 @@ use App\Notifications\NotificationEvents;
 use App\Services\Notifier;
 use App\Services\ConfigAiReviewer;
 use App\Support\AiSettings;
+use App\Support\ApiIdentity;
 use App\Support\S3Settings;
 use App\Support\WorkspaceSettings;
 use Illuminate\Http\Request;
@@ -64,7 +65,10 @@ class FileController extends Controller
             'version' => 'nullable|string|max:50',
         ]);
 
+        $identity = ApiIdentity::current($request);
         $user = $request->user();
+        $account = $identity?->isServiceAccount() ? $identity->serviceAccount : null;
+        $orgId = $identity?->orgId() ?? (int) ($user->org_id ?? 200);
         $file = $request->file('file');
 
         $systemId = $request->input('system_register_id', $request->input('system_id'));
@@ -72,7 +76,7 @@ class FileController extends Controller
         // Only systems of the uploader's organisation (teammates included).
         if ($systemId) {
             $systemOrgId = SystemRegister::query()->whereKey((int) $systemId)->value('org_id');
-            if ((int) ($systemOrgId ?? 200) !== (int) ($user->org_id ?? 200)) {
+            if ((int) ($systemOrgId ?? 200) !== $orgId) {
                 return response()->json(['message' => 'System not found'], 404);
             }
         }
@@ -117,8 +121,8 @@ class FileController extends Controller
         $extension = $file->getClientOriginalExtension();
         $fileName = Str::uuid() . ($extension ? '.' . $extension : '');
         
-        // Define storage path: config_files/{user_id}/
-        $storagePath = "config_files/{$user->id}";
+        // Define storage path: config_files/{user_id}/ or config_files/sa-{service_account_id}/
+        $storagePath = $account ? "config_files/sa-{$account->id}" : "config_files/{$user->id}";
 
         $storageDisk = $this->resolveStorageDisk();
 
@@ -133,19 +137,27 @@ class FileController extends Controller
         }
 
         if (!$service && $systemId && $request->filled('service_name')) {
-            $service = Service::firstOrCreate(
-                [
-                    'user_id' => $user->id,
-                    'system_id' => $systemId,
-                    'service_name' => $request->input('service_name'),
-                ],
-                [
-                    'system_hash' => $request->input('system_hash', $request->input('validation_hash')),
-                    'org_id' => $request->input('org_id'),
-                    'share_with' => $request->input('share_with'),
-                    'status' => 'active',
-                ]
-            );
+            $serviceDefaults = [
+                'system_hash' => $request->input('system_hash', $request->input('validation_hash')),
+                'org_id' => $request->input('org_id'),
+                'share_with' => $request->input('share_with'),
+                'status' => 'active',
+            ];
+
+            // A service account continues the system's existing service rows, whoever
+            // created them, so the version history stays in one line.
+            $service = $account
+                ? (Service::query()->where('system_id', $systemId)->where('service_name', $request->input('service_name'))->orderBy('service_id')->first()
+                    ?? Service::create($serviceDefaults + [
+                        'user_id' => null,
+                        'service_account_id' => $account->id,
+                        'system_id' => $systemId,
+                        'service_name' => $request->input('service_name'),
+                    ]))
+                : Service::firstOrCreate(
+                    ['user_id' => $user->id, 'system_id' => $systemId, 'service_name' => $request->input('service_name')],
+                    $serviceDefaults,
+                );
         }
 
         if (!$service) {
@@ -166,9 +178,10 @@ class FileController extends Controller
         $resolvedVersion = $this->resolveNextVersionLabel((int) $service->service_id);
         
         try {
-            $configFile = DB::transaction(function () use ($user, $systemId, $service, $originalName, $serviceName, $filePath, $storageDisk, $request, $fileContent, $resolvedVersion) {
+            $configFile = DB::transaction(function () use ($user, $account, $systemId, $service, $originalName, $serviceName, $filePath, $storageDisk, $request, $fileContent, $resolvedVersion) {
                 $payload = [
-                    'user_id' => $user->id,
+                    'user_id' => $user?->id,
+                    'service_account_id' => $account?->id,
                     'system_register_id' => $systemId,
                     'service_id' => $service->service_id,
                     'file_name' => $originalName,
@@ -186,7 +199,8 @@ class FileController extends Controller
 
                 RawData::create([
                     'file_id' => $configFile->id,
-                    'user_id' => $user->id,
+                    'user_id' => $user?->id,
+                    'service_account_id' => $account?->id,
                     'system_register_id' => $systemId,
                     'service_id' => $service->service_id,
                     'file_name' => $originalName,

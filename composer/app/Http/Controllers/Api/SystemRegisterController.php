@@ -468,8 +468,9 @@ class SystemRegisterController extends Controller
     }
 
     /**
-     * Who may change a system from the host (/api/v1/systems/self/*): its owner, or an
-     * admin of the system's organisation.
+     * Who may change a system from the host (/api/v1/systems/self/*): its owner, an admin
+     * of the system's organisation, or a workspace admin of the system's workspace (for
+     * example after the owner left).
      */
     public function canManageSystem(User $user, SystemRegister $system): bool
     {
@@ -477,13 +478,22 @@ class SystemRegisterController extends Controller
             return true;
         }
 
-        return $user->isAdmin() && (int) ($system->org_id ?? 200) === (int) ($user->org_id ?? 200);
+        if ((int) ($system->org_id ?? 200) !== (int) ($user->org_id ?? 200)) {
+            return false;
+        }
+
+        if ($user->isAdmin()) {
+            return true;
+        }
+
+        return (int) ($system->workspace_id ?? 0) > 0 && (bool) $system->workspace?->hasUserAsAdmin($user->id);
     }
 
     /**
-     * Replaces the system's key (validation_hash) and records it in the activity log.
+     * Replaces the system's key (validation_hash) and records who did it: a person or the
+     * service account the system runs as.
      */
-    public function rotateSystemKey(SystemRegister $system, string $newKey, User $actor): void
+    public function rotateSystemKey(SystemRegister $system, string $newKey, ?User $actor, ?ServiceAccount $account = null): void
     {
         DB::transaction(function () use ($system, $newKey): void {
             $oldKey = (string) $system->validation_hash;
@@ -502,9 +512,9 @@ class SystemRegisterController extends Controller
         });
 
         ActivityRecorder::record(
-            (int) $actor->id,
+            $actor?->id,
             'system.key_rotated',
-            'Rotated the key of system ' . $system->system_name,
+            'Rotated the key of system ' . $system->system_name . ($account ? ' (service account ' . $account->name . ')' : ''),
             ActivityRecorder::SUCCESS,
             null,
             $system->workspace_id ? (int) $system->workspace_id : null,

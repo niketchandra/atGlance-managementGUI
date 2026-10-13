@@ -102,10 +102,10 @@ Route::prefix('v1')->name('v1.')->group(function () {
         Route::get('/systems/self', [V1SystemController::class, 'show'])->name('systems.self');
         Route::post('/systems/self/deregister', [V1SystemController::class, 'deregister'])->name('systems.deregister');
         Route::post('/systems/self/reactivate', [V1SystemController::class, 'reactivate'])->name('systems.reactivate');
-        Route::post('/systems/self/rotate-key', [V1SystemController::class, 'rotateKey'])->name('systems.rotate-key');
-        Route::post('/config-files', [V1ConfigFileController::class, 'store'])->name('config-files.store');
-        Route::get('/config-files', [V1ConfigFileController::class, 'index'])->name('config-files.index');
-        Route::get('/config-files/{id}', [V1ConfigFileController::class, 'show'])->where('id', '[0-9]{1,18}')->name('config-files.show');
+        Route::post('/systems/self/rotate-key', [V1SystemController::class, 'rotateKey'])->middleware('sa.permission:systems.rotate_key')->name('systems.rotate-key');
+        Route::post('/config-files', [V1ConfigFileController::class, 'store'])->middleware('sa.permission:configs.write')->name('config-files.store');
+        Route::get('/config-files', [V1ConfigFileController::class, 'index'])->middleware('sa.permission:configs.read')->name('config-files.index');
+        Route::get('/config-files/{id}', [V1ConfigFileController::class, 'show'])->middleware('sa.permission:configs.read')->where('id', '[0-9]{1,18}')->name('config-files.show');
     });
 
     // No bearer token: an admin of the system's organisation signs in with email + password/pin.

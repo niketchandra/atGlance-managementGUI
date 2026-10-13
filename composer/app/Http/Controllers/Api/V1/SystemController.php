@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\V1;
 use App\Http\Controllers\Api\SystemRegisterController;
 use App\Http\Controllers\Controller;
 use App\Models\SystemRegister;
+use App\Support\ApiIdentity;
 use App\Support\ServiceAccountKeyHeader;
 use App\Support\ServiceAccountSettings;
 use Illuminate\Http\JsonResponse;
@@ -95,17 +96,21 @@ class SystemController extends Controller
 
     public function deregister(Request $request)
     {
-        return $this->authorizeChange($request) ?? $this->systems->deregisterSystem($this->system($request));
+        return $this->refuseServiceAccount($request) ?? $this->authorizeChange($request) ?? $this->systems->deregisterSystem($this->system($request));
     }
 
     public function reactivate(Request $request)
     {
-        return $this->authorizeChange($request) ?? $this->systems->reactivateSystem($this->system($request));
+        return $this->refuseServiceAccount($request) ?? $this->authorizeChange($request) ?? $this->systems->reactivateSystem($this->system($request));
     }
 
     public function rotateKey(Request $request)
     {
-        if ($denied = $this->authorizeChange($request)) {
+        $identity = ApiIdentity::current($request);
+
+        // A service account reaches here only with systems.rotate_key (route middleware);
+        // it has no password or PIN. A person still needs one.
+        if (!$identity?->isServiceAccount() && ($denied = $this->authorizeChange($request))) {
             return $denied;
         }
 
@@ -124,7 +129,7 @@ class SystemController extends Controller
             ],
         ]);
 
-        $this->systems->rotateSystemKey($system, $data['new_key'], $request->user());
+        $this->systems->rotateSystemKey($system, $data['new_key'], $request->user(), $identity?->serviceAccount);
 
         return response()->json(['system_id' => $system->id, 'rotated' => true]);
     }
@@ -147,6 +152,13 @@ class SystemController extends Controller
     /**
      * Password or PIN (422), then owner or same-org admin (403). Null when allowed.
      */
+    private function refuseServiceAccount(Request $request): ?JsonResponse
+    {
+        return ApiIdentity::current($request)?->isServiceAccount()
+            ? response()->json(['message' => 'Deregister and reactivate need a user key with password or PIN'], 403)
+            : null;
+    }
+
     private function authorizeChange(Request $request): ?JsonResponse
     {
         if ($error = $this->systems->validatePasswordOrPin($request)) {
@@ -154,7 +166,7 @@ class SystemController extends Controller
         }
 
         if (!$this->systems->canManageSystem($request->user(), $this->system($request))) {
-            return response()->json(['message' => 'Only the system owner or an admin of its organisation can change this system'], 403);
+            return response()->json(['message' => 'Only the system owner, a workspace admin of its workspace or an admin of its organisation can change this system'], 403);
         }
 
         return null;

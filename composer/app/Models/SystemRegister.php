@@ -87,17 +87,35 @@ class SystemRegister extends Model
                 return;
             }
 
+            $facts = $system->actorFacts();
+            $actorId = \App\Support\ApiIdentity::current()?->user?->id ?? \Illuminate\Support\Facades\Auth::id() ?? (int) $system->user_id;
+            $suffix = ' by ' . $facts['Actor'] . ', owner ' . $facts['Original owner'];
+
             if ($system->status === 'active') {
-                ActivityRecorder::record((int) $system->user_id, 'system.reactivated', 'Reactivated system ' . $system->system_name, ActivityRecorder::SUCCESS, null, $system->workspace_id ? (int) $system->workspace_id : null, (int) $system->id);
+                ActivityRecorder::record((int) $actorId, 'system.reactivated', 'Reactivated system ' . $system->system_name . $suffix, ActivityRecorder::SUCCESS, null, $system->workspace_id ? (int) $system->workspace_id : null, (int) $system->id);
                 $system->notifyWorkspace(NotificationEvents::SYSTEM_REGISTERED, 'System reactivated');
             } elseif ($system->getOriginal('status') === 'active') {
-                ActivityRecorder::record((int) $system->user_id, 'system.deregistered', 'Deregistered system ' . $system->system_name, ActivityRecorder::SUCCESS, null, $system->workspace_id ? (int) $system->workspace_id : null, (int) $system->id);
+                ActivityRecorder::record((int) $actorId, 'system.deregistered', 'Deregistered system ' . $system->system_name . $suffix, ActivityRecorder::SUCCESS, null, $system->workspace_id ? (int) $system->workspace_id : null, (int) $system->id);
                 if ($owner = User::find($system->user_id)) {
                     \App\Support\AccountAlerts::systemDeregistered($owner, (string) $system->system_name);
                 }
                 $system->notifyWorkspace(NotificationEvents::SYSTEM_DEREGISTERED, 'System deregistered');
             }
         });
+    }
+
+    /**
+     * Who made the current change and who registered the system, for audit and notices.
+     *
+     * @return array{Actor: string, Original owner: string}
+     */
+    public function actorFacts(): array
+    {
+        $identity = \App\Support\ApiIdentity::current();
+        $actor = $identity?->label() ?? (\Illuminate\Support\Facades\Auth::user()?->email ?? 'system');
+        $owner = User::query()->find($this->user_id)?->email ?? ('user ' . $this->user_id);
+
+        return ['Actor' => (string) $actor, 'Original owner' => (string) $owner];
     }
 
     private function notifyWorkspace(string $event, string $action): void
