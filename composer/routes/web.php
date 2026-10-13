@@ -15,6 +15,7 @@ use App\Http\Controllers\MailTestController;
 use App\Http\Controllers\NotificationSettingsController;
 use App\Http\Controllers\NotificationsController;
 use App\Http\Controllers\PublicPageController;
+use App\Http\Controllers\ServiceAccountController;
 use App\Support\InstallationState;
 use App\Support\SiteProfile;
 
@@ -95,7 +96,21 @@ Route::middleware('app.installed')->group(function () {
         Route::post('/profile/setup', [DashboardController::class, 'updateProfileSetup'])->name('profile.update');
         Route::get('/products', [DashboardController::class, 'products'])->name('products');
 
+        // Service accounts: ServiceAccountController checks ServiceAccountAccess on every action.
+        Route::post('/service-accounts', [ServiceAccountController::class, 'store'])->name('service-accounts.store');
+        Route::get('/service-accounts/{id}', [ServiceAccountController::class, 'show'])->whereNumber('id')->name('service-accounts.show');
+        Route::put('/service-accounts/{id}', [ServiceAccountController::class, 'update'])->whereNumber('id')->name('service-accounts.update');
+        Route::post('/service-accounts/{id}/status', [ServiceAccountController::class, 'status'])->whereNumber('id')->name('service-accounts.status');
+        Route::post('/service-accounts/{id}/owner', [ServiceAccountController::class, 'owner'])->whereNumber('id')->name('service-accounts.owner');
+        Route::post('/service-accounts/{id}/grants', [ServiceAccountController::class, 'grant'])->whereNumber('id')->name('service-accounts.grants.store');
+        Route::delete('/service-accounts/{id}/grants/{workspaceId}', [ServiceAccountController::class, 'revokeGrant'])->whereNumber(['id', 'workspaceId'])->name('service-accounts.grants.destroy');
+        Route::post('/service-accounts/{id}/keys', [ServiceAccountController::class, 'issueKey'])->whereNumber('id')->middleware('throttle:20,1')->name('service-accounts.keys.store');
+        Route::post('/service-accounts/{id}/keys/{keyId}/revoke', [ServiceAccountController::class, 'revokeKey'])->whereNumber(['id', 'keyId'])->name('service-accounts.keys.revoke');
+        Route::post('/systems-registered/{systemId}/service-account', [ServiceAccountController::class, 'assignSystem'])->whereNumber('systemId')->name('systems-registered.service-account');
+
         Route::middleware('admin.role')->prefix('admin')->group(function () {
+            Route::get('/service-accounts', [ServiceAccountController::class, 'index'])->name('service-accounts.index');
+            Route::put('/service-accounts/settings', [ServiceAccountController::class, 'updateSettings'])->name('service-accounts.settings');
             Route::get('/dashboard', [AdminDashboardController::class, 'index'])->name('admin.dashboard');
             Route::get('/users', [AdminDashboardController::class, 'usersIndex'])->name('admin.users');
             Route::post('/users', [AdminDashboardController::class, 'createUser'])->name('admin.users.store');

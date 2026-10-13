@@ -315,7 +315,13 @@ class DashboardController extends Controller
             ->values()
             ->all();
 
-        return view('systems-registered', compact('items', 'systemStats', 'tagCatalogue'));
+        $serviceAccountNames = \App\Models\ServiceAccount::query()
+            ->whereIn('id', $items->getCollection()->pluck('service_account_id')->filter()->unique()->all())
+            ->pluck('name', 'id')
+            ->all();
+        $assignableAccounts = ServiceAccountController::assignableByWorkspace(Auth::user());
+
+        return view('systems-registered', compact('items', 'systemStats', 'tagCatalogue', 'serviceAccountNames', 'assignableAccounts'));
     }
 
     public function editRegisteredSystem(int $systemId)

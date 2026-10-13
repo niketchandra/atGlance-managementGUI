@@ -42,6 +42,7 @@
                     $agNavItems[] = ['label' => 'Users', 'icon' => 'fa-users', 'url' => route('admin.users'), 'active' => ['admin.users*']];
                     $agNavItems[] = ['label' => 'Workspace', 'icon' => 'fa-sitemap', 'url' => $agIsSuperAdmin ? route('enterprise.console') : route('admin.workspaces'), 'active' => $agIsSuperAdmin ? ['__none__'] : ['admin.workspaces*', 'workspace.*']];
                     $agNavItems[] = ['label' => 'Notifications', 'icon' => 'fa-bell', 'url' => route('admin.notifications'), 'active' => ['admin.notifications*']];
+                    $agNavItems[] = ['label' => 'Service Accounts', 'icon' => 'fa-robot', 'url' => route('service-accounts.index'), 'active' => ['service-accounts.*']];
                 }
                 if ($agIsSuperAdmin) {
                     $agNavItems[] = ['label' => 'Site Settings', 'icon' => 'fa-sliders-h', 'url' => route('admin.settings'), 'active' => ['admin.settings*']];

@@ -162,6 +162,7 @@
                             <th>OS</th>
                             <th>IP</th>
                             <th>Workspace</th>
+                            <th>Service account</th>
                             <th>Services</th>
                             <th>Backups</th>
                             <th>Issues</th>
@@ -182,6 +183,20 @@
                                 <td>{{ $row->os }}</td>
                                 <td>{{ $row->item->ip_address ?? 'N/A' }}</td>
                                 <td>{{ $row->item->workspace_name ?? 'Not assigned' }}</td>
+                                <td>
+                                    {{ $serviceAccountNames[$row->item->service_account_id ?? 0] ?? '—' }}
+                                    @if(!empty($assignableAccounts[(int) ($row->item->workspace_id ?? 0)]))
+                                        <form method="POST" action="{{ route('systems-registered.service-account', ['systemId' => $row->item->id]) }}" style="display: inline-flex; gap: 6px;">
+                                            @csrf
+                                            <select class="ag-input" name="service_account_id" aria-label="Service account">
+                                                @foreach($assignableAccounts[(int) $row->item->workspace_id] as $candidate)
+                                                    <option value="{{ $candidate->id }}" @selected($candidate->id === (int) ($row->item->service_account_id ?? 0))>{{ $candidate->name }}</option>
+                                                @endforeach
+                                            </select>
+                                            <button class="ag-btn ag-btn--ghost" type="submit">Assign</button>
+                                        </form>
+                                    @endif
+                                </td>
                                 <td>{{ $row->stats['services'] }}</td>
                                 <td>{{ $row->stats['configs'] }}</td>
                                 <td title="{{ $row->stats['error'] }} errors, {{ $row->stats['warning'] }} warnings"><strong style="color: {{ $row->issueColor }};">{{ $row->stats['error'] + $row->stats['warning'] }}</strong></td>
