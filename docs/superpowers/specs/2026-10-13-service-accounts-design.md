@@ -475,3 +475,46 @@ Create in console and via API: hash only, expiry default and maximum, limit 5
 (409), same-name replace, revoked and expired keys not counted; view endpoint
 410; index has no `token_hash`; migration clears `token_encrypted` and old keys
 still authenticate.
+
+## 16. Expiry notice schedule and credential status API (added 2026-10-13)
+
+### 16.1 Schedule
+
+Default `sa_expiry_notice_days` becomes `15,7,3,2,1,0` (0 = the day the key
+expires). Days left are counted in calendar days. The same schedule applies to
+person keys and service account keys, at every level:
+
+| Key | User level (email) | Workspace level | Organization level |
+|---|---|---|---|
+| Person key (`atgla-`) | The key's owner | `api_key.expiring`, to each workspace that has an active system registered with this key | `organization.user_key_expiring` |
+| Service account key (`atgsa-`) | The account's owner | `service_account.key_expiring`, to each workspace it has a grant on | `organization.service_account_key_expiring` (organization accounts) |
+
+Each key gets each notice once (`expiry_notified_stage` holds the last day
+sent). The daily sweep and the API below share this rule, so a CLI calling
+often never causes duplicates.
+
+### 16.2 API for the CLI
+
+Both accept user and service account keys (`auth.pat:service`). The system
+headers (`X-Atglance-System-Id`, `X-Atglance-System-Key`) are optional; when
+sent they must be valid (404 otherwise) and name the machine in the notice.
+
+`GET /api/v1/credentials/status`:
+
+```json
+{
+  "identity_type": "service_account",
+  "key": {"id": 88, "name": "fleet-a", "last_four": "Xy12", "expires_at": "2026-10-20T00:00:00+00:00", "days_left": 7, "state": "expiring"},
+  "notice_days": [15, 7, 3, 2, 1, 0],
+  "system": {"id": 123456, "name": "web-01", "workspace_id": 4}
+}
+```
+
+`state` is `expiring` when `days_left` is within the largest notice day, else
+`active`. An expired or revoked key cannot call it: it gets the 401 of
+section 5.1, which is itself the signal.
+
+`POST /api/v1/credentials/expiry-notice` (throttle 6 per minute): sends the
+notices of 16.1 for the calling key's current notice day, if not sent yet.
+Answers `{"sent": true, "stage": 7}`, `{"sent": false, "reason": "already_sent", "stage": 7}`
+or `{"sent": false, "reason": "not_expiring"}`.
