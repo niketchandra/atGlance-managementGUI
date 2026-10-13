@@ -123,9 +123,12 @@ class ServiceAccountConsoleTest extends TestCase
         $this->actingAs($admin)->put(route('service-accounts.settings'), [
             'sa_default_key_days' => 30, 'sa_max_key_days' => 180, 'sa_org_quota' => 3, 'sa_workspace_quota' => 2,
             'sa_expiry_notice_days' => '7,1', 'sa_require_for_registration' => '1',
-        ])->assertRedirect();
+            'pat_default_key_days' => 30, 'pat_max_key_days' => 120, 'pat_user_quota' => 3,
+        ])->assertRedirect()->assertSessionHasNoErrors();
 
         $this->assertSame(180, ServiceAccountSettings::maxKeyDays());
+        $this->assertSame(120, ServiceAccountSettings::patMaxKeyDays());
+        $this->assertSame(3, ServiceAccountSettings::patUserQuota());
         $this->assertTrue(ServiceAccountSettings::requireForRegistration());
     }
 }

@@ -73,6 +73,9 @@
             <label>Active organization accounts allowed <input class="ag-input" type="number" name="sa_org_quota" min="0" max="1000" value="{{ $settings['sa_org_quota'] }}"></label>
             <label>Active accounts allowed per workspace <input class="ag-input" type="number" name="sa_workspace_quota" min="0" max="1000" value="{{ $settings['sa_workspace_quota'] }}"></label>
             <label>Expiry notices, days before (comma-separated) <input class="ag-input" type="text" name="sa_expiry_notice_days" value="{{ $settings['sa_expiry_notice_days'] }}"></label>
+            <label>Personal API key default lifetime (days) <input class="ag-input" type="number" name="pat_default_key_days" min="1" max="3650" value="{{ $settings['pat_default_key_days'] }}"></label>
+            <label>Personal API key longest lifetime (days) <input class="ag-input" type="number" name="pat_max_key_days" min="1" max="3650" value="{{ $settings['pat_max_key_days'] }}"></label>
+            <label>Active personal API keys per user <input class="ag-input" type="number" name="pat_user_quota" min="1" max="100" value="{{ $settings['pat_user_quota'] }}"></label>
             <label><input type="checkbox" name="sa_require_for_registration" value="1" @checked($settings['sa_require_for_registration'])> Require a service account key to register servers (turn on once every server's atglance CLI supports service accounts)</label>
             <button class="ag-btn" type="submit">Save settings</button>
         </form>

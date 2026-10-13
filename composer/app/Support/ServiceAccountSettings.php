@@ -19,7 +19,25 @@ final class ServiceAccountSettings
         'sa_workspace_quota' => 5,
         'sa_expiry_notice_days' => '15,7,3,2,1,0',
         'sa_require_for_registration' => '0',
+        'pat_default_key_days' => 90,
+        'pat_max_key_days' => 365,
+        'pat_user_quota' => 5,
     ];
+
+    public static function patDefaultKeyDays(): int
+    {
+        return min(self::int('pat_default_key_days', 1, 3650), self::patMaxKeyDays());
+    }
+
+    public static function patMaxKeyDays(): int
+    {
+        return self::int('pat_max_key_days', 1, 3650);
+    }
+
+    public static function patUserQuota(): int
+    {
+        return self::int('pat_user_quota', 1, 100);
+    }
 
     public static function defaultKeyDays(): int
     {
@@ -68,7 +86,7 @@ final class ServiceAccountSettings
             if ($key === 'sa_require_for_registration') {
                 $value = $value ? '1' : '0';
             }
-            if ($key === 'sa_max_key_days') {
+            if (in_array($key, ['sa_max_key_days', 'pat_max_key_days'], true)) {
                 $value = max(1, min(3650, (int) $value));
             }
             AdminSetting::putValue(self::GROUP, $key, (string) $value);

@@ -49,6 +49,9 @@ class ServiceAccountController extends Controller
             'sa_org_quota' => ['required', 'integer', 'min:0', 'max:1000'],
             'sa_workspace_quota' => ['required', 'integer', 'min:0', 'max:1000'],
             'sa_expiry_notice_days' => ['required', 'string', 'max:50', 'regex:/^\s*\d{1,3}(\s*,\s*\d{1,3})*\s*$/'],
+            'pat_default_key_days' => ['required', 'integer', 'min:1', 'max:3650'],
+            'pat_max_key_days' => ['required', 'integer', 'min:1', 'max:3650'],
+            'pat_user_quota' => ['required', 'integer', 'min:1', 'max:100'],
         ]);
 
         ServiceAccountSettings::save($validated + ['sa_require_for_registration' => $request->boolean('sa_require_for_registration')]);
@@ -253,6 +256,9 @@ class ServiceAccountController extends Controller
             'sa_workspace_quota' => ServiceAccountSettings::workspaceQuota(),
             'sa_expiry_notice_days' => implode(',', ServiceAccountSettings::noticeDays()),
             'sa_require_for_registration' => ServiceAccountSettings::requireForRegistration(),
+            'pat_default_key_days' => ServiceAccountSettings::patDefaultKeyDays(),
+            'pat_max_key_days' => ServiceAccountSettings::patMaxKeyDays(),
+            'pat_user_quota' => ServiceAccountSettings::patUserQuota(),
         ];
     }
 

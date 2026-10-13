@@ -4,6 +4,9 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\PatToken;
+use App\Models\User;
+use App\Services\ServiceAccountException;
+use App\Services\UserKeys;
 use App\Support\License;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -12,22 +15,25 @@ class PatTokenController extends Controller
 {
     public function index(Request $request)
     {
-        $user = $request->user();
-        $tokens = PatToken::where('user_id', $user->id)->get();
+        $tokens = PatToken::query()
+            ->where('tokenable_type', User::class)
+            ->where('tokenable_id', $request->user()->id)
+            ->orderByDesc('id')
+            ->get();
 
         return response()->json([
-            'message' => 'PAT tokens are permanent. Plain text tokens are only shown when created.',
-            'tokens' => $tokens->map(function ($token) {
-                return [
-                    'id' => $token->id,
-                    'name' => $token->name,
-                    'token_hash' => $token->token,
-                    'abilities' => $token->abilities,
-                    'expires_at' => $token->expires_at,
-                    'last_used_at' => $token->last_used_at,
-                    'created_at' => $token->created_at,
-                ];
-            }),
+            'message' => 'Keys are shown only when created.',
+            'tokens' => $tokens->map(fn (PatToken $token) => [
+                'id' => $token->id,
+                'name' => $token->name,
+                'last_four' => $token->last_four,
+                'status' => $token->status,
+                'abilities' => $token->abilities,
+                'expires_at' => $token->expires_at,
+                'last_used_at' => $token->last_used_at,
+                'revoked_at' => $token->revoked_at,
+                'created_at' => $token->created_at,
+            ]),
         ]);
     }
 
@@ -45,30 +51,19 @@ class PatTokenController extends Controller
         ]);
 
         $user = $request->user();
-        $abilities = $data['abilities'] ?? ['*'];
-        $expiresAt = array_key_exists('expires_at', $data) && $data['expires_at'] !== null
-            ? Carbon::parse($data['expires_at'])
-            : Carbon::create(2099, 12, 31, 23, 59, 59); // Default to 2099
+        $requestedExpiry = !empty($data['expires_at']) ? Carbon::parse($data['expires_at']) : null;
 
-        // Generate custom PAT token with "atgla-" prefix
-        $plainToken = PatToken::generateCustomToken();
-        $hashedToken = hash('sha256', $plainToken);
-
-        // Create PAT token record
-        $token = PatToken::create([
-            'user_id' => $user->id,
-            'tokenable_type' => get_class($user),
-            'tokenable_id' => $user->id,
-            'name' => $data['name'],
-            'token' => $hashedToken,
-            'abilities' => $abilities,
-            'expires_at' => $expiresAt,
-        ]);
+        // abilities is still accepted but ignored: every key gets ['*'] until scopes land.
+        try {
+            ['token' => $token, 'plain' => $plainToken] = app(UserKeys::class)->issue($user, $data['name'], $requestedExpiry);
+        } catch (ServiceAccountException $e) {
+            return response()->json(['message' => $e->getMessage()], $e->getCode() ?: 422);
+        }
 
         return response()->json([
             'access_token' => $plainToken,
             'token_type' => 'pat',
-            'message' => 'PAT token is permanent. Save it securely - it won\'t be shown again.',
+            'message' => 'Save this key securely: it will not be shown again. It expires on ' . $token->expires_at->toDateString() . '.',
             'token' => [
                 'id' => $token->id,
                 'name' => $token->name,
