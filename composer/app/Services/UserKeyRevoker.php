@@ -5,7 +5,9 @@ namespace App\Services;
 use App\Models\PatToken;
 use App\Models\ServiceAccount;
 use App\Models\User;
+use App\Support\AccountAlerts;
 use App\Support\ActivityRecorder;
+use App\Support\ServiceAccountNotices;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 
@@ -35,6 +37,11 @@ class UserKeyRevoker
 
         if ($count > 0) {
             ActivityRecorder::record(Auth::id() ?? $user->id, 'user.keys_revoked', "Revoked {$count} API key(s) of {$user->email}: {$reason}");
+            ServiceAccountNotices::userKeysRevoked($user, $count, $reason);
+            // A deleted user has no inbox row left for the queued alert to read.
+            if ($reason !== self::REASON_DELETED) {
+                AccountAlerts::keysRevoked($user, $count);
+            }
         }
 
         return $count;
@@ -50,6 +57,7 @@ class UserKeyRevoker
         foreach ($accounts as $account) {
             $account->update(['owner_user_id' => null]);
             ActivityRecorder::record(Auth::id() ?? $user->id, 'service_account.owner_missing', 'Service account ' . $account->name . ' has no owner (' . $user->email . ' left)');
+            ServiceAccountNotices::ownerMissing($account, $user);
         }
 
         return $accounts;

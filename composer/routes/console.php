@@ -103,6 +103,17 @@ Artisan::command('ai:validate-workspace {workspace : Workspace id}', function (W
     return 0;
 })->purpose('Queue AI reviews of the latest config versions in one workspace');
 
+Artisan::command('atglance:credentials-sweep', function (\App\Services\CredentialSweep $sweep) {
+    $result = $sweep->run();
+    $this->info("Expiry notices: {$result['expiring']}, expired notices: {$result['expired']}.");
+
+    return 0;
+})->purpose('Send API key and service account key expiry notices');
+
+if (InstallationState::isInstalled()) {
+    Schedule::command('atglance:credentials-sweep')->dailyAt('06:10')->withoutOverlapping();
+}
+
 Artisan::command('backup:workspace {workspace : Workspace id}', function (BackupService $backups) {
     $run = $backups->runWorkspace((int) $this->argument('workspace'));
     $run->status === BackupService::STATUS_SUCCESS ? $this->info($run->message) : $this->error($run->message);

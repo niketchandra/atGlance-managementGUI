@@ -93,13 +93,13 @@ class SystemRegister extends Model
 
             if ($system->status === 'active') {
                 ActivityRecorder::record((int) $actorId, 'system.reactivated', 'Reactivated system ' . $system->system_name . $suffix, ActivityRecorder::SUCCESS, null, $system->workspace_id ? (int) $system->workspace_id : null, (int) $system->id);
-                $system->notifyWorkspace(NotificationEvents::SYSTEM_REGISTERED, 'System reactivated');
+                $system->notifyWorkspace(NotificationEvents::SYSTEM_REACTIVATED, 'System reactivated', $facts);
             } elseif ($system->getOriginal('status') === 'active') {
                 ActivityRecorder::record((int) $actorId, 'system.deregistered', 'Deregistered system ' . $system->system_name . $suffix, ActivityRecorder::SUCCESS, null, $system->workspace_id ? (int) $system->workspace_id : null, (int) $system->id);
                 if ($owner = User::find($system->user_id)) {
                     \App\Support\AccountAlerts::systemDeregistered($owner, (string) $system->system_name);
                 }
-                $system->notifyWorkspace(NotificationEvents::SYSTEM_DEREGISTERED, 'System deregistered');
+                $system->notifyWorkspace(NotificationEvents::SYSTEM_DEREGISTERED, 'System deregistered', $facts);
             }
         });
     }
@@ -118,7 +118,7 @@ class SystemRegister extends Model
         return ['Actor' => (string) $actor, 'Original owner' => (string) $owner];
     }
 
-    private function notifyWorkspace(string $event, string $action): void
+    private function notifyWorkspace(string $event, string $action, array $extraFacts = []): void
     {
         $workspaceId = (int) ($this->workspace_id ?? 0);
         if ($workspaceId <= 0) {
@@ -135,7 +135,7 @@ class SystemRegister extends Model
                 'IP address' => (string) $this->ip_address,
                 'OS' => trim($this->os_type . ' ' . $this->distro . ' ' . $this->version),
                 'Status' => (string) $this->status,
-            ], fn (string $value) => $value !== ''),
+            ] + $extraFacts, fn (string $value) => $value !== ''),
             ['system_id' => $this->id, 'status' => $this->status],
         );
     }

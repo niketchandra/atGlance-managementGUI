@@ -9,7 +9,9 @@ use App\Models\ServiceAccountGrant;
 use App\Models\SystemRegister;
 use App\Models\User;
 use App\Models\Workspace;
+use App\Support\AccountAlerts;
 use App\Support\ActivityRecorder;
+use App\Support\ServiceAccountNotices;
 use App\Support\ServiceAccountSettings;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -92,6 +94,7 @@ class ServiceAccounts
         });
 
         $this->record($actor, $account, 'service_account.created', 'Created ' . $scope . ' service account ' . $account->name);
+        ServiceAccountNotices::accountChanged($account, 'created');
 
         return $account;
     }
@@ -141,6 +144,7 @@ class ServiceAccounts
         if (!$active && $account->isActive()) {
             $account->update(['status' => 'disabled']);
             $this->record($actor, $account, 'service_account.disabled', 'Disabled service account ' . $account->name);
+            ServiceAccountNotices::accountChanged($account, 'disabled');
         }
     }
 
@@ -150,6 +154,7 @@ class ServiceAccounts
         $account->update(['owner_user_id' => $newOwner->id]);
 
         $this->record($actor, $account, 'service_account.owner_transferred', 'Made ' . $newOwner->email . ' owner of service account ' . $account->name);
+        AccountAlerts::serviceAccountOwnerAssigned($newOwner, $account);
     }
 
     public function setGrant(ServiceAccount $account, User $actor, Workspace $workspace, array $permissions): ServiceAccountGrant
@@ -173,6 +178,9 @@ class ServiceAccounts
 
         $event = $existing && $existing->status === 'active' ? 'service_account.grant_changed' : 'service_account.grant_added';
         $this->record($actor, $account, $event, 'Set the access of ' . $account->name . ' in workspace ' . $workspace->name, (int) $workspace->id);
+        if ($event === 'service_account.grant_added' && $account->isOrganizationScope()) {
+            ServiceAccountNotices::grantChanged($account, $workspace, true);
+        }
 
         return $grant;
     }
@@ -186,6 +194,7 @@ class ServiceAccounts
         $updated = $account->grants()->where('workspace_id', $workspace->id)->where('status', 'active')->update(['status' => 'revoked']);
         if ($updated > 0) {
             $this->record($actor, $account, 'service_account.grant_removed', 'Removed ' . $account->name . ' from workspace ' . $workspace->name, (int) $workspace->id);
+            ServiceAccountNotices::grantChanged($account, $workspace, false);
         }
     }
 
@@ -251,6 +260,7 @@ class ServiceAccounts
 
         if ($key->isServiceAccountKey() && ($account = ServiceAccount::find($key->tokenable_id))) {
             $this->record($actor, $account, 'service_account.key_revoked', 'Revoked key "' . $key->name . '" (…' . $key->last_four . ') of ' . $account->name . ': ' . $reason);
+            ServiceAccountNotices::keyEvent($account, $key, 'revoked');
         }
     }
 
@@ -273,6 +283,7 @@ class ServiceAccounts
             $workspaceId,
             (int) $system->id,
         );
+        ServiceAccountNotices::systemAssigned($system, $account);
     }
 
     /**
