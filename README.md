@@ -200,17 +200,17 @@ docker run --rm -e VIEW_COMPILED_PATH=/tmp/views -v "$(pwd)/composer:/app" -w /a
 
 ### Publish images
 
-Before a release, set the version in `composer/config/app.php` (`'version'`, shown in the console sidebar and sent to the licence server) and in `mcp/pyproject.toml` and `mcp/src/atglance_mcp/__init__.py`. The current release is `2.1.1`.
+Before a release, set the version in `composer/config/app.php` (`'version'`, shown in the console sidebar and sent to the licence server) and in `mcp/pyproject.toml` and `mcp/src/atglance_mcp/__init__.py`. The current release is `2.1.2`.
 
 Images are published for `linux/amd64` only. Tag every release with its version and with `latest`, because the installer and the update scripts always deploy `latest`:
 
 ```bash
 docker buildx build --platform linux/amd64 \
-  -t atglance/ce-atglance-app:2.1.1 -t atglance/ce-atglance-app:latest --push .
+  -t atglance/ce-atglance-app:2.1.2 -t atglance/ce-atglance-app:latest --push .
 docker buildx build --platform linux/amd64 \
-  -t atglance/ce-atglance-gateway:2.1.1 -t atglance/ce-atglance-gateway:latest --push kong
+  -t atglance/ce-atglance-gateway:2.1.2 -t atglance/ce-atglance-gateway:latest --push kong
 docker buildx build --platform linux/amd64 \
-  -t atglance/ce-atglance-mcp:2.1.1 -t atglance/ce-atglance-mcp:latest --push mcp
+  -t atglance/ce-atglance-mcp:2.1.2 -t atglance/ce-atglance-mcp:latest --push mcp
 ```
 
 ## Documentation
