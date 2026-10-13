@@ -93,12 +93,12 @@ Route::prefix('mcp')->middleware(['auth.pat', 'throttle:120,1'])->group(function
 // with X-Atglance-System-Id + X-Atglance-System-Key (atglance.system, after auth.pat).
 Route::prefix('v1')->name('v1.')->group(function () {
     Route::get('/meta', [V1MetaController::class, 'meta'])->middleware('throttle:v1-meta')->name('meta');
-    Route::get('/whoami', [V1MetaController::class, 'whoami'])->middleware(['auth.pat', 'active.user'])->name('whoami');
+    Route::get('/whoami', [V1MetaController::class, 'whoami'])->middleware(['auth.pat:service', 'active.user'])->name('whoami');
 
     Route::post('/systems', [V1SystemController::class, 'store'])->middleware(['auth.pat', 'active.user'])->name('systems.store');
 
     // Ids are at most 18 digits (fits a signed 64-bit integer); longer ones are a 404.
-    Route::middleware(['auth.pat', 'active.user', 'atglance.system'])->group(function () {
+    Route::middleware(['auth.pat:service', 'active.user', 'atglance.system'])->group(function () {
         Route::get('/systems/self', [V1SystemController::class, 'show'])->name('systems.self');
         Route::post('/systems/self/deregister', [V1SystemController::class, 'deregister'])->name('systems.deregister');
         Route::post('/systems/self/reactivate', [V1SystemController::class, 'reactivate'])->name('systems.reactivate');

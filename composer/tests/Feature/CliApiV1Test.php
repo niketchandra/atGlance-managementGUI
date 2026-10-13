@@ -262,6 +262,7 @@ class CliApiV1Test extends TestCase
         $response = $this->getJson('/api/v1/whoami', $headers)->assertOk();
 
         $response->assertExactJson([
+            'identity_type' => 'user',
             'user' => ['id' => $user->id, 'name' => $user->name, 'status' => 'active', 'org_id' => 200],
             'token' => ['id' => $token->id, 'name' => 'cli', 'expires_at' => $token->fresh()->expires_at?->toIso8601String()],
         ]);
@@ -278,7 +279,7 @@ class CliApiV1Test extends TestCase
 
         $inactive = $this->user('gone@example.test', 102, 200, 'inactive');
         $this->getJson('/api/v1/whoami', $this->pat($inactive))
-            ->assertForbidden()->assertJsonPath('message', 'User is inactive');
+            ->assertUnauthorized()->assertJsonPath('message', 'Identity is disabled');
     }
 
     // ---------------------------------------------------------------- register
@@ -662,9 +663,9 @@ class CliApiV1Test extends TestCase
         $gone = $this->user('gone@example.test', 102, 200, 'inactive');
         $headers = $this->pat($gone) + $this->systemHeaders($system);
 
-        $this->getJson('/api/v1/systems/self', $headers)->assertForbidden()->assertExactJson(['message' => 'User is inactive']);
-        $this->getJson('/api/v1/config-files', $headers)->assertForbidden()->assertExactJson(['message' => 'User is inactive']);
-        $this->get('/api/v1/config-files/' . $fileId, $headers)->assertForbidden()->assertExactJson(['message' => 'User is inactive']);
+        $this->getJson('/api/v1/systems/self', $headers)->assertUnauthorized()->assertExactJson(['message' => 'Identity is disabled']);
+        $this->getJson('/api/v1/config-files', $headers)->assertUnauthorized()->assertExactJson(['message' => 'Identity is disabled']);
+        $this->get('/api/v1/config-files/' . $fileId, $headers)->assertUnauthorized()->assertExactJson(['message' => 'Identity is disabled']);
     }
 
     public function test_ids_longer_than_18_digits_are_not_found(): void
