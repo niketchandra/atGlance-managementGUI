@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add workspace and organization service accounts with their own `atgsa-` keys, so registered servers run as a machine identity instead of a person, and revoke a person's `atgla-` keys as soon as they are deactivated, deleted or moved to another organization.
+**Goal:** (Release 2.1.2) Add workspace and organization service accounts with their own `atgsa-` keys, so registered servers run as a machine identity instead of a person, revoke a person's `atgla-` keys as soon as they are deactivated, deleted or moved to another organization, and harden person keys (hash only, required expiry, 5 active per user).
 
 **Architecture:** New `service_accounts` and `service_account_workspaces` tables; keys stay in `personal_access_tokens` with `tokenable_type = ServiceAccount`. `auth.pat` resolves either identity into an `ApiIdentity` value object; only `/api/v1` routes that opt in (`auth.pat:service`) accept service account keys. Registration needs both a user key and a service account key. Management is server-side in `ServiceAccountAccess` and `ServiceAccounts`; the console gets an organization page and a workspace tab. Notifications reuse `Notifier` and `AccountAlerts`, plus a daily sweep command.
 
@@ -33,7 +33,6 @@
 - `NotificationEvents` maps each key to one scope, so organization-level events use the prefix `organization.`: `organization.service_account_created`, `organization.service_account_disabled`, `organization.service_account_key_expiring`, `organization.service_account_key_expired`, `organization.service_account_key_revoked`, `organization.service_account_owner_missing`, `organization.user_keys_revoked`. Workspace-level events use the spec names (`service_account.created`, ...).
 - `personal_access_tokens.last_four` (string 4) stores the last 4 characters of a key for notices and lists.
 - `personal_access_tokens.expired_notified_at` marks that the expired notice was sent.
-- The personal Settings > API keys list is not changed in this slice; revoked keys are already hidden there.
 
 ## Review Focus
 
@@ -80,7 +79,8 @@
 | `routes/web.php`, `routes/api.php`, `bootstrap/app.php` | Routes and aliases | 4, 6, 7, 10 |
 | `tests/Feature/Concerns/MakesServiceAccounts.php` | Shared test helpers | 1 |
 | `tests/Feature/ServiceAccount*Test.php` | Tests per task | 1–11 |
-| `docs/service-accounts.md`, `docs/api-reference.md`, `docs/api-keys.md`, `docs/notifications.md` | Docs | 12 |
+| `app/Services/UserKeys.php` | Issue and revoke person keys | 12 |
+| `docs/service-accounts.md`, `docs/api-reference.md`, `docs/api-keys.md`, `docs/notifications.md` | Docs | 13 |
 
 ---
 
@@ -4536,7 +4536,498 @@ git commit -m "fix(service-accounts): console and MCP views handle uploads witho
 
 ---
 
-### Task 12: Documentation
+### Task 12: Person key (PAT) hardening
+
+**Files:**
+- Create: `app/Services/UserKeys.php`
+- Create: `database/migrations/2026_10_13_020000_clear_encrypted_pat_tokens.php`
+- Modify: `app/Support/ServiceAccountSettings.php` (PAT settings)
+- Modify: `app/Http/Controllers/DashboardController.php` (`createApiKey`, `viewApiKey`, `revokeApiKey`)
+- Modify: `app/Http/Controllers/Api/PatTokenController.php` (`index`, `store`)
+- Modify: `resources/views/settings.blade.php` (remove the View button and its script; expiry required)
+- Modify: `resources/views/admin/service-accounts/index.blade.php` (3 PAT settings fields)
+- Modify: `app/Http/Controllers/ServiceAccountController.php` (`index` passes and `updateSettings` saves PAT settings)
+- Test: `tests/Feature/PatHardeningTest.php`
+
+**Interfaces:**
+- Consumes: `PatToken`, `ServiceAccountException`.
+- Produces:
+  - `ServiceAccountSettings::patDefaultKeyDays(): int` (90), `patMaxKeyDays(): int` (365), `patUserQuota(): int` (5); `save()` accepts `pat_default_key_days`, `pat_max_key_days`, `pat_user_quota`.
+  - `UserKeys::issue(User $user, string $name, ?CarbonInterface $expiresAt): array` returning `['token' => PatToken, 'plain' => string]`; throws `ServiceAccountException` with code `UserKeys::LIMIT` (409) or `UserKeys::INVALID` (422).
+  - `UserKeys::revoke(PatToken $key, User $actor, string $reason): void`
+
+- [ ] **Step 1: Write the failing test**
+
+`tests/Feature/PatHardeningTest.php`:
+
+```php
+<?php
+
+namespace Tests\Feature;
+
+use App\Models\PatToken;
+use App\Models\User;
+use App\Support\ServiceAccountSettings;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Crypt;
+use Tests\Feature\Concerns\MakesServiceAccounts;
+use Tests\TestCase;
+
+class PatHardeningTest extends TestCase
+{
+    use RefreshDatabase, MakesServiceAccounts;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->setUpServiceAccountWorld();
+        $this->withoutMiddleware([\App\Http\Middleware\EnsureApplicationInstalled::class, \App\Http\Middleware\EnsureProfileSetupComplete::class]);
+        $this->activateLicence();
+    }
+
+    /**
+     * createApiKey and PatTokenController::store refuse without an active licence.
+     * Set whatever App\Support\License::isActive() reads (see LicenseTest for the pattern).
+     */
+    private function activateLicence(): void
+    {
+        // Copy the licence setup used in tests/Feature/LicenseTest.php here.
+    }
+
+    public function test_console_key_is_hash_only_with_default_expiry(): void
+    {
+        $user = $this->makeUser('u@example.test');
+
+        $response = $this->actingAs($user)->postJson(route('settings.api-keys.create'), ['name' => 'laptop'])->assertOk();
+        $key = PatToken::findOrFail($response->json('key_id'));
+
+        $this->assertNull($key->token_encrypted);
+        $this->assertSame(hash('sha256', $response->json('token')), $key->token);
+        $this->assertSame(substr($response->json('token'), -4), $key->last_four);
+        $this->assertTrue($key->expires_at->between(now()->addDays(89), now()->addDays(91)));
+    }
+
+    public function test_expiry_over_maximum_is_refused(): void
+    {
+        $user = $this->makeUser('u@example.test');
+
+        $this->actingAs($user)->postJson(route('settings.api-keys.create'), ['name' => 'x', 'expiration_date' => now()->addDays(400)->toDateString()])
+            ->assertStatus(422);
+    }
+
+    public function test_limit_and_same_name_replace(): void
+    {
+        ServiceAccountSettings::save(['pat_user_quota' => 2]);
+        $user = $this->makeUser('u@example.test');
+        $hostA = $this->namedKey($user, 'host-a');
+        $this->namedKey($user, 'host-b');
+        $this->actingAs($user);
+
+        $this->postJson(route('settings.api-keys.create'), ['name' => 'host-c'])->assertStatus(409);
+
+        $this->postJson(route('settings.api-keys.create'), ['name' => 'host-a'])->assertOk();
+        $old = PatToken::where('token', hash('sha256', $hostA))->first();
+        $this->assertSame('revoked', $old->status);
+        $this->assertSame('replaced', $old->revoke_reason);
+        $this->assertSame(2, PatToken::where('tokenable_id', $user->id)->where('tokenable_type', User::class)->where('status', 'active')->count());
+    }
+
+    public function test_expired_and_revoked_keys_do_not_count(): void
+    {
+        ServiceAccountSettings::save(['pat_user_quota' => 1]);
+        $user = $this->makeUser('u@example.test');
+        [, $key] = $this->userKey($user);
+        $key->update(['expires_at' => now()->subDay()]);
+
+        $this->actingAs($user)->postJson(route('settings.api-keys.create'), ['name' => 'new'])->assertOk();
+    }
+
+    public function test_view_endpoint_is_gone(): void
+    {
+        $user = $this->makeUser('u@example.test');
+        [, $key] = $this->userKey($user);
+
+        $this->actingAs($user)->postJson(route('settings.api-keys.view'), ['key_id' => $key->id, 'pin' => '1234'])
+            ->assertStatus(410)->assertJsonPath('message', 'API keys are shown only when created');
+    }
+
+    public function test_api_index_hides_hashes_and_store_uses_the_same_rules(): void
+    {
+        $user = $this->makeUser('u@example.test');
+        $this->userKey($user);
+        $headers = $this->sessionHeaders($user);
+
+        $this->getJson('/api/auth/pat-tokens', $headers)
+            ->assertOk()->assertJsonMissingPath('tokens.0.token_hash')->assertJsonPath('tokens.0.status', 'active');
+
+        $created = $this->postJson('/api/auth/pat-tokens', ['name' => 'cli-host'], $headers)->assertCreated();
+        $this->assertNull(PatToken::findOrFail($created->json('token.id'))->token_encrypted);
+    }
+
+    public function test_console_revoke_records_actor_and_reason(): void
+    {
+        $user = $this->makeUser('u@example.test');
+        [, $key] = $this->userKey($user);
+
+        $this->actingAs($user)->postJson(route('settings.api-keys.revoke'), ['key_id' => $key->id, 'pin' => '1234'])->assertOk();
+        $key->refresh();
+        $this->assertSame('revoked', $key->status);
+        $this->assertSame('revoked_by_user', $key->revoke_reason);
+        $this->assertSame($user->id, (int) $key->revoked_by_user_id);
+    }
+
+    public function test_migration_clears_stored_plaintext_and_old_key_still_works(): void
+    {
+        $user = $this->makeUser('u@example.test');
+        [$plain, $key] = $this->userKey($user);
+        $key->forceFill(['token_encrypted' => Crypt::encryptString($plain)])->save();
+
+        $migration = require database_path('migrations/2026_10_13_020000_clear_encrypted_pat_tokens.php');
+        $migration->up();
+
+        $this->assertNull($key->fresh()->token_encrypted);
+        $this->getJson('/api/v1/whoami', ['Authorization' => 'Bearer ' . $plain])->assertOk();
+    }
+
+    private function namedKey(User $user, string $name): string
+    {
+        [$plain, $token] = $this->userKey($user);
+        $token->update(['name' => $name]);
+
+        return $plain;
+    }
+
+    /**
+     * /api/auth/pat-tokens uses auth.session (the session token from /api/auth/login).
+     *
+     * @return array<string, string>
+     */
+    private function sessionHeaders(User $user): array
+    {
+        $login = $this->postJson('/api/auth/login', ['email' => $user->email, 'password' => 'secret-pass'])->assertOk();
+
+        return ['Authorization' => 'Bearer ' . ($login->json('token') ?? $login->json('access_token') ?? $login->json('session_token'))];
+    }
+}
+```
+
+Before running: fill `activateLicence()` with the setup `tests/Feature/LicenseTest.php` uses for an active licence, and check which field `Api\AuthController::login` returns for the session token.
+
+- [ ] **Step 2: Run the test to verify it fails**
+
+Run: `php artisan test --filter=PatHardeningTest`
+Expected: FAIL (`token_encrypted` is set; no limit; view returns 200 or 401).
+
+- [ ] **Step 3: PAT settings**
+
+In `ServiceAccountSettings`, add to `DEFAULTS`:
+
+```php
+        'pat_default_key_days' => 90,
+        'pat_max_key_days' => 365,
+        'pat_user_quota' => 5,
+```
+
+add methods:
+
+```php
+    public static function patDefaultKeyDays(): int
+    {
+        return min(self::int('pat_default_key_days', 1, 3650), self::patMaxKeyDays());
+    }
+
+    public static function patMaxKeyDays(): int
+    {
+        return self::int('pat_max_key_days', 1, 3650);
+    }
+
+    public static function patUserQuota(): int
+    {
+        return self::int('pat_user_quota', 1, 100);
+    }
+```
+
+and in `save()` replace the `sa_max_key_days`-only clamp with:
+
+```php
+            if (in_array($key, ['sa_max_key_days', 'pat_max_key_days'], true)) {
+                $value = max(1, min(3650, (int) $value));
+            }
+```
+
+- [ ] **Step 4: Write `UserKeys`**
+
+`app/Services/UserKeys.php`:
+
+```php
+<?php
+
+namespace App\Services;
+
+use App\Models\PatToken;
+use App\Models\User;
+use App\Support\ServiceAccountSettings;
+use Carbon\CarbonInterface;
+use Illuminate\Support\Facades\DB;
+
+/**
+ * Issues and revokes a person's atgla- keys (console and CLI login). Hash only, an
+ * expiry is required, at most patUserQuota() active keys; a new key with the name of
+ * an active key replaces it, so a CLI logging in again from the same host never
+ * reaches the limit.
+ */
+class UserKeys
+{
+    public const LIMIT = 409;
+    public const INVALID = 422;
+
+    /**
+     * @return array{token: PatToken, plain: string}
+     */
+    public function issue(User $user, string $name, ?CarbonInterface $expiresAt): array
+    {
+        $name = trim($name);
+        if ($name === '' || mb_strlen($name) > 100) {
+            throw new ServiceAccountException('The key name must be 1 to 100 characters.', self::INVALID);
+        }
+
+        $max = ServiceAccountSettings::patMaxKeyDays();
+        $expiresAt ??= now()->addDays(ServiceAccountSettings::patDefaultKeyDays())->endOfDay();
+        if ($expiresAt->isPast() || $expiresAt->greaterThan(now()->addDays($max)->endOfDay())) {
+            throw new ServiceAccountException("The expiry date must be within the next {$max} days.", self::INVALID);
+        }
+
+        return DB::transaction(function () use ($user, $name, $expiresAt) {
+            User::query()->whereKey($user->id)->lockForUpdate()->first();
+
+            $active = PatToken::query()
+                ->where('tokenable_type', User::class)
+                ->where('tokenable_id', $user->id)
+                ->where('status', 'active')
+                ->whereNull('revoked_at')
+                ->where(fn ($query) => $query->whereNull('expires_at')->orWhere('expires_at', '>', now()));
+
+            foreach ((clone $active)->where('name', $name)->get() as $sameName) {
+                $this->revoke($sameName, $user, 'replaced');
+            }
+
+            $quota = ServiceAccountSettings::patUserQuota();
+            if ((clone $active)->count() >= $quota) {
+                throw new ServiceAccountException("You have {$quota} active API keys. Revoke one or reuse a key name.", self::LIMIT);
+            }
+
+            $plain = PatToken::generateCustomToken();
+            $token = PatToken::create([
+                'tokenable_type' => User::class,
+                'tokenable_id' => $user->id,
+                'user_id' => $user->id,
+                'name' => $name,
+                'token' => hash('sha256', $plain),
+                'token_encrypted' => null,
+                'last_four' => substr($plain, -4),
+                'abilities' => ['*'],
+                'status' => 'active',
+                'expires_at' => $expiresAt,
+            ]);
+
+            return ['token' => $token, 'plain' => $plain];
+        });
+    }
+
+    public function revoke(PatToken $key, User $actor, string $reason): void
+    {
+        $key->forceFill([
+            'status' => 'revoked',
+            'revoked_at' => now(),
+            'revoked_by_user_id' => $actor->id,
+            'revoke_reason' => mb_substr($reason, 0, 50),
+        ])->save();
+    }
+}
+```
+
+The same-name revoke and the quota check run in one transaction: if the quota check throws, the same-name revoke rolls back too.
+
+- [ ] **Step 5: Use it in the console**
+
+In `DashboardController::createApiKey`, replace everything from `/** @var User $user */` to the `ActivityRecorder::record(...)` line with:
+
+```php
+        /** @var User $user */
+        $user = Auth::user();
+        $requestedExpiry = !empty($validated['expiration_date']) ? Carbon::parse($validated['expiration_date'])->endOfDay() : null;
+
+        try {
+            ['token' => $token, 'plain' => $plainToken] = app(UserKeys::class)->issue($user, $validated['name'], $requestedExpiry);
+        } catch (ServiceAccountException $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], $e->getCode() ?: 422);
+        }
+        $expiresAt = $token->expires_at;
+
+        ActivityRecorder::record($user->id, 'apikey.created', 'Created API key "' . $token->name . '" (…' . $token->last_four . ')', ActivityRecorder::SUCCESS, $request);
+```
+
+Replace the whole `viewApiKey` method with:
+
+```php
+    /**
+     * Keys are stored as a hash only (2.1.2), so they cannot be shown again.
+     */
+    public function viewApiKey(Request $request)
+    {
+        return response()->json(['success' => false, 'message' => 'API keys are shown only when created'], 410);
+    }
+```
+
+In `revokeApiKey`, replace `$token->update(['status' => 'revoked']);` with:
+
+```php
+        app(UserKeys::class)->revoke($token, $user, 'revoked_by_user');
+```
+
+The failure branch in `revokeApiKey` still mentions `settings.api-keys.revoke`/`apikey.viewed`; change its event to plain `'apikey.revoked'`.
+
+Imports: `App\Services\UserKeys`, `App\Services\ServiceAccountException`. Remove the `Crypt` import only if `grep -n "Crypt::" app/Http/Controllers/DashboardController.php` finds no other use.
+
+- [ ] **Step 6: Use it in the CLI API**
+
+In `PatTokenController::store`, replace from `$user = $request->user();` to the end of the method with:
+
+```php
+        $user = $request->user();
+        $requestedExpiry = !empty($data['expires_at']) ? Carbon::parse($data['expires_at']) : null;
+
+        try {
+            ['token' => $token, 'plain' => $plainToken] = app(UserKeys::class)->issue($user, $data['name'], $requestedExpiry);
+        } catch (ServiceAccountException $e) {
+            return response()->json(['message' => $e->getMessage()], $e->getCode() ?: 422);
+        }
+
+        return response()->json([
+            'access_token' => $plainToken,
+            'token_type' => 'pat',
+            'message' => 'Save this key securely: it will not be shown again. It expires on ' . $token->expires_at->toDateString() . '.',
+            'token' => [
+                'id' => $token->id,
+                'name' => $token->name,
+                'abilities' => $token->abilities,
+                'expires_at' => $token->expires_at,
+                'created_at' => $token->created_at,
+            ],
+        ], 201);
+```
+
+The `abilities` input is still validated but ignored: every key gets `['*']` until scopes land.
+
+Replace `PatTokenController::index` with:
+
+```php
+    public function index(Request $request)
+    {
+        $tokens = PatToken::query()
+            ->where('tokenable_type', \App\Models\User::class)
+            ->where('tokenable_id', $request->user()->id)
+            ->orderByDesc('id')
+            ->get();
+
+        return response()->json([
+            'message' => 'Keys are shown only when created.',
+            'tokens' => $tokens->map(fn (PatToken $token) => [
+                'id' => $token->id,
+                'name' => $token->name,
+                'last_four' => $token->last_four,
+                'status' => $token->status,
+                'abilities' => $token->abilities,
+                'expires_at' => $token->expires_at,
+                'last_used_at' => $token->last_used_at,
+                'revoked_at' => $token->revoked_at,
+                'created_at' => $token->created_at,
+            ]),
+        ]);
+    }
+```
+
+Imports: `App\Services\UserKeys`, `App\Services\ServiceAccountException`.
+
+- [ ] **Step 7: Migration to clear stored plaintext**
+
+`database/migrations/2026_10_13_020000_clear_encrypted_pat_tokens.php`:
+
+```php
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * From 2.1.2 keys are stored as a hash only. Remove the recoverable copies kept for
+     * the old "view key" button. The keys keep working: their hash is unchanged.
+     */
+    public function up(): void
+    {
+        if (Schema::hasColumn('personal_access_tokens', 'token_encrypted')) {
+            DB::table('personal_access_tokens')->whereNotNull('token_encrypted')->update(['token_encrypted' => null]);
+        }
+    }
+
+    public function down(): void
+    {
+        // The plaintext cannot be restored.
+    }
+};
+```
+
+- [ ] **Step 8: Console views and settings**
+
+In `resources/views/settings.blade.php`:
+- Remove the "View" button in each `apiKeysList` row and the script that posts to `route("settings.api-keys.view")` (around line 880). Keep Revoke.
+- Make expiry required: remove any "never expires" choice of the expiration selector (around line 781), default it to 90 days, and set `max` on the date input to `{{ now()->addDays(\App\Support\ServiceAccountSettings::patMaxKeyDays())->toDateString() }}`.
+- Show `…{{ $apiKey->last_four ?? '????' }}` next to each key name.
+
+In `resources/views/admin/service-accounts/index.blade.php`, add to the Settings form before the checkbox:
+
+```blade
+            <label>Personal API key default lifetime (days) <input class="ag-input" type="number" name="pat_default_key_days" min="1" max="3650" value="{{ $settings['pat_default_key_days'] }}"></label>
+            <label>Personal API key longest lifetime (days) <input class="ag-input" type="number" name="pat_max_key_days" min="1" max="3650" value="{{ $settings['pat_max_key_days'] }}"></label>
+            <label>Active personal API keys per user <input class="ag-input" type="number" name="pat_user_quota" min="1" max="100" value="{{ $settings['pat_user_quota'] }}"></label>
+```
+
+In `ServiceAccountController::index`, add to `settings`:
+
+```php
+                'pat_default_key_days' => ServiceAccountSettings::patDefaultKeyDays(),
+                'pat_max_key_days' => ServiceAccountSettings::patMaxKeyDays(),
+                'pat_user_quota' => ServiceAccountSettings::patUserQuota(),
+```
+
+and to the `updateSettings` validation:
+
+```php
+            'pat_default_key_days' => ['required', 'integer', 'min:1', 'max:3650'],
+            'pat_max_key_days' => ['required', 'integer', 'min:1', 'max:3650'],
+            'pat_user_quota' => ['required', 'integer', 'min:1', 'max:100'],
+```
+
+Update `ServiceAccountConsoleTest::test_settings_update_by_admin` to send these 3 fields too.
+
+- [ ] **Step 9: Run the tests**
+
+Run: `php artisan test --filter="PatHardeningTest|UserApiAuthTest|SecurityPrivacyTest|ServiceAccountConsoleTest"`
+Expected: PASS. Then `php artisan test`. Update existing tests that read `token_encrypted`, call the view endpoint, or expect the 2099 expiry.
+
+- [ ] **Step 10: Commit**
+
+```bash
+git add app database/migrations/2026_10_13_020000_clear_encrypted_pat_tokens.php resources/views tests/Feature
+git commit -m "feat(pat): hash-only keys, required expiry, per-user limit, same-name replace"
+```
+
+---
+
+### Task 13: Documentation
 
 **Files:**
 - Create: `docs/service-accounts.md`
@@ -4569,7 +5060,7 @@ Sections, each short, with the exact values from Global Constraints:
 - [ ] **Step 2: Update the other docs**
 
 - `docs/api-reference.md`: `whoami` response for both identity types (spec 5.5 JSON); `POST /v1/systems` header and errors (401 invalid service account key, 403 missing `systems.register`, 422 when the setting requires it); permission per v1 route and the 403 message; deregister and reactivate 403 for service accounts; 401 messages `Invalid key`, `Key is revoked`, `Key has expired`, `Identity is disabled`; legacy routes reject `atgsa-` keys.
-- `docs/api-keys.md`: two prefixes; revoke on deactivation, deletion and organization change; reactivation does not restore keys.
+- `docs/api-keys.md`: two prefixes; hash-only storage (no View button); required expiry (90 days default, 365 max); 5 active keys per user and same-name replace; revoke on deactivation, deletion and organization change; reactivation does not restore keys; existing keys keep their expiry and should be replaced.
 - `docs/notifications.md`: add every new event from Task 9 with its level, and note that `system.reactivated` replaced reactivations sent as `system.registered` (existing subscriptions were migrated).
 - `README.md`: add `docs/service-accounts.md` to the Documentation table under "Use".
 

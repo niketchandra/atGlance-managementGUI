@@ -3,7 +3,7 @@
 - **Date:** 2026-10-13
 - **Branch:** Version2.1.2
 - **Status:** Draft for review
-- **Slice:** 1 of 5 (see section 12)
+- **Slices:** 1 and 2 of 5, release 2.1.2 (see section 12)
 
 ## 1. Goal
 
@@ -398,7 +398,7 @@ mismatch.
 | # | Slice | Status |
 |---|---|---|
 | 1 | Service accounts, CLI identity, revoke on removal, notifications (this document) | This design |
-| 2 | Person keys: scopes, active-key limit, hash-only storage (removes "view key") | Later |
+| 2 | Person keys: active-key limit, required expiry, hash-only storage (section 15). Scopes stay later. | This design (2.1.2) |
 | 3 | Offboarding: ownership transfer of person-owned servers, orphan report, stop cascade delete of history | Later |
 | 4 | Organization admin role | On hold |
 | 5 | `atglance` CLI: `atgsa-` support, two-key registration, `whoami` check | CLI repository |
@@ -438,3 +438,40 @@ Feature tests in `composer/tests/Feature`, following `CliApiV1Test` and
 - Update `docs/api-reference.md` (headers, `whoami`, errors),
   `docs/api-keys.md` (two prefixes, revoke on removal) and
   `docs/notifications.md` (new events).
+
+## 15. Person keys (PAT) hardening (slice 2)
+
+Applies to every `atgla-` key, created in the console (Settings > API keys) or
+by the CLI (`POST /api/auth/pat-tokens` after `atglance login`).
+
+### 15.1 Rules
+
+| Rule | Value |
+|---|---|
+| Storage | SHA-256 hash only. `token_encrypted` is never written. |
+| View key later | Removed. `POST /settings/api-keys/view` answers 410 `API keys are shown only when created`. The "View" button is removed. |
+| Expiry | Required. Default `pat_default_key_days` (90), at most `pat_max_key_days` (365). A date later than the maximum is refused (422). The 2099 default is gone. |
+| Active keys per user | At most `pat_user_quota` (5). Revoked and expired keys do not count. |
+| Same name | Creating a key with the name of one of the user's active keys revokes the old one (`revoke_reason = replaced`) in the same transaction. A CLI that logs in again from the same host (same key name) therefore never hits the limit. |
+| Over the limit | 409 `You have 5 active API keys. Revoke one or reuse a key name.` |
+| Revoke | Sets `status = revoked`, `revoked_at`, `revoked_by_user_id`, `revoke_reason` (`revoked_by_user` from the console). |
+| `GET /api/auth/pat-tokens` | No longer returns `token_hash`. Adds `status`, `last_four`, `revoked_at`. |
+
+Settings, in `admin_settings` with the service account settings:
+`pat_default_key_days` 90, `pat_max_key_days` 365, `pat_user_quota` 5.
+
+### 15.2 Existing keys
+
+- The migration sets `token_encrypted = null` on every row, so stored plaintext
+  is gone. Old keys keep working (their hash is unchanged).
+- Existing keys keep their expiry, including the 2099 default, so no server
+  stops at upgrade. The release notes tell admins to replace them. They count
+  toward the 5-key limit.
+- `last_four` is unknown for old keys and shows as `…????`.
+
+### 15.3 Tests
+
+Create in console and via API: hash only, expiry default and maximum, limit 5
+(409), same-name replace, revoked and expired keys not counted; view endpoint
+410; index has no `token_hash`; migration clears `token_encrypted` and old keys
+still authenticate.
