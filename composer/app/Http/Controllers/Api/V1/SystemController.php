@@ -5,6 +5,8 @@ namespace App\Http\Controllers\Api\V1;
 use App\Http\Controllers\Api\SystemRegisterController;
 use App\Http\Controllers\Controller;
 use App\Models\SystemRegister;
+use App\Support\ServiceAccountKeyHeader;
+use App\Support\ServiceAccountSettings;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -24,6 +26,14 @@ class SystemController extends Controller
         $user = $request->user();
         $orgId = (int) ($user->org_id ?? 200);
 
+        [$account, $denied] = ServiceAccountKeyHeader::resolve($request, $orgId);
+        if ($denied) {
+            return $denied;
+        }
+        if ($account === null && ServiceAccountSettings::requireForRegistration()) {
+            return response()->json(['message' => 'Registration needs a user key and a service account key'], 422);
+        }
+
         $data = $request->validate(SystemRegisterController::systemFieldRules() + [
             // A workspace of the user's org, and one the user is a member of (admins: any).
             'workspace_id' => array_merge(SystemRegisterController::workspaceIdRule($orgId), [
@@ -37,10 +47,14 @@ class SystemController extends Controller
             'system_key' => ['required', 'string', 'min:32', 'max:255'],
         ]);
 
+        if ($account !== null && !$account->can('systems.register', (int) ($data['workspace_id'] ?? 0))) {
+            return response()->json(['message' => 'Service account lacks systems.register in this workspace'], 403);
+        }
+
         $data['validation_hash'] = $data['system_key'];
         unset($data['system_key']);
 
-        $system = $this->systems->createSystem($request, $data);
+        $system = $this->systems->createSystem($request, $data, $account);
         if (!$system instanceof SystemRegister) {
             return $system;
         }
@@ -51,6 +65,7 @@ class SystemController extends Controller
                 'system_name' => $system->system_name,
                 'status' => $system->status,
                 'workspace_id' => (int) $system->workspace_id,
+                'service_account_id' => $system->service_account_id ? (int) $system->service_account_id : null,
                 'created_at' => $system->created_at,
             ],
         ], 201);

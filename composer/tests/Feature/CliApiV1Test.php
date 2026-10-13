@@ -298,7 +298,7 @@ class CliApiV1Test extends TestCase
             'system_key' => self::KEY,
         ], $this->pat($user))->assertCreated();
 
-        $this->assertSame(['id', 'system_name', 'status', 'workspace_id', 'created_at'], array_keys($response->json('system')));
+        $this->assertSame(['id', 'system_name', 'status', 'workspace_id', 'service_account_id', 'created_at'], array_keys($response->json('system')));
         $this->assertStringNotContainsString(self::KEY, $response->getContent());
         $response->assertJsonPath('system.status', 'active')->assertJsonPath('system.workspace_id', $this->workspace->id);
 

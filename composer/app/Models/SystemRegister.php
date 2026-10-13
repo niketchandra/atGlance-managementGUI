@@ -66,7 +66,16 @@ class SystemRegister extends Model
     protected static function booted(): void
     {
         static::created(function (SystemRegister $system) {
-            ActivityRecorder::record((int) $system->user_id, 'system.registered', 'Registered system ' . $system->system_name);
+            $account = $system->service_account_id ? ServiceAccount::query()->find($system->service_account_id) : null;
+            ActivityRecorder::record(
+                (int) $system->user_id,
+                'system.registered',
+                'Registered system ' . $system->system_name . ($account ? ' as service account ' . $account->name : ''),
+                ActivityRecorder::SUCCESS,
+                null,
+                $system->workspace_id ? (int) $system->workspace_id : null,
+                (int) $system->id,
+            );
 
             if ($system->status === 'active') {
                 $system->notifyWorkspace(NotificationEvents::SYSTEM_REGISTERED, 'System registered');

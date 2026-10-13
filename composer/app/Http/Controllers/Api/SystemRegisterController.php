@@ -5,10 +5,12 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\ActivityLog;
 use App\Models\PatToken;
+use App\Models\ServiceAccount;
 use App\Models\SystemRegister;
 use App\Models\User;
 use App\Models\Workspace;
 use App\Support\ActivityRecorder;
+use App\Support\ServiceAccountSettings;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -293,7 +295,7 @@ class SystemRegisterController extends Controller
      * Creates a system for the PAT's user from validated $data. Shared by the legacy
      * and the /api/v1 register endpoints. Returns the 401 response without a PAT.
      */
-    public function createSystem(Request $request, array $data)
+    public function createSystem(Request $request, array $data, ?ServiceAccount $account = null)
     {
         $user = $request->user();
         $patToken = $request->attributes->get('patToken');
@@ -322,6 +324,7 @@ class SystemRegisterController extends Controller
         return SystemRegister::create([
             'pat_token_id' => $patToken->id,
             'user_id' => $user->id,
+            'service_account_id' => $account?->id,
             'org_id' => $resolvedOrgId,
             'workspace_id' => $resolvedWorkspaceId,
             'system_name' => $data['system_name'],
@@ -340,6 +343,10 @@ class SystemRegisterController extends Controller
 
     public function store(Request $request)
     {
+        if (ServiceAccountSettings::requireForRegistration()) {
+            return response()->json(['message' => 'Registration needs a user key and a service account key'], 422);
+        }
+
         $data = $request->validate(self::systemFieldRules() + [
             'workspace_id' => self::workspaceIdRule(),
             'public_ip' => ['nullable', 'string', 'max:45'],
