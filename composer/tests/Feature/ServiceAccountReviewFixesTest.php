@@ -86,7 +86,7 @@ class ServiceAccountReviewFixesTest extends TestCase
             'events' => json_encode(['system.registered']),
         ]);
 
-        $migration = require database_path('migrations/2026_10_13_010000_subscribe_reactivated_event.php');
+        $migration = require database_path('migrations/2026_10_14_000000_version_2_1_2_schema.php');
         $migration->up();
         $migration->up();
 

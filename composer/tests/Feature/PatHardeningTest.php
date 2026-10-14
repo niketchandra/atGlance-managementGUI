@@ -120,7 +120,7 @@ class PatHardeningTest extends TestCase
         [$plain, $key] = $this->userKey($user);
         $key->forceFill(['token_encrypted' => Crypt::encryptString($plain)])->save();
 
-        $migration = require database_path('migrations/2026_10_13_020000_clear_encrypted_pat_tokens.php');
+        $migration = require database_path('migrations/2026_10_14_000000_version_2_1_2_schema.php');
         $migration->up();
 
         $this->assertNull($key->fresh()->token_encrypted);

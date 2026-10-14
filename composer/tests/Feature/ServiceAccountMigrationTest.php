@@ -28,7 +28,7 @@ class ServiceAccountMigrationTest extends TestCase
 
     public function test_migration_completes_when_rerun_after_partial_apply(): void
     {
-        $migration = require database_path('migrations/2026_10_13_000000_create_service_accounts.php');
+        $migration = require database_path('migrations/2026_10_14_000000_version_2_1_2_schema.php');
 
         // Already applied by RefreshDatabase: a second run must finish, as it must after
         // a MySQL run that stopped halfway.
