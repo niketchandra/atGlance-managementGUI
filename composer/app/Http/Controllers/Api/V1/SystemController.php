@@ -52,6 +52,30 @@ class SystemController extends Controller
             return response()->json(['message' => 'Service account lacks systems.register in this workspace'], 403);
         }
 
+        // Idempotent on system_key: a CLI retrying a registration whose answer was lost
+        // gets the existing system back (200) instead of a duplicate.
+        $existing = SystemRegister::query()
+            ->where('org_id', $orgId)
+            ->where('validation_hash', $data['system_key'])
+            ->first();
+        if ($existing && hash_equals((string) $existing->validation_hash, (string) $data['system_key'])) {
+            $mayManage = (int) $existing->user_id === (int) $user->id
+                || $user->isAdmin()
+                || ($account !== null && (int) $existing->service_account_id === (int) $account->id);
+            if (!$mayManage) {
+                return response()->json(['message' => 'The given data was invalid.', 'errors' => ['system_key' => ['The system key is already in use.']]], 422);
+            }
+
+            return response()->json(['system' => [
+                'id' => $existing->id,
+                'system_name' => $existing->system_name,
+                'status' => $existing->status,
+                'workspace_id' => (int) $existing->workspace_id,
+                'service_account_id' => $existing->service_account_id ? (int) $existing->service_account_id : null,
+                'created_at' => $existing->created_at,
+            ]], 200);
+        }
+
         $data['validation_hash'] = $data['system_key'];
         unset($data['system_key']);
 

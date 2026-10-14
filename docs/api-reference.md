@@ -1895,6 +1895,8 @@ Response `201` (the key is never echoed; `service_account_id` is `null` without 
 ```json
 {"system": {"id": 4057010410, "system_name": "web-01", "status": "active", "workspace_id": 3, "service_account_id": 12, "created_at": "2026-10-11T09:30:00.000000Z"}}
 ```
+Sending a `system_key` that already belongs to a system you may manage (you registered it, you are an admin, or it runs as the service account named in the header) returns `200` with that system (nothing is created), so a CLI can retry a registration whose answer was lost. A key of a system you may not manage: `422` (`system_key`, "The system key is already in use.").
+
 Errors: the key errors above (a service account key alone in `Authorization` is `401`), `401 Invalid service account key` (bad, revoked, expired, disabled or other-organisation account in the header), `403 Service account lacks systems.register in this workspace`, `422 Registration needs a user key and a service account key` (when the admin setting requires it; also on the 1.x `POST /api/system-register`), `422` validation (`system_key` missing or too short, `workspace_id` of another organisation or of a workspace the user is not in, ...).
 
 ### GET /api/v1/systems/self

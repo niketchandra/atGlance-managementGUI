@@ -308,6 +308,59 @@ class CliApiV1Test extends TestCase
         $this->assertSame($user->id, (int) $system->user_id);
     }
 
+    private function registerBody(int $workspaceId): array
+    {
+        return [
+            'system_name' => 'web-02',
+            'os_type' => 'linux',
+            'ip_address' => '10.0.0.6',
+            'workspace_id' => $workspaceId,
+            'system_key' => self::KEY,
+        ];
+    }
+
+    public function test_register_is_idempotent_on_system_key(): void
+    {
+        $user = $this->user('me@example.test');
+        $this->workspace->addUser($user->id, false);
+        $headers = $this->pat($user);
+        $body = $this->registerBody($this->workspace->id);
+
+        $first = $this->postJson('/api/v1/systems', $body, $headers)->assertCreated();
+        $second = $this->postJson('/api/v1/systems', $body, $headers)->assertOk();
+
+        $this->assertSame($first->json('system.id'), $second->json('system.id'));
+        $this->assertSame(['id', 'system_name', 'status', 'workspace_id', 'service_account_id', 'created_at'], array_keys($second->json('system')));
+        $this->assertSame(1, SystemRegister::count());
+    }
+
+    public function test_register_with_a_key_of_another_users_system_is_rejected(): void
+    {
+        $owner = $this->user('owner@example.test');
+        $other = $this->user('other@example.test');
+        $this->workspace->addUser($owner->id, false);
+        $this->workspace->addUser($other->id, false);
+        $body = $this->registerBody($this->workspace->id);
+
+        $this->postJson('/api/v1/systems', $body, $this->pat($owner))->assertCreated();
+        $this->postJson('/api/v1/systems', $body, $this->pat($other))
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('system_key')
+            ->assertJsonPath('errors.system_key.0', 'The system key is already in use.');
+        $this->assertSame(1, SystemRegister::count());
+    }
+
+    public function test_register_with_a_key_used_in_another_org_creates_a_system(): void
+    {
+        $theirs = $this->user('theirs@example.test', 102, 300);
+        $this->system($theirs, ['workspace_id' => $this->foreignWorkspace->id]);
+        $me = $this->user('me@example.test');
+        $this->workspace->addUser($me->id, false);
+
+        $this->postJson('/api/v1/systems', $this->registerBody($this->workspace->id), $this->pat($me))->assertCreated();
+        $this->assertSame(2, SystemRegister::count());
+    }
+
     public function test_register_rejects_workspace_of_other_org_and_missing_key(): void
     {
         $headers = $this->pat($this->user('me@example.test'));
@@ -839,7 +892,7 @@ class CliApiV1Test extends TestCase
             ->assertStatus(422)->assertJsonValidationErrors('workspace_id');
         $this->postJson('/api/v1/systems', $body, $this->pat($this->user('admin@example.test', 101)))
             ->assertCreated();
-        $this->postJson('/api/v1/systems', ['workspace_id' => 0] + $body, $this->pat($this->user('plain@example.test')))
+        $this->postJson('/api/v1/systems', ['workspace_id' => 0, 'system_key' => 'k2-0123456789abcdef0123456789abcdef01234567'] + $body, $this->pat($this->user('plain@example.test')))
             ->assertCreated();
     }
 
