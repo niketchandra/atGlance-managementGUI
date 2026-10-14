@@ -46,6 +46,62 @@ class ServiceAccountConsoleTest extends TestCase
         $this->actingAs($admin)->get(route('service-accounts.index'))->assertOk()->assertSee('listed-agent');
     }
 
+    public function test_all_workspaces_option_creates_org_account_with_every_workspace(): void
+    {
+        $admin = $this->makeUser('admin@example.test', 101);
+
+        $this->actingAs($admin)->post(route('service-accounts.store'), ['name' => 'everywhere', 'scope' => 'workspace', 'workspace_id' => 'all'])
+            ->assertRedirect()->assertSessionHasNoErrors();
+
+        $account = ServiceAccount::where('name', 'everywhere')->firstOrFail();
+        $this->assertSame(ServiceAccount::SCOPE_ORGANIZATION, $account->scope);
+        $this->assertTrue($account->can('configs.write', $this->workspace->id));
+        $this->assertTrue($account->can('configs.write', $this->otherWorkspace->id));
+        $this->assertFalse($account->can('configs.write', $this->foreignWorkspace->id));
+    }
+
+    public function test_all_workspaces_option_is_admin_only(): void
+    {
+        $wsAdmin = $this->makeUser('ws@example.test');
+        $this->workspace->addUser($wsAdmin->id, true);
+        $this->workspace->setPermissions($wsAdmin->id, ['service_accounts' => true]);
+
+        $this->actingAs($wsAdmin)->post(route('service-accounts.store'), ['name' => 'x', 'scope' => 'workspace', 'workspace_id' => 'all'])->assertForbidden();
+    }
+
+    public function test_list_filters_by_workspace(): void
+    {
+        $admin = $this->makeUser('admin@example.test', 101);
+        $this->makeAccount(attributes: ['name' => 'in-production']);
+        $this->makeAccount(ServiceAccount::SCOPE_WORKSPACE, $this->otherWorkspace, ['name' => 'in-staging']);
+        $org = $this->makeAccount(ServiceAccount::SCOPE_ORGANIZATION, null, ['name' => 'org-granted']);
+        $this->grant($org, $this->workspace);
+
+        $this->actingAs($admin)->get(route('service-accounts.index'))
+            ->assertOk()->assertSee('in-production')->assertSee('in-staging')->assertSee('org-granted')->assertSee('All workspaces');
+        $this->actingAs($admin)->get(route('service-accounts.index', ['workspace' => $this->workspace->id]))
+            ->assertOk()->assertSee('in-production')->assertSee('org-granted')->assertDontSee('in-staging');
+    }
+
+    public function test_super_admin_sidebar_has_no_duplicate_workspace_link(): void
+    {
+        $superAdmin = $this->makeUser('root@example.test', 100);
+
+        $html = $this->actingAs($superAdmin)->get(route('service-accounts.index'))->assertOk()->getContent();
+
+        $this->assertSame(1, substr_count($html, 'href="' . route('enterprise.console') . '"'));
+    }
+
+    public function test_profile_and_settings_only_in_user_menu(): void
+    {
+        $admin = $this->makeUser('admin@example.test', 101);
+
+        $html = $this->actingAs($admin)->get(route('service-accounts.index'))->assertOk()->getContent();
+
+        $this->assertSame(1, substr_count($html, 'href="' . route('settings') . '"'));
+        $this->assertSame(1, substr_count($html, 'href="' . route('profile') . '"'));
+    }
+
     public function test_member_cannot_create_or_view(): void
     {
         $member = $this->makeUser('member@example.test');

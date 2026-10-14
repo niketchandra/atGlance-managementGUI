@@ -26,12 +26,20 @@ class ServiceAccountController extends Controller
     {
     }
 
-    public function index(): View
+    public function index(Request $request): View
     {
         $actor = $this->actor();
+        $filterWorkspace = (int) $request->query('workspace', 0);
 
         return view('admin.service-accounts.index', [
+            'filterWorkspace' => $filterWorkspace,
+            'activePane' => $request->query('pane') === 'settings' ? 'settings' : 'accounts',
             'accounts' => ServiceAccountAccess::visibleQuery($actor)
+                // A workspace filter shows the workspace's own accounts and the organization
+                // accounts with an active grant there.
+                ->when($filterWorkspace > 0, fn ($query) => $query->where(fn ($inWorkspace) => $inWorkspace
+                    ->where('workspace_id', $filterWorkspace)
+                    ->orWhereHas('grants', fn ($grants) => $grants->where('workspace_id', $filterWorkspace)->where('status', 'active'))))
                 ->with(['workspace:id,name', 'owner:id,email'])
                 ->withCount(['grants as active_grants_count' => fn ($query) => $query->where('status', 'active')])
                 ->orderBy('scope')->orderBy('name')
@@ -56,7 +64,7 @@ class ServiceAccountController extends Controller
 
         ServiceAccountSettings::save($validated + ['sa_require_for_registration' => $request->boolean('sa_require_for_registration')]);
 
-        return back()->with('success', 'Service account settings saved.');
+        return redirect()->route('service-accounts.index', ['pane' => 'settings'])->with('success', 'Service account settings saved.');
     }
 
     public function store(Request $request): RedirectResponse
@@ -67,10 +75,26 @@ class ServiceAccountController extends Controller
             'description' => ['nullable', 'string', 'max:512'],
             'team' => ['nullable', 'string', 'max:100'],
             'scope' => ['required', 'in:organization,workspace'],
-            'workspace_id' => ['required_if:scope,workspace', 'nullable', 'integer'],
+            'workspace_id' => ['required_if:scope,workspace', 'nullable', 'regex:/^(all|[0-9]{1,18})$/'],
             'permissions' => ['nullable', 'array'],
             'permissions.*' => ['string'],
         ]);
+
+        // "All workspaces": an organization account with a grant on every workspace of the
+        // organization, made in one step. Admins only, like any organization account.
+        if (($data['workspace_id'] ?? null) === 'all') {
+            abort_unless(ServiceAccountAccess::canCreateOrganizationAccount($actor), 403);
+
+            return $this->attempt(function () use ($actor, $data) {
+                $account = $this->accounts->create($actor, ['scope' => ServiceAccount::SCOPE_ORGANIZATION, 'workspace_id' => null] + $data);
+                $workspaces = Workspace::query()->where('org_id', (int) ($actor->org_id ?? 200))->get();
+                foreach ($workspaces as $workspace) {
+                    $this->accounts->setGrant($account, $actor, $workspace, $data['permissions'] ?? ServiceAccount::DEFAULT_PERMISSIONS);
+                }
+
+                return $account;
+            }, fn (ServiceAccount $account) => redirect()->route('service-accounts.show', $account->id)->with('success', 'Service account created with access to every workspace. Create a key next.'));
+        }
 
         if ($data['scope'] === ServiceAccount::SCOPE_ORGANIZATION) {
             $allowed = ServiceAccountAccess::canCreateOrganizationAccount($actor);

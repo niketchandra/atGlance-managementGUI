@@ -40,7 +40,10 @@
                 $agNavItems[] = ['label' => 'Config Backups', 'icon' => 'fa-file-code', 'url' => route('configuration-backups'), 'active' => ['configuration-backups*']];
                 if ($agIsAdmin) {
                     $agNavItems[] = ['label' => 'Users', 'icon' => 'fa-users', 'url' => route('admin.users'), 'active' => ['admin.users*']];
-                    $agNavItems[] = ['label' => 'Workspace', 'icon' => 'fa-sitemap', 'url' => $agIsSuperAdmin ? route('enterprise.console') : route('admin.workspaces'), 'active' => $agIsSuperAdmin ? ['__none__'] : ['admin.workspaces*', 'workspace.*']];
+                    // The super admin reaches workspaces through Enterprise Console (same page).
+                    if (!$agIsSuperAdmin) {
+                        $agNavItems[] = ['label' => 'Workspace', 'icon' => 'fa-sitemap', 'url' => route('admin.workspaces'), 'active' => ['admin.workspaces*', 'workspace.*']];
+                    }
                     $agNavItems[] = ['label' => 'Notifications', 'icon' => 'fa-bell', 'url' => route('admin.notifications'), 'active' => ['admin.notifications*']];
                     $agNavItems[] = ['label' => 'Service Accounts', 'icon' => 'fa-robot', 'url' => route('service-accounts.index'), 'active' => ['service-accounts.*']];
                 }
@@ -52,9 +55,8 @@
                 if (!$agIsAdmin && \Illuminate\Support\Facades\DB::table('workspace_user')->where('user_id', $agUser->id)->where('is_admin', true)->exists()) {
                     $agNavItems[] = ['label' => 'Workspace', 'icon' => 'fa-sitemap', 'url' => route('admin.workspaces'), 'active' => ['admin.workspaces*']];
                 }
-                $agNavItems[] = ['label' => 'Settings', 'icon' => 'fa-cog', 'url' => route('settings'), 'active' => ['settings*']];
             }
-            $agNavItems[] = ['label' => 'Profile', 'icon' => 'fa-user-circle', 'url' => route('profile'), 'active' => ['profile*']];
+            // Profile and Settings live in the user menu (top right), not in the sidebar.
         @endphp
 
         <header class="ag-topbar ag-topbar--app">
