@@ -14,6 +14,7 @@ use App\Support\ServiceAccountSettings;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\View\View;
 
 /**
@@ -123,7 +124,7 @@ class ServiceAccountController extends Controller
                 ? Workspace::query()->where('org_id', $account->org_id)->orderBy('name')->get(['id', 'name'])
                 : collect(),
             'possibleOwners' => User::query()->where('org_id', $account->org_id)->where('status', 'active')->orderBy('email')->get(['id', 'email']),
-            'newKey' => session('new_service_account_key'),
+            'newKey' => $this->flashedKey(),
             'keyDays' => ['default' => ServiceAccountSettings::defaultKeyDays(), 'max' => ServiceAccountSettings::maxKeyDays()],
         ]);
     }
@@ -195,9 +196,10 @@ class ServiceAccountController extends Controller
 
         return $this->attempt(
             fn () => $this->accounts->issueKey($account, $this->actor(), $data['name'], isset($data['days']) ? (int) $data['days'] : null),
-            // Flashed: shown on the next page load only, never stored.
+            // Flashed for the next page load only, and encrypted so the session store never
+            // holds the key in plain text.
             fn (array $issued) => redirect()->route('service-accounts.show', $account->id)
-                ->with('new_service_account_key', $issued['plain'])
+                ->with('new_service_account_key', Crypt::encryptString($issued['plain']))
                 ->with('success', 'Key created. Copy it now: it will not be shown again.'),
         );
     }
@@ -284,6 +286,20 @@ class ServiceAccountController extends Controller
             'pat_max_key_days' => ServiceAccountSettings::patMaxKeyDays(),
             'pat_user_quota' => ServiceAccountSettings::patUserQuota(),
         ];
+    }
+
+    private function flashedKey(): ?string
+    {
+        $encrypted = session('new_service_account_key');
+        if (!is_string($encrypted) || $encrypted === '') {
+            return null;
+        }
+
+        try {
+            return Crypt::decryptString($encrypted);
+        } catch (\Throwable) {
+            return null;
+        }
     }
 
     private function actor(): User

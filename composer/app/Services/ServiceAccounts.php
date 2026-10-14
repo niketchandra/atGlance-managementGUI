@@ -271,8 +271,17 @@ class ServiceAccounts
             throw new ServiceAccountException("The service account needs Register access in the system's workspace.");
         }
 
-        $system->service_account_id = $account->id;
-        $system->save();
+        DB::transaction(function () use ($system, $account) {
+            $system->service_account_id = $account->id;
+            $system->save();
+
+            // The account takes over the system's services, so deleting the person who
+            // created them no longer cascades to the rows and cuts the version history.
+            DB::table('services')->where('system_id', $system->id)->update([
+                'user_id' => null,
+                'service_account_id' => $account->id,
+            ]);
+        });
 
         ActivityRecorder::record(
             (int) $actor->id,

@@ -96,7 +96,7 @@ Route::prefix('v1')->name('v1.')->group(function () {
     Route::get('/meta', [V1MetaController::class, 'meta'])->middleware('throttle:v1-meta')->name('meta');
     Route::get('/whoami', [V1MetaController::class, 'whoami'])->middleware(['auth.pat:service', 'active.user'])->name('whoami');
     Route::get('/credentials/status', [V1CredentialController::class, 'status'])->middleware(['auth.pat:service', 'active.user'])->name('credentials.status');
-    Route::post('/credentials/expiry-notice', [V1CredentialController::class, 'expiryNotice'])->middleware(['auth.pat:service', 'active.user', 'throttle:6,1'])->name('credentials.expiry-notice');
+    Route::post('/credentials/expiry-notice', [V1CredentialController::class, 'expiryNotice'])->middleware(['auth.pat:service', 'active.user', 'throttle:v1-expiry-notice'])->name('credentials.expiry-notice');
 
     Route::post('/systems', [V1SystemController::class, 'store'])->middleware(['auth.pat', 'active.user'])->name('systems.store');
 

@@ -64,6 +64,8 @@ Earlier versions sent `message.{to, from, text}` to `api/1.0` without `consent`.
 | `organization.user_keys_revoked` | Organization | A user was deactivated, deleted or moved, and their API keys were revoked |
 | `organization.user_key_expiring` | Organization | A person's API key expires in 15, 7, 3, 2, 1 or 0 days |
 
+Organization-level groups (`workspace_id` empty) are install-wide: only the super admin, who manages every organization, sets them up, and they receive the organization events of all organizations on this install.
+
 Until 2.1.2, reactivations were sent as `system.registered`. Groups subscribed to `system.registered` were subscribed to `system.reactivated` on upgrade, so they keep receiving them.
 
 Expiry notices go out once per key and notice day, from the daily `atglance:credentials-sweep` (06:10) or when the CLI calls `POST /api/v1/credentials/expiry-notice`. The days come from the `sa_expiry_notice_days` setting (default `15,7,3,2,1,0`). Personal alerts (Settings > Preferences, **API keys**) go to the owner of the key or service account; the "Your API keys were revoked" alert is always sent. No notice contains a key, only its name and last 4 characters.

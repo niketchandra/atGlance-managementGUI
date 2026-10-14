@@ -30,7 +30,7 @@ class ServiceAccountConsoleTest extends TestCase
 
         $response = $this->actingAs($admin)->post(route('service-accounts.keys.store', $account->id), ['name' => 'fleet', 'days' => 30]);
         $response->assertRedirect(route('service-accounts.show', $account->id));
-        $plain = session('new_service_account_key');
+        $plain = \Illuminate\Support\Facades\Crypt::decryptString(session('new_service_account_key'));
         $this->assertStringStartsWith('atgsa-', $plain);
 
         $this->actingAs($admin)->get(route('service-accounts.show', $account->id))->assertOk()->assertSee($plain);

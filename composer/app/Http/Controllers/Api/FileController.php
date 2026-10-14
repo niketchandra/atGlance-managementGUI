@@ -144,20 +144,31 @@ class FileController extends Controller
                 'status' => 'active',
             ];
 
-            // A service account continues the system's existing service rows, whoever
-            // created them, so the version history stays in one line.
-            $service = $account
-                ? (Service::query()->where('system_id', $systemId)->where('service_name', $request->input('service_name'))->orderBy('service_id')->first()
-                    ?? Service::create($serviceDefaults + [
-                        'user_id' => null,
-                        'service_account_id' => $account->id,
-                        'system_id' => $systemId,
-                        'service_name' => $request->input('service_name'),
-                    ]))
-                : Service::firstOrCreate(
-                    ['user_id' => $user->id, 'system_id' => $systemId, 'service_name' => $request->input('service_name')],
-                    $serviceDefaults,
-                );
+            $sameService = Service::query()->where('system_id', $systemId)->where('service_name', $request->input('service_name'));
+
+            if ($account) {
+                // A service account continues the system's existing service row, whoever
+                // created it, and takes it over: with user_id null, deleting the person who
+                // created it no longer cascades to the row and cuts the history.
+                $service = (clone $sameService)->orderBy('service_id')->first();
+                if ($service && ($service->user_id !== null || (int) $service->service_account_id !== (int) $account->id)) {
+                    $service->forceFill(['user_id' => null, 'service_account_id' => $account->id])->save();
+                }
+                $service ??= Service::create($serviceDefaults + [
+                    'user_id' => null,
+                    'service_account_id' => $account->id,
+                    'system_id' => $systemId,
+                    'service_name' => $request->input('service_name'),
+                ]);
+            } else {
+                // A person continues a row owned by a service account, so one service keeps
+                // one version line.
+                $service = (clone $sameService)->whereNull('user_id')->orderBy('service_id')->first()
+                    ?? Service::firstOrCreate(
+                        ['user_id' => $user->id, 'system_id' => $systemId, 'service_name' => $request->input('service_name')],
+                        $serviceDefaults,
+                    );
+            }
         }
 
         if (!$service) {
