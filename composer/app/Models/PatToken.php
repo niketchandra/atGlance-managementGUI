@@ -3,12 +3,14 @@
 namespace App\Models;
 
 use App\Models\User;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Support\Str;
 use Laravel\Sanctum\PersonalAccessToken;
 
 class PatToken extends PersonalAccessToken
 {
+	use HasFactory;
 	protected $table = 'personal_access_tokens';
 
 	protected $fillable = [

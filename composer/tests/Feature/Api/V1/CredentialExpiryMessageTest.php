@@ -21,6 +21,14 @@ class CredentialExpiryMessageTest extends TestCase
     use RefreshDatabase;
 
     /**
+     * Helper method to get the plaintext token for API testing.
+     */
+    protected function getPlainToken(PatToken $token): string
+    {
+        return $token->token_encrypted ?? $token->token;
+    }
+
+    /**
      * Test: expiryNotice creates message for personal access token expiring soon
      */
     public function test_expiry_notice_creates_message_for_expiring_pat(): void
@@ -35,7 +43,7 @@ class CredentialExpiryMessageTest extends TestCase
 
         // Act: Call expiryNotice endpoint
         $response = $this->postJson('/api/v1/credentials/expiry-notice', [], [
-            'Authorization' => "Bearer {$token->token}",
+            'Authorization' => "Bearer {$this->getPlainToken($token)}",
         ]);
 
         // Assert: Response is successful
@@ -69,7 +77,7 @@ class CredentialExpiryMessageTest extends TestCase
 
         // Act: Call expiryNotice endpoint
         $response = $this->postJson('/api/v1/credentials/expiry-notice', [], [
-            'Authorization' => "Bearer {$token->token}",
+            'Authorization' => "Bearer {$this->getPlainToken($token)}",
         ]);
 
         // Assert: Response is successful
@@ -99,7 +107,7 @@ class CredentialExpiryMessageTest extends TestCase
 
         // Act: Call expiryNotice endpoint
         $response = $this->postJson('/api/v1/credentials/expiry-notice', [], [
-            'Authorization' => "Bearer {$token->token}",
+            'Authorization' => "Bearer {$this->getPlainToken($token)}",
         ]);
 
         // Assert: Response is successful
@@ -132,12 +140,12 @@ class CredentialExpiryMessageTest extends TestCase
 
         // Create message
         $this->postJson('/api/v1/credentials/expiry-notice', [], [
-            'Authorization' => "Bearer {$token->token}",
+            'Authorization' => "Bearer {$this->getPlainToken($token)}",
         ]);
 
         // Act: Fetch messages
         $response = $this->getJson('/api/v1/temporary-messages', [
-            'Authorization' => "Bearer {$token->token}",
+            'Authorization' => "Bearer {$this->getPlainToken($token)}",
         ]);
 
         // Assert: Message is returned
@@ -169,7 +177,7 @@ class CredentialExpiryMessageTest extends TestCase
             ->create(['expires_at' => now()->addDays(30)]);
 
         $this->postJson('/api/v1/credentials/expiry-notice', [], [
-            'Authorization' => "Bearer {$activeToken->token}",
+            'Authorization' => "Bearer {$this->getPlainToken($activeToken)}",
         ]);
 
         $this->assertDatabaseHas('temporary_credential_messages', [
@@ -184,7 +192,7 @@ class CredentialExpiryMessageTest extends TestCase
             ->create(['expires_at' => now()->addDays(2)]);
 
         $this->postJson('/api/v1/credentials/expiry-notice', [], [
-            'Authorization' => "Bearer {$expiringToken->token}",
+            'Authorization' => "Bearer {$this->getPlainToken($expiringToken)}",
         ]);
 
         $this->assertDatabaseHas('temporary_credential_messages', [
@@ -199,7 +207,7 @@ class CredentialExpiryMessageTest extends TestCase
             ->create(['expires_at' => now()->subDays(1)]);
 
         $this->postJson('/api/v1/credentials/expiry-notice', [], [
-            'Authorization' => "Bearer {$expiredToken->token}",
+            'Authorization' => "Bearer {$this->getPlainToken($expiredToken)}",
         ]);
 
         $this->assertDatabaseHas('temporary_credential_messages', [
@@ -219,8 +227,8 @@ class CredentialExpiryMessageTest extends TestCase
         $token2 = PatToken::factory()->for($user, 'tokenable')->create(['expires_at' => now()->addDays(3)]);
 
         // Create messages for both tokens
-        $this->postJson('/api/v1/credentials/expiry-notice', [], ['Authorization' => "Bearer {$token1->token}"]);
-        $this->postJson('/api/v1/credentials/expiry-notice', [], ['Authorization' => "Bearer {$token2->token}"]);
+        $this->postJson('/api/v1/credentials/expiry-notice', [], ['Authorization' => "Bearer {$this->getPlainToken($token1)}"]);
+        $this->postJson('/api/v1/credentials/expiry-notice', [], ['Authorization' => "Bearer {$this->getPlainToken($token2)}"]);
 
         // Verify both messages exist
         $this->assertDatabaseHas('temporary_credential_messages', ['pat_token_id' => $token1->id]);
@@ -228,7 +236,7 @@ class CredentialExpiryMessageTest extends TestCase
 
         // Fetch via endpoint
         $response = $this->getJson('/api/v1/temporary-messages', [
-            'Authorization' => "Bearer {$token1->token}",
+            'Authorization' => "Bearer {$this->getPlainToken($token1)}",
         ]);
 
         $response->assertJsonCount(2, 'messages');
@@ -246,7 +254,7 @@ class CredentialExpiryMessageTest extends TestCase
 
         // Create message
         $this->postJson('/api/v1/credentials/expiry-notice', [], [
-            'Authorization' => "Bearer {$token->token}",
+            'Authorization' => "Bearer {$this->getPlainToken($token)}",
         ]);
 
         // Manually expire the message
@@ -256,7 +264,7 @@ class CredentialExpiryMessageTest extends TestCase
 
         // Fetch messages
         $response = $this->getJson('/api/v1/temporary-messages', [
-            'Authorization' => "Bearer {$token->token}",
+            'Authorization' => "Bearer {$this->getPlainToken($token)}",
         ]);
 
         // Should not return expired message
