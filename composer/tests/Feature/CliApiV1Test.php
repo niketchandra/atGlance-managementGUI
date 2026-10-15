@@ -1141,4 +1141,49 @@ class CliApiV1Test extends TestCase
         $this->assertSame($filesBefore, count(Storage::disk('local')->allFiles()));
         $this->assertSame(1, ConfigurationFile::count());
     }
+
+    // ---------------------------------------------------------------- Task 2: Drop GET force routes
+
+    public function test_get_system_deregister_force_returns_405(): void
+    {
+        $owner = $this->user('owner@example.test');
+        $admin = $this->user('admin@example.test', 101);
+        $system = $this->system($owner);
+
+        $this->get('/api/system-deregister-force', ['X-Requested-With' => 'XMLHttpRequest'])
+            ->assertMethodNotAllowed();
+    }
+
+    public function test_get_system_reactivate_force_returns_405(): void
+    {
+        $owner = $this->user('owner@example.test');
+        $super = $this->user('super@example.test', 100);
+        $system = $this->system($owner, ['status' => 'inactive']);
+
+        $this->get('/api/system-reactivate-force', ['X-Requested-With' => 'XMLHttpRequest'])
+            ->assertMethodNotAllowed();
+    }
+
+    public function test_get_system_reactive_returns_405(): void
+    {
+        $this->get('/api/system-reactive', ['X-Requested-With' => 'XMLHttpRequest'])
+            ->assertMethodNotAllowed();
+    }
+
+    public function test_legacy_routes_include_sunset_headers(): void
+    {
+        $owner = $this->user('owner@example.test');
+        $admin = $this->user('admin@example.test', 101);
+        $system = $this->system($owner);
+
+        $response = $this->postJson('/api/system-deregister-force', ['system_id' => $system->id, 'email' => $admin->email, 'password' => 'secret-pass']);
+
+        $response->assertOk();
+        $this->assertTrue($response->headers->has('Deprecation'));
+        $this->assertSame('true', $response->headers->get('Deprecation'));
+        $this->assertTrue($response->headers->has('Sunset'));
+        $this->assertSame('Thu, 31 Dec 2026 23:59:59 GMT', $response->headers->get('Sunset'));
+        $this->assertTrue($response->headers->has('Link'));
+        $this->assertStringContainsString('successor-version', $response->headers->get('Link'));
+    }
 }

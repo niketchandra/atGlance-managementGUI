@@ -13,6 +13,7 @@ use App\Http\Controllers\Api\V1\CredentialController as V1CredentialController;
 use App\Http\Controllers\Api\V1\MetaController as V1MetaController;
 use App\Http\Controllers\Api\V1\SystemController as V1SystemController;
 use App\Http\Controllers\DomainTlsController;
+use App\Http\Middleware\LegacyApiSunset;
 use Illuminate\Support\Facades\Route;
 
 Route::post('/auth/register', [AuthController::class, 'register']);
@@ -21,7 +22,7 @@ Route::post('/auth/logout', [AuthController::class, 'logout'])->middleware('auth
 
 // Token validation - no authentication required
 Route::post('/auth/validate-token', [TokenValidationController::class, 'validateToken']);
-Route::get('/auth/validate-token', [TokenValidationController::class, 'validateFromHeader']);
+Route::get('/auth/validate-token', [TokenValidationController::class, 'validateFromHeader'])->middleware(LegacyApiSunset::class);
 
 // PAT token management - requires session token (temporary bearer token)
 Route::post('/auth/pat-tokens', [PatTokenController::class, 'store'])->middleware('auth.session');
@@ -35,42 +36,39 @@ Route::apiResource('users', UserController::class)->middleware(['auth.pat', 'act
 Route::post('/files/upload', [FileController::class, 'upload'])->middleware('auth.pat');
 Route::get('/files/{fileId}', [FileController::class, 'download'])->middleware('auth.pat');
 
-// Configuration file operations - require PAT token only
-Route::post('/config-files/upload', [FileController::class, 'uploadConfigFile'])->middleware('auth.pat');
-Route::get('/config-files', [FileController::class, 'listConfigFiles'])->middleware('auth.pat');
-Route::get('/config-files/filter', [FileController::class, 'listConfigFilesBySystemAndHash'])->middleware('auth.pat');
-Route::get('/config-files/config-show', [FileController::class, 'listConfigVersionsBySystemValidationAndService'])->middleware('auth.pat');
-Route::get('/config-files/{fileId}', [FileController::class, 'downloadConfigFile'])->middleware('auth.pat');
-Route::get('/config-files/download/{id}', [FileController::class, 'downloadConfigFileById'])->middleware('auth.pat');
-Route::get('/config-files/{fileId}/raw-data', [FileController::class, 'getRawData'])->middleware('auth.pat');
-Route::delete('/config-files/{fileId}', [FileController::class, 'deleteConfigFile'])->middleware('auth.pat');
+// Configuration file operations - require PAT token only (legacy 1.x routes)
+Route::post('/config-files/upload', [FileController::class, 'uploadConfigFile'])->middleware(['auth.pat', LegacyApiSunset::class]);
+Route::get('/config-files', [FileController::class, 'listConfigFiles'])->middleware(['auth.pat', LegacyApiSunset::class]);
+Route::get('/config-files/filter', [FileController::class, 'listConfigFilesBySystemAndHash'])->middleware(['auth.pat', LegacyApiSunset::class]);
+Route::get('/config-files/config-show', [FileController::class, 'listConfigVersionsBySystemValidationAndService'])->middleware(['auth.pat', LegacyApiSunset::class]);
+Route::get('/config-files/{fileId}', [FileController::class, 'downloadConfigFile'])->middleware(['auth.pat', LegacyApiSunset::class]);
+Route::get('/config-files/download/{id}', [FileController::class, 'downloadConfigFileById'])->middleware(['auth.pat', LegacyApiSunset::class]);
+Route::get('/config-files/{fileId}/raw-data', [FileController::class, 'getRawData'])->middleware(['auth.pat', LegacyApiSunset::class]);
+Route::delete('/config-files/{fileId}', [FileController::class, 'deleteConfigFile'])->middleware(['auth.pat', LegacyApiSunset::class]);
 
 // Services operations - require PAT token only
 Route::post('/services', [ServiceController::class, 'store'])->middleware('auth.pat');
 Route::get('/services', [ServiceController::class, 'index'])->middleware('auth.pat');
 Route::get('/services/{serviceId}', [ServiceController::class, 'show'])->middleware('auth.pat');
 
-// System registration - requires PAT token only
-Route::post('/system-register', [SystemRegisterController::class, 'store'])->middleware('auth.pat');
-Route::get('/system-register', [SystemRegisterController::class, 'index'])->middleware('auth.pat');
-Route::get('/system-register/pat/{patTokenId}', [SystemRegisterController::class, 'getByPatToken'])->middleware('auth.pat');
-Route::get('/system-register/user/{userId}', [SystemRegisterController::class, 'getByUser'])->middleware('auth.pat');
+// System registration - requires PAT token only (legacy 1.x routes)
+Route::post('/system-register', [SystemRegisterController::class, 'store'])->middleware(['auth.pat', LegacyApiSunset::class]);
+Route::get('/system-register', [SystemRegisterController::class, 'index'])->middleware(['auth.pat', LegacyApiSunset::class]);
+Route::get('/system-register/pat/{patTokenId}', [SystemRegisterController::class, 'getByPatToken'])->middleware(['auth.pat', LegacyApiSunset::class]);
+Route::get('/system-register/user/{userId}', [SystemRegisterController::class, 'getByUser'])->middleware(['auth.pat', LegacyApiSunset::class]);
 
-// System deregistration - requires PAT token only
-Route::post('/system-deregister', [SystemRegisterController::class, 'deregister'])->middleware('auth.pat');
+// System deregistration - requires PAT token only (legacy 1.x routes)
+Route::post('/system-deregister', [SystemRegisterController::class, 'deregister'])->middleware(['auth.pat', LegacyApiSunset::class]);
 
 // System reactivation - requires PAT token only
-Route::post('/system-reactive', [SystemRegisterController::class, 'reactive'])->middleware('auth.pat');
-Route::get('/system-reactive', [SystemRegisterController::class, 'reactive'])->middleware('auth.pat');
+Route::post('/system-reactive', [SystemRegisterController::class, 'reactive'])->middleware(['auth.pat', LegacyApiSunset::class]);
 
 // Force system deregistration - no bearer token required; uses email + password/pin
 // (rate limiter v1-force, shared with the /api/v1 force routes: AppServiceProvider)
-Route::post('/system-deregister-force', [SystemRegisterController::class, 'deregisterForce'])->middleware('throttle:v1-force');
-Route::get('/system-deregister-force', [SystemRegisterController::class, 'deregisterForce'])->middleware('throttle:v1-force');
+Route::post('/system-deregister-force', [SystemRegisterController::class, 'deregisterForce'])->middleware(['throttle:v1-force', LegacyApiSunset::class]);
 
 // Force system reactivation - no bearer token required; uses email + password/pin
-Route::post('/system-reactivate-force', [SystemRegisterController::class, 'reactiveForce'])->middleware('throttle:v1-force');
-Route::get('/system-reactivate-force', [SystemRegisterController::class, 'reactiveForce'])->middleware('throttle:v1-force');
+Route::post('/system-reactivate-force', [SystemRegisterController::class, 'reactiveForce'])->middleware(['throttle:v1-force', LegacyApiSunset::class]);
 
 // Built-in proxy (Caddy) only; see DomainTlsController::isLocal().
 Route::get('/internal/domain/tls-allowed', [DomainTlsController::class, 'allowed']);
