@@ -58,9 +58,30 @@ class CredentialController extends Controller
         }
 
         $token = ApiIdentity::current($request)->token;
-        $result = $status->createMessage($token);
 
-        return response()->json($result);
+        try {
+            $result = $status->createMessage($token);
+
+            // Log the result for debugging
+            \Log::info('CredentialStatus::expiryNotice called', [
+                'pat_token_id' => $token->id,
+                'token_name' => $token->name,
+                'result' => $result,
+            ]);
+
+            return response()->json($result);
+        } catch (\Exception $e) {
+            \Log::error('CredentialStatus::expiryNotice exception', [
+                'pat_token_id' => $token->id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return response()->json([
+                'error' => 'Failed to create expiry notice message',
+                'message' => $e->getMessage(),
+            ], 500);
+        }
     }
 
     public function messages(Request $request): JsonResponse

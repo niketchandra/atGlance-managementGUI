@@ -69,26 +69,49 @@ class CredentialStatus
             $userId = $token->user_id;
         }
 
-        DB::table('temporary_credential_messages')->insert([
-            'pat_token_id' => $token->id,
-            'user_id' => $userId,
-            'service_account_id' => $serviceAccountId,
-            'status' => 'active',
-            'days_left' => $messageData['days_left'],
-            'notice_stage' => $messageData['notice_stage'] ?? null,
-            'message' => $messageData['message'],
-            'severity' => $messageData['severity'],
-            'credential_type' => $messageData['credential_type'],
-            'owner' => $messageData['owner'],
-            'expires_at' => now()->addHours(self::MESSAGE_TTL_HOURS),
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
+        try {
+            $inserted = DB::table('temporary_credential_messages')->insert([
+                'pat_token_id' => $token->id,
+                'user_id' => $userId,
+                'service_account_id' => $serviceAccountId,
+                'status' => $messageData['status'] ?? 'active',
+                'days_left' => $messageData['days_left'],
+                'notice_stage' => $messageData['notice_stage'] ?? null,
+                'message' => $messageData['message'],
+                'severity' => $messageData['severity'],
+                'credential_type' => $messageData['credential_type'],
+                'owner' => $messageData['owner'],
+                'expires_at' => now()->addHours(self::MESSAGE_TTL_HOURS),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
 
-        return [
-            'queued' => true,
-            'expires_in_hours' => self::MESSAGE_TTL_HOURS,
-        ];
+            if (!$inserted) {
+                \Log::warning('CredentialStatus::storeMessage failed to insert', [
+                    'pat_token_id' => $token->id,
+                    'user_id' => $userId,
+                    'service_account_id' => $serviceAccountId,
+                    'message_data' => $messageData,
+                ]);
+            }
+
+            return [
+                'queued' => true,
+                'expires_in_hours' => self::MESSAGE_TTL_HOURS,
+            ];
+        } catch (\Exception $e) {
+            \Log::error('CredentialStatus::storeMessage exception', [
+                'pat_token_id' => $token->id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return [
+                'queued' => false,
+                'error' => $e->getMessage(),
+                'expires_in_hours' => self::MESSAGE_TTL_HOURS,
+            ];
+        }
     }
 
     private function daysUntilExpiry(PatToken $token): ?int
