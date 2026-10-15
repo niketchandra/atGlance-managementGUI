@@ -1,5 +1,5 @@
 {{-- Messages badge with unread count --}}
-<a href="#" class="ag-messages-badge" title="Temporary Messages" id="agMessagesBadge">
+<a href="{{ route('messages.index') }}" class="ag-messages-badge" title="Temporary Messages" id="agMessagesBadge">
     <i class="fas fa-envelope"></i>
     <span class="ag-badge" id="agMessagesCount" style="display: none;">0</span>
 </a>
@@ -63,11 +63,5 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     })
     .catch(err => console.error('Failed to load message count:', err));
-
-    // Prevent default link behavior for now
-    badge.addEventListener('click', function(e) {
-        e.preventDefault();
-        // Will link to messages page when built
-    });
 });
 </script>
