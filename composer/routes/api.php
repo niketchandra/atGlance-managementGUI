@@ -11,6 +11,7 @@ use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\V1\ConfigFileController as V1ConfigFileController;
 use App\Http\Controllers\Api\V1\CredentialController as V1CredentialController;
 use App\Http\Controllers\Api\V1\MetaController as V1MetaController;
+use App\Http\Controllers\Api\V1\SecurityEventController;
 use App\Http\Controllers\Api\V1\SystemController as V1SystemController;
 use App\Http\Controllers\DomainTlsController;
 use App\Http\Middleware\LegacyApiSunset;
@@ -116,4 +117,8 @@ Route::prefix('v1')->name('v1.')->group(function () {
         Route::post('/systems/{id}/deregister-force', [V1SystemController::class, 'deregisterForce'])->where('id', '[0-9]{1,18}')->name('systems.deregister-force');
         Route::post('/systems/{id}/reactivate-force', [V1SystemController::class, 'reactivateForce'])->where('id', '[0-9]{1,18}')->name('systems.reactivate-force');
     });
+
+    // Security events API - admin PAT only
+    Route::get('/security/events', [SecurityEventController::class, 'index'])->middleware(['auth.pat', 'active.user'])->name('security.events');
+    Route::get('/security/lockouts', [SecurityEventController::class, 'lockedAccounts'])->middleware(['auth.pat', 'active.user'])->name('security.lockouts');
 });

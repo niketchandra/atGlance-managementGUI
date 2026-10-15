@@ -6,6 +6,7 @@ use App\Models\ForceAttempt;
 use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Manages account lockout for force actions (deregister, reactivate).
@@ -98,15 +99,25 @@ class ForceLockout
      */
     public static function recordFailure(?User $user, string $email, string $ip): void
     {
+        $emailHash = self::hashEmail($email);
+
         ForceAttempt::create([
-            'email_hash' => self::hashEmail($email),
+            'email_hash' => $emailHash,
             'user_id' => $user?->id,
             'ip' => $ip,
             'succeeded' => false,
         ]);
 
+        // Record security event
+        if ($user) {
+            try {
+                SecurityEvents::recordForceFailure($user->org_id, $user->id, $emailHash, $ip);
+            } catch (\Throwable $e) {
+                Log::warning('Failed to record security event for force failure', ['error' => $e->getMessage()]);
+            }
+        }
+
         // Check if this failure triggers a lockout
-        $emailHash = self::hashEmail($email);
         $recentFailures = ForceAttempt::where('email_hash', $emailHash)
             ->where('succeeded', false)
             ->where('created_at', '>=', now()->subMinutes(self::FAILURE_WINDOW_MINUTES))
@@ -122,12 +133,23 @@ class ForceLockout
      */
     public static function recordSuccess(?User $user, string $email, string $ip): void
     {
+        $emailHash = self::hashEmail($email);
+
         ForceAttempt::create([
-            'email_hash' => self::hashEmail($email),
+            'email_hash' => $emailHash,
             'user_id' => $user?->id,
             'ip' => $ip,
             'succeeded' => true,
         ]);
+
+        // Record security event
+        if ($user) {
+            try {
+                SecurityEvents::recordForceSucceeded($user->org_id, $user->id, $ip);
+            } catch (\Throwable $e) {
+                Log::warning('Failed to record security event for force success', ['error' => $e->getMessage()]);
+            }
+        }
 
         // Clear the failure window for this email
         if ($user) {
@@ -178,6 +200,17 @@ class ForceLockout
             )
         );
 
+        // Record security event
+        try {
+            SecurityEvents::recordForceLocked($user->org_id, $user->id, '', [
+                'level' => $newLevel,
+                'locked_for_minutes' => $durationMinutes,
+                'attempt_count' => $attemptCount,
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('Failed to record security event for force lockout', ['error' => $e->getMessage()]);
+        }
+
         // Notify org admins
         self::notifyOrgAdmins($user, $lockedUntil, $attemptCount);
     }
@@ -200,6 +233,16 @@ class ForceLockout
                 'security.force_unlocked',
                 sprintf('Force action lock removed by %s', $actor?->name ?? 'system')
             );
+
+            // Record security event
+            try {
+                SecurityEvents::recordForceUnlocked($user->org_id, $user->id, '', [
+                    'actor_id' => $actor?->id,
+                    'action' => 'admin_unlock',
+                ]);
+            } catch (\Throwable $e) {
+                Log::warning('Failed to record security event for force unlock', ['error' => $e->getMessage()]);
+            }
         }
     }
 
