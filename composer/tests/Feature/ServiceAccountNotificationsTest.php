@@ -7,6 +7,7 @@ use App\Notifications\NotificationEvents;
 use App\Services\CredentialSweep;
 use App\Services\Notifier;
 use App\Services\ServiceAccounts;
+use App\Support\ServiceAccountNotices;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
 use Mockery;
@@ -36,6 +37,41 @@ class ServiceAccountNotificationsTest extends TestCase
     private function events(): array
     {
         return array_column($this->sent, 'event');
+    }
+
+    public function test_personal_key_expiry_notice_names_type_owner_and_days_left(): void
+    {
+        $user = $this->makeUser('jane@example.test');
+        $user->forceFill(['name' => 'Jane Ops'])->save();
+        [, $key] = $this->userKey($user);
+        $key->update(['name' => 'web-01 cli', 'last_four' => 'xy12', 'expires_at' => now()->addDays(7)]);
+        $system = $this->makeSystem($user, ['pat_token_id' => $key->id]);
+
+        ServiceAccountNotices::userKeyExpiring($user, $key->fresh(), $system);
+
+        $notice = collect($this->sent)->firstWhere('event', NotificationEvents::ORG_USER_KEY_EXPIRING);
+        $this->assertSame('atglance key expires in 7 days: personal key "web-01 cli" for system web-01 (owner Jane Ops)', $notice['title']);
+        $this->assertSame('personal key', $notice['facts']['Type']);
+        $this->assertSame('Jane Ops (jane@example.test)', $notice['facts']['Owner']);
+        $this->assertSame('7', $notice['facts']['Days left']);
+        $this->assertSame(now()->addDays(7)->toDateString(), $notice['facts']['Expires']);
+        $this->assertSame('web-01', $notice['facts']['System']);
+        $this->assertSame('web-01 cli (…xy12)', $notice['facts']['Key']);
+    }
+
+    public function test_service_account_key_expiring_today_without_owner_or_system(): void
+    {
+        $account = $this->makeAccount(ServiceAccount::SCOPE_ORGANIZATION, null, ['name' => 'fleet-a']);
+        [, $key] = $this->accountKey($account, ['name' => 'fleet-a', 'expires_at' => now()->addHours(2)]);
+
+        ServiceAccountNotices::keyEvent($account, $key->fresh(), 'expiring');
+
+        $notice = collect($this->sent)->firstWhere('event', NotificationEvents::ORG_SERVICE_ACCOUNT_KEY_EXPIRING);
+        $this->assertSame('atglance key expires today: service account key "fleet-a" (owner no owner)', $notice['title']);
+        $this->assertSame('service account key', $notice['facts']['Type']);
+        $this->assertSame('no owner', $notice['facts']['Owner']);
+        $this->assertSame('0', $notice['facts']['Days left']);
+        $this->assertArrayNotHasKey('System', $notice['facts']);
     }
 
     public function test_events_have_scopes(): void

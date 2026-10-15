@@ -8,6 +8,7 @@ use App\Models\SystemRegister;
 use App\Models\User;
 use App\Models\Workspace;
 use App\Notifications\NotificationEvents as E;
+use App\Services\CredentialSweep;
 use App\Services\Notifier;
 
 /**
@@ -34,7 +35,7 @@ final class ServiceAccountNotices
     public static function keyEvent(ServiceAccount $account, PatToken $key, string $what, ?SystemRegister $system = null): void
     {
         $title = match ($what) {
-            'expiring' => 'Service account key expires soon: ' . $account->name,
+            'expiring' => self::expiryTitle($key, 'service account key', $account->owner?->name ?: 'no owner', $system),
             'expired' => 'Service account key expired: ' . $account->name,
             default => 'Service account key revoked: ' . $account->name,
         };
@@ -47,6 +48,10 @@ final class ServiceAccountNotices
         }
         if ($system) {
             $facts['System'] = (string) $system->system_name;
+        }
+        if ($what === 'expiring') {
+            $facts = array_replace($facts, ['Owner' => self::ownerFact($account->owner)])
+                + ['Type' => 'service account key', 'Days left' => (string) self::daysLeft($key)];
         }
 
         [$orgEvent, $workspaceEvent] = match ($what) {
@@ -74,10 +79,13 @@ final class ServiceAccountNotices
      */
     public static function userKeyExpiring(User $user, PatToken $key, ?SystemRegister $system = null): void
     {
-        $title = 'API key expires soon: ' . $user->email;
+        $title = self::expiryTitle($key, 'personal key', (string) ($user->name ?: $user->email), $system);
         $facts = [
             'User' => (string) $user->email,
             'Key' => $key->name . ' (…' . ($key->last_four ?? '????') . ')',
+            'Type' => 'personal key',
+            'Owner' => self::ownerFact($user),
+            'Days left' => (string) self::daysLeft($key),
             'Expires' => (string) $key->expires_at?->toDateString(),
         ];
 
@@ -132,6 +140,25 @@ final class ServiceAccountNotices
             'Keys revoked' => (string) $count,
             'Reason' => $reason,
         ]);
+    }
+
+    private static function daysLeft(PatToken $key): int
+    {
+        return max(0, CredentialSweep::daysLeft($key) ?? 0);
+    }
+
+    private static function ownerFact(?User $owner): string
+    {
+        return $owner ? trim(($owner->name ?: $owner->email) . ' (' . $owner->email . ')') : 'no owner';
+    }
+
+    private static function expiryTitle(PatToken $key, string $type, string $ownerName, ?SystemRegister $system): string
+    {
+        $days = self::daysLeft($key);
+        $when = $days === 0 ? 'expires today' : 'expires in ' . $days . ' ' . ($days === 1 ? 'day' : 'days');
+        $forSystem = $system ? ' for system ' . $system->system_name : '';
+
+        return 'atglance key ' . $when . ': ' . $type . ' "' . $key->name . '"' . $forSystem . ' (owner ' . $ownerName . ')';
     }
 
     /**
