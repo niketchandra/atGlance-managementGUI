@@ -298,7 +298,7 @@ class CliApiV1Test extends TestCase
             'system_key' => self::KEY,
         ], $this->pat($user))->assertCreated();
 
-        $this->assertSame(['id', 'system_name', 'status', 'workspace_id', 'service_account_id', 'created_at'], array_keys($response->json('system')));
+        $this->assertSame(['id', 'system_name', 'status', 'workspace_id', 'service_account_id', 'created_at', 'replaced_system_id'], array_keys($response->json('system')));
         $this->assertStringNotContainsString(self::KEY, $response->getContent());
         $response->assertJsonPath('system.status', 'active')->assertJsonPath('system.workspace_id', $this->workspace->id);
 
@@ -358,6 +358,108 @@ class CliApiV1Test extends TestCase
         $this->workspace->addUser($me->id, false);
 
         $this->postJson('/api/v1/systems', $this->registerBody($this->workspace->id), $this->pat($me))->assertCreated();
+        $this->assertSame(2, SystemRegister::count());
+    }
+
+    private const KEY2 = 'k2-0123456789abcdef0123456789abcdef01234567';
+
+    public function test_register_with_replaces_retires_the_old_system(): void
+    {
+        $user = $this->user('me@example.test');
+        $this->workspace->addUser($user->id, false);
+        $old = $this->system($user);
+        $body = ['system_key' => self::KEY2, 'replaces_system_id' => (string) $old->id, 'replaces_system_key' => self::KEY] + $this->registerBody($this->workspace->id);
+
+        $response = $this->postJson('/api/v1/systems', $body, $this->pat($user))->assertCreated();
+
+        $this->assertSame($old->id, $response->json('system.replaced_system_id'));
+        $this->assertSame('active', $response->json('system.status'));
+        $this->assertSame('inactive', $old->fresh()->status);
+        $this->assertSame('active', SystemRegister::findOrFail($response->json('system.id'))->status);
+        $log = \App\Models\ActivityLog::where('event', 'system.replaced')->firstOrFail();
+        $this->assertStringContainsString((string) $old->id, $log->description);
+        $this->assertStringContainsString((string) $response->json('system.id'), $log->description);
+        $this->assertStringNotContainsString(self::KEY, (string) $log->description . $log->request_payload);
+        $this->assertStringNotContainsString(self::KEY2, (string) $log->description . $log->request_payload);
+    }
+
+    public function test_register_without_replaces_reports_null_replaced_system(): void
+    {
+        $user = $this->user('me@example.test');
+        $this->workspace->addUser($user->id, false);
+
+        $this->postJson('/api/v1/systems', $this->registerBody($this->workspace->id), $this->pat($user))
+            ->assertCreated()->assertJsonPath('system.replaced_system_id', null);
+    }
+
+    public function test_register_with_a_wrong_replaces_key_is_rejected(): void
+    {
+        $user = $this->user('me@example.test');
+        $this->workspace->addUser($user->id, false);
+        $old = $this->system($user);
+        $body = ['system_key' => self::KEY2, 'replaces_system_id' => (string) $old->id, 'replaces_system_key' => 'wrong-key-0123456789abcdef0123456789abcdef'] + $this->registerBody($this->workspace->id);
+
+        $this->postJson('/api/v1/systems', $body, $this->pat($user))
+            ->assertStatus(422)->assertJsonValidationErrors('replaces_system_id');
+        $this->assertSame(1, SystemRegister::count());
+        $this->assertSame('active', $old->fresh()->status);
+    }
+
+    public function test_register_cannot_replace_a_system_of_another_org(): void
+    {
+        $theirs = $this->user('theirs@example.test', 102, 300);
+        $old = $this->system($theirs, ['workspace_id' => $this->foreignWorkspace->id]);
+        $me = $this->user('me@example.test');
+        $this->workspace->addUser($me->id, false);
+        $body = ['system_key' => self::KEY2, 'replaces_system_id' => (string) $old->id, 'replaces_system_key' => self::KEY] + $this->registerBody($this->workspace->id);
+
+        $this->postJson('/api/v1/systems', $body, $this->pat($me))
+            ->assertStatus(422)->assertJsonValidationErrors('replaces_system_id');
+        $this->assertSame(1, SystemRegister::count());
+        $this->assertSame('active', $old->fresh()->status);
+    }
+
+    public function test_register_cannot_replace_a_system_the_user_may_not_manage(): void
+    {
+        $owner = $this->user('owner@example.test');
+        $member = $this->user('member@example.test');
+        $this->workspace->addUser($owner->id, false);
+        $this->workspace->addUser($member->id, false);
+        $old = $this->system($owner);
+        $body = ['system_key' => self::KEY2, 'replaces_system_id' => (string) $old->id, 'replaces_system_key' => self::KEY] + $this->registerBody($this->workspace->id);
+
+        $this->postJson('/api/v1/systems', $body, $this->pat($member))
+            ->assertStatus(422)->assertJsonValidationErrors('replaces_system_id');
+        $this->assertSame(1, SystemRegister::count());
+        $this->assertSame('active', $old->fresh()->status);
+    }
+
+    public function test_a_workspace_admin_can_replace_a_system_of_another_member(): void
+    {
+        $owner = $this->user('owner@example.test');
+        $wsAdmin = $this->user('wsadmin@example.test');
+        $this->workspace->addUser($owner->id, false);
+        $this->workspace->addUser($wsAdmin->id, true);
+        $old = $this->system($owner);
+        $body = ['system_key' => self::KEY2, 'replaces_system_id' => (string) $old->id, 'replaces_system_key' => self::KEY] + $this->registerBody($this->workspace->id);
+
+        $this->postJson('/api/v1/systems', $body, $this->pat($wsAdmin))->assertCreated();
+        $this->assertSame('inactive', $old->fresh()->status);
+    }
+
+    public function test_the_idempotent_register_path_never_retires_a_system(): void
+    {
+        $user = $this->user('me@example.test');
+        $this->workspace->addUser($user->id, false);
+        $headers = $this->pat($user);
+        $other = $this->system($user, ['validation_hash' => 'k9-0123456789abcdef0123456789abcdef01234567']);
+        $first = $this->postJson('/api/v1/systems', $this->registerBody($this->workspace->id), $headers)->assertCreated();
+        $body = ['replaces_system_id' => (string) $other->id, 'replaces_system_key' => 'k9-0123456789abcdef0123456789abcdef01234567'] + $this->registerBody($this->workspace->id);
+
+        $again = $this->postJson('/api/v1/systems', $body, $headers)->assertOk();
+
+        $this->assertSame($first->json('system.id'), $again->json('system.id'));
+        $this->assertSame('active', $other->fresh()->status);
         $this->assertSame(2, SystemRegister::count());
     }
 

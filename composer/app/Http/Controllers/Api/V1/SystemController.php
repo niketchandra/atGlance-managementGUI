@@ -5,11 +5,13 @@ namespace App\Http\Controllers\Api\V1;
 use App\Http\Controllers\Api\SystemRegisterController;
 use App\Http\Controllers\Controller;
 use App\Models\SystemRegister;
+use App\Support\ActivityRecorder;
 use App\Support\ApiIdentity;
 use App\Support\ServiceAccountKeyHeader;
 use App\Support\ServiceAccountSettings;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 /**
  * /api/v1/systems for the atglance CLI v2. The logic lives in SystemRegisterController
@@ -76,10 +78,45 @@ class SystemController extends Controller
             ]], 200);
         }
 
+        // A host registering again names the system it replaces and proves it with that
+        // system's key. Every failure is the same 422, so a system id is never confirmed.
+        $replaces = null;
+        if ($request->filled('replaces_system_id') || $request->filled('replaces_system_key')) {
+            $rid = (string) $request->input('replaces_system_id', '');
+            $rkey = (string) $request->input('replaces_system_key', '');
+            $candidate = preg_match('/^[0-9]{1,18}$/', $rid) ? SystemRegister::where('org_id', $orgId)->find((int) $rid) : null;
+            $ok = $candidate !== null
+                && !empty($candidate->validation_hash)
+                && hash_equals((string) $candidate->validation_hash, $rkey)
+                && ($this->systems->canManageSystem($user, $candidate)
+                    || ($account !== null && (int) $candidate->service_account_id === (int) $account->id));
+            if (!$ok) {
+                return response()->json(['message' => 'The given data was invalid.', 'errors' => ['replaces_system_id' => ['The system to replace was not found.']]], 422);
+            }
+            $replaces = $candidate;
+        }
+
         $data['validation_hash'] = $data['system_key'];
         unset($data['system_key']);
 
-        $system = $this->systems->createSystem($request, $data, $account);
+        $system = DB::transaction(function () use ($request, $data, $account, $replaces, $user) {
+            $created = $this->systems->createSystem($request, $data, $account);
+            if ($created instanceof SystemRegister && $replaces !== null) {
+                $replaces->status = 'inactive';
+                $replaces->save();
+                ActivityRecorder::record(
+                    (int) $user->id,
+                    'system.replaced',
+                    'System ' . $replaces->id . ' replaced by system ' . $created->id,
+                    ActivityRecorder::SUCCESS,
+                    $request,
+                    (int) $replaces->workspace_id,
+                    (int) $created->id,
+                );
+            }
+
+            return $created;
+        });
         if (!$system instanceof SystemRegister) {
             return $system;
         }
@@ -92,6 +129,7 @@ class SystemController extends Controller
                 'workspace_id' => (int) $system->workspace_id,
                 'service_account_id' => $system->service_account_id ? (int) $system->service_account_id : null,
                 'created_at' => $system->created_at,
+                'replaced_system_id' => $replaces?->id,
             ],
         ], 201);
     }
