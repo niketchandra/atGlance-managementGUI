@@ -63,6 +63,49 @@ class CredentialController extends Controller
         return response()->json($result);
     }
 
+    public function messages(Request $request): JsonResponse
+    {
+        $identity = ApiIdentity::current($request);
+        $messages = \DB::table('temporary_credential_messages')
+            ->where(function ($q) use ($identity) {
+                if ($identity->isServiceAccount()) {
+                    $q->where('service_account_id', $identity->serviceAccount->id);
+                } else {
+                    $q->where('user_id', $identity->user->id);
+                }
+            })
+            ->where('expires_at', '>', now())
+            ->where('status', '!=', 'read')
+            ->orderByDesc('created_at')
+            ->get(['id', 'days_left', 'notice_stage', 'message', 'severity', 'credential_type', 'owner', 'created_at', 'expires_at']);
+
+        return response()->json([
+            'messages' => $messages,
+            'count' => $messages->count(),
+        ]);
+    }
+
+    public function markMessageRead(Request $request, int $messageId): JsonResponse
+    {
+        $identity = ApiIdentity::current($request);
+        $message = \DB::table('temporary_credential_messages')->find($messageId);
+
+        if (!$message) {
+            return response()->json(['message' => 'Message not found'], 404);
+        }
+
+        $authorized = ($message->user_id && $message->user_id === $identity->user?->id)
+            || ($message->service_account_id && $message->service_account_id === $identity->serviceAccount?->id);
+
+        if (!$authorized) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        \DB::table('temporary_credential_messages')->where('id', $messageId)->update(['status' => 'read']);
+
+        return response()->json(['marked_read' => true]);
+    }
+
     /**
      * The calling system when X-Atglance-System-Id/-Key are sent: same rules as the
      * atglance.system middleware, and the same 404 when they do not match.
