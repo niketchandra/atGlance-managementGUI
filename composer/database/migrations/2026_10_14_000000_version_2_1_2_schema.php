@@ -34,7 +34,8 @@ use Illuminate\Support\Facades\Schema;
  *   5. Systems and configs     system_register, services, configuration_files,
  *                              raw_data, config_ai_validations
  *   6. Service accounts        service_accounts, service_account_workspaces
- *   7. Starting rows and data  roles, organization, settings, 2.1.2 data changes
+ *   7. Temporary messages      temporary_credential_messages
+ *   8. Starting rows and data  roles, organization, settings, 2.1.2 data changes
  */
 return new class extends Migration
 {
@@ -52,6 +53,7 @@ return new class extends Migration
         $this->workspaces();
         $this->systemsAndConfigs();
         $this->serviceAccounts();
+        $this->temporaryMessages();
         $this->startingRowsAndData();
     }
 
@@ -60,7 +62,7 @@ return new class extends Migration
         // The schema baseline cannot be rolled back table by table; restore a backup instead.
     }
 
-    // ------------------------------------------------------------------ 1. identity and access
+    // ================================================================== 1. identity and access
 
     private function identityAndAccess(): void
     {
@@ -587,7 +589,28 @@ return new class extends Migration
         $this->addIndex('service_account_workspaces', 'sa_workspaces_account_workspace_unique', fn (Blueprint $table) => $table->unique(['service_account_id', 'workspace_id'], 'sa_workspaces_account_workspace_unique'));
     }
 
-    // ------------------------------------------------------------------ 7. starting rows and data
+    // ------------------------------------------------------------------ 7. temporary messages
+
+    private function temporaryMessages(): void
+    {
+        $this->createTable('temporary_credential_messages', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedBigInteger('pat_token_id')->index();
+            $table->unsignedBigInteger('user_id')->nullable()->index();
+            $table->unsignedBigInteger('service_account_id')->nullable()->index();
+            $table->string('status')->default('active'); // active, read, expired
+            $table->integer('days_left')->nullable();
+            $table->integer('notice_stage')->nullable();
+            $table->text('message');
+            $table->string('severity'); // info, warn, error
+            $table->string('credential_type'); // service_account, personal_access_token
+            $table->string('owner');
+            $table->timestamp('expires_at')->index(); // 12 hours from creation
+            $table->timestamps();
+        });
+    }
+
+    // ------------------------------------------------------------------ 8. starting rows and data
 
     private function startingRowsAndData(): void
     {
