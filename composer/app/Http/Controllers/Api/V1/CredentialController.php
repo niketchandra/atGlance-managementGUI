@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\V1;
 use App\Http\Controllers\Controller;
 use App\Http\Middleware\AuthenticateSystemKey;
 use App\Models\SystemRegister;
+use App\Services\CredentialStatus;
 use App\Services\CredentialSweep;
 use App\Support\ApiIdentity;
 use App\Support\ServiceAccountSettings;
@@ -49,16 +50,17 @@ class CredentialController extends Controller
         ]);
     }
 
-    public function expiryNotice(Request $request, CredentialSweep $sweep): JsonResponse
+    public function expiryNotice(Request $request, CredentialStatus $status): JsonResponse
     {
         [$system, $denied] = $this->optionalSystem($request);
         if ($denied) {
             return $denied;
         }
 
-        $result = $sweep->notifyIfDue(ApiIdentity::current($request)->token, $system);
+        $token = ApiIdentity::current($request)->token;
+        $message = $status->getMessage($token);
 
-        return response()->json(array_filter($result, fn ($value) => $value !== null));
+        return response()->json($message);
     }
 
     /**
