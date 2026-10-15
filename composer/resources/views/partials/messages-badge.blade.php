@@ -1,5 +1,5 @@
 {{-- Messages badge with unread count --}}
-<a href="{{ route('messages.index') }}" class="ag-messages-badge" title="Temporary Messages" id="agMessagesBadge">
+<a href="{{ route('messages.index') }}" class="ag-messages-badge" title="Messages" id="agMessagesBadge">
     <i class="fas fa-envelope"></i>
     <span class="ag-badge" id="agMessagesCount" style="display: none;">0</span>
 </a>
