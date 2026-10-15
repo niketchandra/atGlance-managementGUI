@@ -5,46 +5,89 @@ namespace App\Services;
 use App\Models\PatToken;
 use App\Models\ServiceAccount;
 use App\Models\User;
+use Illuminate\Support\Facades\DB;
 
 class CredentialStatus
 {
     private const NOTICE_DAYS = [15, 7, 3, 2, 1, 0];
+    private const MESSAGE_TTL_HOURS = 12;
 
-    public function getMessage(PatToken $token): array
+    public function createMessage(PatToken $token): array
     {
         $daysLeft = $this->daysUntilExpiry($token);
         $noticeStage = $this->getNoticeStage($daysLeft);
+        $credentialType = $this->credentialType($token);
+        $owner = $this->ownerName($token);
 
         if ($daysLeft === null || $daysLeft > 15) {
-            return [
+            $messageData = [
                 'status' => 'active',
                 'days_left' => $daysLeft,
                 'message' => "Your credential is valid.",
                 'severity' => 'info',
-                'credential_type' => $this->credentialType($token),
-                'owner' => $this->ownerName($token),
+                'credential_type' => $credentialType,
+                'owner' => $owner,
             ];
+
+            return $this->storeMessage($token, $messageData);
         }
 
         if ($daysLeft < 0) {
-            return [
+            $messageData = [
                 'status' => 'expired',
                 'days_left' => 0,
                 'message' => "Your credential '{$token->name}' (…{$token->last_four}) has expired.",
                 'severity' => 'error',
-                'credential_type' => $this->credentialType($token),
-                'owner' => $this->ownerName($token),
+                'credential_type' => $credentialType,
+                'owner' => $owner,
             ];
+
+            return $this->storeMessage($token, $messageData);
         }
 
-        return [
+        $messageData = [
             'status' => 'expiring',
             'days_left' => $daysLeft,
             'notice_stage' => $noticeStage,
             'message' => "Your credential '{$token->name}' (…{$token->last_four}) expires in {$daysLeft} day" . ($daysLeft === 1 ? '' : 's') . ".",
             'severity' => $this->severityForDaysLeft($daysLeft),
-            'credential_type' => $this->credentialType($token),
-            'owner' => $this->ownerName($token),
+            'credential_type' => $credentialType,
+            'owner' => $owner,
+        ];
+
+        return $this->storeMessage($token, $messageData);
+    }
+
+    private function storeMessage(PatToken $token, array $messageData): array
+    {
+        $userId = null;
+        $serviceAccountId = null;
+
+        if ($token->tokenable_type === ServiceAccount::class) {
+            $serviceAccountId = $token->tokenable_id;
+        } else {
+            $userId = $token->user_id;
+        }
+
+        DB::table('temporary_credential_messages')->insert([
+            'pat_token_id' => $token->id,
+            'user_id' => $userId,
+            'service_account_id' => $serviceAccountId,
+            'status' => 'active',
+            'days_left' => $messageData['days_left'],
+            'notice_stage' => $messageData['notice_stage'] ?? null,
+            'message' => $messageData['message'],
+            'severity' => $messageData['severity'],
+            'credential_type' => $messageData['credential_type'],
+            'owner' => $messageData['owner'],
+            'expires_at' => now()->addHours(self::MESSAGE_TTL_HOURS),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        return [
+            'queued' => true,
+            'expires_in_hours' => self::MESSAGE_TTL_HOURS,
         ];
     }
 

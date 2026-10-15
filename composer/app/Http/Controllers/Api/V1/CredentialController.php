@@ -58,9 +58,9 @@ class CredentialController extends Controller
         }
 
         $token = ApiIdentity::current($request)->token;
-        $message = $status->getMessage($token);
+        $result = $status->createMessage($token);
 
-        return response()->json($message);
+        return response()->json($result);
     }
 
     /**
