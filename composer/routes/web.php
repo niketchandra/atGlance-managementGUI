@@ -95,6 +95,7 @@ Route::middleware('app.installed')->group(function () {
         Route::get('/profile/activity', [DashboardController::class, 'profileActivity'])->name('profile.activity');
         Route::post('/profile/setup', [DashboardController::class, 'updateProfileSetup'])->name('profile.update');
         Route::get('/products', [DashboardController::class, 'products'])->name('products');
+        Route::get('/messages', function () { return view('messages.index'); })->name('messages.index');
 
         // Service accounts: ServiceAccountController checks ServiceAccountAccess on every action.
         Route::post('/service-accounts', [ServiceAccountController::class, 'store'])->name('service-accounts.store');
