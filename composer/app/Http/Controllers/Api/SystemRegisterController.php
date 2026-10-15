@@ -10,6 +10,7 @@ use App\Models\SystemRegister;
 use App\Models\User;
 use App\Models\Workspace;
 use App\Support\ActivityRecorder;
+use App\Support\ForceLockout;
 use App\Support\ServiceAccountSettings;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -77,14 +78,27 @@ class SystemRegisterController extends Controller
             ], 422)];
         }
 
+        $user = User::where('email', $email)->first();
+        $ip = (string) $request->ip();
+
+        // Check for account lockout before validating credentials
+        $lockout = ForceLockout::checkLockout($user, $email);
+        if ($lockout['locked']) {
+            return [null, response()->json([
+                'message' => sprintf('Too many failed attempts; try again after %s', $lockout['until']?->toIso8601String()),
+            ], 423)->header('Retry-After', $lockout['retryAfter'])];
+        }
+
         $invalid = [null, response()->json([
             'message' => 'Invalid credentials',
         ], 401)];
 
-        $user = User::where('email', $email)->first();
         if (!$user) {
             // Same bcrypt work as for a real user, so timing does not reveal unknown emails.
             Hash::check($password !== '' ? $password : $pin, self::DUMMY_HASH);
+
+            // Record failure for unknown email (same lockout counting)
+            ForceLockout::recordFailure(null, $email, $ip);
 
             return $invalid;
         }
@@ -96,13 +110,19 @@ class SystemRegisterController extends Controller
         $pinValid = $pin !== '' && !empty($pinHash) && Hash::check($pin, $pinHash);
 
         if (!$passwordValid && !$pinValid) {
+            // Record failure for known email
+            ForceLockout::recordFailure($user, $email, $ip);
             return $invalid;
         }
 
         // A deactivated account cannot act, whatever its role.
         if (strtolower((string) ($user->status ?? 'active')) !== 'active') {
+            ForceLockout::recordFailure($user, $email, $ip);
             return $invalid;
         }
+
+        // Record successful authentication
+        ForceLockout::recordSuccess($user, $email, $ip);
 
         return [$user, null];
     }

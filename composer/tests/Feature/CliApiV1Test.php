@@ -1142,6 +1142,156 @@ class CliApiV1Test extends TestCase
         $this->assertSame(1, ConfigurationFile::count());
     }
 
+    // ---------------------------------------------------------------- Task 3: Account lockout for force actions
+
+    public function test_force_lockout_after_five_failures(): void
+    {
+        $owner = $this->user('owner@example.test');
+        $admin = $this->user('admin@example.test', 101);
+        $system = $this->system($owner);
+
+        // 5 failed attempts
+        for ($i = 0; $i < 5; $i++) {
+            $this->postJson('/api/system-deregister-force', [
+                'system_id' => $system->id,
+                'email' => $admin->email,
+                'password' => 'wrong-password',
+            ])->assertUnauthorized();
+        }
+
+        // 6th attempt should return 423 with Retry-After header
+        $response = $this->postJson('/api/system-deregister-force', [
+            'system_id' => $system->id,
+            'email' => $admin->email,
+            'password' => 'wrong-password',
+        ]);
+
+        $response->assertStatus(423);
+        $response->assertJsonPath('message', fn ($msg) => str_contains($msg, 'Too many failed attempts'));
+        $this->assertTrue($response->headers->has('Retry-After'));
+    }
+
+    public function test_force_lockout_with_correct_credentials_still_blocked(): void
+    {
+        $owner = $this->user('owner@example.test');
+        $admin = $this->user('admin@example.test', 101);
+        $system = $this->system($owner);
+
+        // 5 failed attempts
+        for ($i = 0; $i < 5; $i++) {
+            $this->postJson('/api/system-deregister-force', [
+                'system_id' => $system->id,
+                'email' => $admin->email,
+                'password' => 'wrong',
+            ])->assertUnauthorized();
+        }
+
+        // Even with correct password, should still be locked
+        $response = $this->postJson('/api/system-deregister-force', [
+            'system_id' => $system->id,
+            'email' => $admin->email,
+            'password' => 'secret-pass',
+        ]);
+
+        $response->assertStatus(423)->assertJsonPath('message', fn ($msg) => str_contains($msg, 'Too many failed attempts'));
+    }
+
+    public function test_force_lockout_unknown_email_same_as_known(): void
+    {
+        $owner = $this->user('owner@example.test');
+        $system = $this->system($owner);
+
+        // 5 failed attempts with unknown email
+        for ($i = 0; $i < 5; $i++) {
+            $this->postJson('/api/system-deregister-force', [
+                'system_id' => $system->id,
+                'email' => 'unknown@example.test',
+                'password' => 'wrong',
+            ])->assertUnauthorized();
+        }
+
+        // 6th attempt should also return 423, not revealing email existence
+        $response = $this->postJson('/api/system-deregister-force', [
+            'system_id' => $system->id,
+            'email' => 'unknown@example.test',
+            'password' => 'anything',
+        ]);
+
+        $response->assertStatus(423)->assertJsonPath('message', fn ($msg) => str_contains($msg, 'Too many failed attempts'));
+    }
+
+    public function test_successful_attempt_clears_failure_window(): void
+    {
+        $owner = $this->user('owner@example.test');
+        $admin = $this->user('admin@example.test', 101);
+        $system = $this->system($owner);
+
+        // 4 failed attempts
+        for ($i = 0; $i < 4; $i++) {
+            $this->postJson('/api/system-deregister-force', [
+                'system_id' => $system->id,
+                'email' => $admin->email,
+                'password' => 'wrong',
+            ])->assertUnauthorized();
+        }
+
+        // Successful attempt with correct credentials
+        $this->postJson('/api/system-deregister-force', [
+            'system_id' => $system->id,
+            'email' => $admin->email,
+            'password' => 'secret-pass',
+        ])->assertOk();
+
+        // Failure counter should be reset; 5 new failures needed for lockout
+        for ($i = 0; $i < 4; $i++) {
+            $this->postJson('/api/system-deregister-force', [
+                'system_id' => $system->id,
+                'email' => $admin->email,
+                'password' => 'wrong',
+            ])->assertUnauthorized();
+        }
+
+        // Still not locked (only 4 failures since success)
+        $this->postJson('/api/system-deregister-force', [
+            'system_id' => $system->id,
+            'email' => $admin->email,
+            'password' => 'wrong',
+        ])->assertUnauthorized(); // Would be locked on 5th, but this is only the 4th
+    }
+
+    public function test_legacy_and_v1_force_routes_share_lockout_count(): void
+    {
+        $owner = $this->user('owner@example.test');
+        $admin = $this->user('admin@example.test', 101);
+        $system = $this->system($owner);
+
+        // 3 failures on legacy route
+        for ($i = 0; $i < 3; $i++) {
+            $this->postJson('/api/system-deregister-force', [
+                'system_id' => $system->id,
+                'email' => $admin->email,
+                'password' => 'wrong',
+            ])->assertUnauthorized();
+        }
+
+        // 2 failures on v1 route
+        for ($i = 0; $i < 2; $i++) {
+            $this->postJson('/api/v1/systems/' . $system->id . '/deregister-force', [
+                'email' => $admin->email,
+                'password' => 'wrong',
+            ])->assertUnauthorized();
+        }
+
+        // 6th attempt (either route) should be locked
+        $response = $this->postJson('/api/system-deregister-force', [
+            'system_id' => $system->id,
+            'email' => $admin->email,
+            'password' => 'wrong',
+        ]);
+
+        $response->assertStatus(423);
+    }
+
     // ---------------------------------------------------------------- Task 2: Drop GET force routes
 
     public function test_get_system_deregister_force_returns_405(): void
