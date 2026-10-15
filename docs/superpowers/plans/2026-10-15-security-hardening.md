@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Close the open findings from the 2026-10-15 review: credentials in GET query strings, brute-forceable force routes (account lockout + a security-events API), plain-text system keys, the committed `cookies.txt`, an unchecked AI Connect upload path, and the legacy-route sunset (2026-12-31). HTTPS for the CLI is a separate decision: see `docs/cli-https-options.md`.
+**Goal:** Add two CLI-facing APIs (attach a service account to an existing system; config version hashes) and close the open findings from the 2026-10-15 review: credentials in GET query strings, brute-forceable force routes (account lockout + a security-events API), plain-text system keys, the committed `cookies.txt`, an unchecked AI Connect upload path, and the legacy-route sunset (2026-12-31). HTTPS for the CLI is a separate decision: see `docs/cli-https-options.md`.
 
 **Architecture:** Laravel console (`composer/`), branch `Version2.1.2` (HEAD `318d740` when written). Each task is self-contained with PHPUnit feature tests. One small CLI task (separate repo) maps the new 423 answer and the Sunset header.
 
@@ -115,12 +115,55 @@ Subtasks (one commit each, tests first):
 - [ ] When a legacy route answers with a `Sunset` header, `check` prints `warn console legacy API ends on 2026-12-31; upgrade the console`. Test.
 - [ ] Commit: `feat(v2): report force lockout and legacy API sunset`.
 
+### Task 9: Attach or replace the service-account key of an existing system
+
+**Why:** today a host can only get or change its service-account key with `register --force-new`, which creates a new system and a new version history. Rotating an expiring SA key should keep the system.
+
+**Files:** `composer/routes/api.php` (v1 group with `auth.pat`, `active.user`, `atglance.system`), `composer/app/Http/Controllers/Api/V1/SystemController.php` (new method `serviceAccount`), tests in `CliApiV1Test.php` / `ServiceAccountSystemRoutesTest.php`, `docs/api-reference.md`.
+
+**Contract:** `POST /api/v1/systems/self/service-account`
+- Auth: a person's PAT (not an `atgsa-` key: `401` as for register) + `X-Atglance-System-Id` / `X-Atglance-System-Key` + `X-Atglance-Service-Account-Key: atgsa-...`.
+- Caller must be allowed to manage the system (owner, org admin, workspace admin: `canManageSystem`); else `403`.
+- The SA key must be valid, active, in the system's org, with `systems.register` on the system's workspace; else `401 Invalid service account key` / `403 Service account lacks systems.register in this workspace` (same messages as register).
+- Effect: set `system_register.service_account_id` to that account (replacing any previous one); activity `system.service_account_changed` (old and new account ids, actor; no keys); security event (Task 4) of the same type.
+- `DELETE /api/v1/systems/self/service-account`: detach (person PAT only); activity row.
+- Response `200 {"system":{"id","system_name","service_account_id","workspace_id"}}`.
+- Same system key, same id, same config history.
+
+Tests: attach; replace with another account (old key then gets `404` on system-scoped routes, new key works); non-manager `403`; SA without grant `403`; SA of another org `401`; `atgsa-` in Authorization `401`; detach; no key values in activity rows.
+
+- [ ] Commit: `feat(api): attach or replace a system's service account`.
+
+### Task 10: Content hash for config versions
+
+**Why:** after a state loss the CLI downloads the newest version of every service just to compare it; with a hash it compares without downloading.
+
+**Files:** migration (`configuration_files.content_sha256` char(64) nullable, indexed with `system_register_id`, `service_name`), `FileController::uploadConfigFile` (compute `hash('sha256', $fileContent)` before storing), artisan backfill command `atglance:config-hash-backfill` (reads each stored file once; chunked; resumable; logs missing files), `V1/ConfigFileController` (`index` and `store` responses gain `"sha256"`), `docs/api-reference.md`.
+
+**Contract:**
+- `GET /api/v1/config-files[?service_name=]` items gain `"sha256": "<hex>"` (`null` until backfilled).
+- `POST /api/v1/config-files` 201 `file` gains `"sha256"`.
+- Optional query `GET /api/v1/config-files?service_name=ssh&latest=1` returning only the newest version per service (one row per service when no `service_name`), so a CLI with lost state needs one request for all services.
+
+Tests: upload stores the hash (equals sha256 of the bytes); list and upload answers include it; backfill fills old rows and is idempotent; `latest=1` returns the highest id per service; other systems' rows never appear.
+
+- [ ] Commit: `feat(api): sha256 of config versions`.
+
+### Task 11: CLI follow-up for Tasks 9 and 10 (CLI repo `atGlance`, branch `Version2.0`)
+
+- [ ] `api.Client`: `SetServiceAccount(ctx, sys, saKey)` and `ClearServiceAccount(ctx, sys)`; `ConfigVersion.SHA256`; parse `sha256` in list and upload answers; legacy client `ErrUnsupported`. httptest contract tests.
+- [ ] Command `sudo atglance system service-account set` (prompts for the `atgsa-` key, hidden/stdin, never argv; saves `/var/lib/atglance/service-account.json` only after `200`) and `... service-account remove` (removes the local file after `200`). `schedule enable` hint and `check` warn text point to it instead of `register --force-new`. On a console without the route (`404`/`405`), print `this needs a newer console; use 'system register --force-new --service-account'`.
+- [ ] Unchanged detection: when state has no entry, use `sha256` from `ListConfigs` (one request with `latest=1` when available) instead of downloading the file; fall back to the download when `sha256` is `null` or missing.
+- [ ] Docs: commands.md, README, deployment.md (key rotation without re-registering), man page, completion.
+- [ ] Commits: `feat(v2): set the service account of a registered system`, `feat(v2): compare config hashes without downloading`.
+
 ### Task 8: Docs and release notes
 
 - [ ] `docs/api-reference.md`: 405 on GET force routes, Sunset headers, 423 lockout, security events API, system keys stored hashed (keys cannot be shown again; last four only).
 - [ ] `docs/notifications.md`: `security.force_lockout`.
-- [ ] Release note: hosts need no change; admins can unlock in the console; legacy API ends 2026-12-31.
+- [ ] `docs/api-reference.md`: `POST/DELETE /api/v1/systems/self/service-account`; `sha256` and `latest=1` on config-files.
+- [ ] Release note: hosts need no change; admins can unlock in the console; legacy API ends 2026-12-31; hosts can change their service-account key without re-registering (CLI `2.0.0~alpha10`+).
 
 ## Order
 
-1 → 2 → 3 → 4 → 6 → 5a–5d → 7 → 8. Task 5e waits for a production release and an explicit go-ahead.
+1 → 2 → 3 → 4 → 6 → 5a–5d → 9 → 10 → 7 → 11 → 8. Task 5e waits for a production release and an explicit go-ahead. Tasks 9 and 10 are independent of 3–6 and can move earlier if the CLI work is more urgent.
