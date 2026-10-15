@@ -29,6 +29,44 @@
 4. Removing GET routes must not break 1.x CLI (it uses POST for these routes — verify in its source on `main`).
 5. AI Connect: no config content leaves the console unmasked.
 
+## Compatibility: nothing may break
+
+Checked against the code on 2026-10-16. Every task must keep these working; a task is not done until its row holds.
+
+| Must keep working | How the plan protects it |
+|---|---|
+| 1.x Python CLI (deregister, reactivate, force, register, config save/show/import) | Task 2 removes only GET variants; the 1.x client uses POST for all four force/reactive calls (`cli.py` on `main`, lines 1235, 1298, 1381, 1452). Legacy routes stay until 2026-12-31 and only gain headers. Task 5 hashes the incoming plaintext key, so 1.x requests are unchanged. |
+| v2 CLI (alpha9 and later) | All API changes are additive: new routes (Tasks 4, 9), new response fields (`sha256`, `replaced_system_id`), new headers. No field is removed or renamed. The CLI ignores unknown JSON fields. Task 3 adds a `423` only after 5 failures. |
+| Web console pages | Lockout code is used only by the API force routes (`SystemRegisterController::resolveForceActor`, called from `forceDeregister`/`forceReactivate`); web login is separate. Pages that show the masked system key (`systems-registered-edit`, `view-configuration`, `view-service-versions` blade views, dashboards) keep reading `validation_hash` until 5d switches them to `system_key_last_four`. |
+| Existing hosts' system keys | Task 5 dual-writes: 5a–5d keep `validation_hash` filled and add `system_key_hash`; nothing reads only the new column until it is backfilled; 5e (drop plaintext) is out of this plan's automatic run. |
+| Existing config versions | Task 10 adds a nullable column; `null` means "not known yet" and the CLI falls back to downloading. Backfill is resumable and read-only on storage. |
+| Service-account scheduled runs | Task 9 changes the account only on request; the old SA key stops working at that moment by design. The CLI (Task 11) saves the new key only after the console's `200`; if saving fails it tells the user to rerun the command (the call is idempotent). |
+| Admins during an incident | Locks are per account and time-limited (max 24 h); admins can unlock via API/console (Task 3); super admins can unlock any org. |
+| API docs examples | `docs/api-reference.md` lines ~1225 and ~1290 show `curl -X GET` for the force routes; Task 2 changes them to POST. |
+
+### Gates for every task
+
+1. **Full test suite, not a filter:** run the whole PHPUnit suite (in a throwaway container from the app image) before each commit; a task with any new failure is not done.
+2. **Migrations are reversible** (`down()` tested with `migrate:rollback --step=1` in the test DB), except 5e, which is out of scope.
+3. **DB backup** before running any migration on a real database (`mysqldump` to a file outside the repo).
+4. **Additive API only:** a reviewer checks the diff for removed or renamed routes, fields or messages; the only allowed removals are the three GET routes in Task 2.
+5. **CLI contract check** after Tasks 2, 3, 5c, 9 and 10: run the v2 CLI's `go test ./internal/api/...` and a host run of `login`, `check`, `system status`, `sync`, `config list/diff`, `check --scheduled` against a test container built from the branch.
+6. **1.x check** after Tasks 2 and 5c: on one host with 1.2 installed, `--validate`, `--app ssh --config-save`, `--app ssh --config-show`, `--system-deregister` / `--system-reactivate` against the test container.
+7. **Release only from a rebuilt image** tested as above; the running stack (`C:\ProgramData\AtGlance`) is updated by the owner, never by an agent.
+
+### Rollback per task
+
+| Task | Rollback |
+|---|---|
+| 1 | Revert the commit (the file was a test artefact). |
+| 2 | Revert: GET routes return; headers disappear. |
+| 3 | Setting `security.force_lockout_enabled` (default on; add it in this task) turns enforcement off without a deploy; migrations roll back. |
+| 4 | Revert routes; table can stay or roll back. |
+| 5a–5d | Reads fall back to `validation_hash` while it is still written: revert the commit; the new columns can stay. |
+| 6 | Revert (masking only reduces what is sent). |
+| 9, 10 | Revert routes/fields; columns can stay (nullable). |
+| 7, 11 (CLI) | Install the previous CLI package. |
+
 ---
 
 ### Task 1: Remove committed `cookies.txt`
@@ -47,7 +85,7 @@
 - [ ] Remove the three `Route::get(...)` lines (`api.php` ~64, 69, 73).
 - [ ] Middleware `LegacyApiSunset` on every 1.x CLI route (`/auth/validate-token`, `/system-register*`, `/system-deregister*`, `/system-reactive`, `/system-reactivate-force`, `/config-files*` 1.x routes): adds `Deprecation: true`, `Sunset: Thu, 31 Dec 2026 23:59:59 GMT`, `Link: <…/docs/api-reference.md#cli-api-v1-apiv1>; rel="successor-version"`; records one activity row per (system or token, day) `legacy_api.used` with route and user agent, no secrets. Test: headers present; one row per day.
 - [ ] Admin dashboard (or an artisan command `atglance:legacy-usage`): count of hosts that used legacy routes in the last 30 days.
-- [ ] Docs: api-reference "Legacy routes are removed on 2026-12-31".
+- [ ] Docs: api-reference "Legacy routes are removed on 2026-12-31"; change the `curl -X GET` examples for the force routes (~lines 1225, 1290) to POST.
 - [ ] Commit: `feat(api): drop GET force routes; announce legacy sunset 2026-12-31`.
 - [ ] Follow-up (not now): a dated task to delete the legacy routes after 2026-12-31.
 
@@ -61,6 +99,7 @@ Rules:
 - A failure records a row; reaching 5 failures in 15 min sets the lock: duration `15 min × 2^level` (max 24 h), `level++`, `level_at = now`. The level resets to 0 when `level_at` is older than 24 h at the time of the next lock.
 - A success records a row and clears the counter window for that email (lock level stays until it ages out).
 - The throttle (`v1-force`) stays as well.
+- Admin setting `security.force_lockout_enabled` (default on) so enforcement can be switched off without a deploy.
 - On lock: `ActivityRecorder::record('security.force_locked', …)` (user id, lock until, attempt count, IPs — no secrets) and a notification to org admins (new event `security.force_lockout` in `NotificationEvents`, org scope). On unlock by expiry: recorded lazily as `security.force_unlocked` at the next attempt after expiry.
 - Admin unlock: `POST /api/v1/security/lockouts/{user}/unlock` (admin PAT) and a button in the console user page; recorded as `security.force_unlocked` (actor).
 
@@ -95,7 +134,7 @@ Subtasks (one commit each, tests first):
 - [ ] 5a. Migration: add columns; backfill `system_key_hash` and `system_key_last_four` from `validation_hash` for every row; model helpers. Test: backfill correct for rows with and without a key.
 - [ ] 5b. Auth paths: `AuthenticateSystemKey`, `V1/SystemController` (idempotent register, `replaces_*`, rotate-key), `CredentialController::optionalSystem`, `V1/ConfigFileController`. New keys are written to `system_key_hash`/`last_four` (and, until 5e, still to `validation_hash`). Tests: every existing v1 test passes; rotate-key updates the hash; old key → 404.
 - [ ] 5c. Legacy paths: `SystemRegisterController` (register with `validation_hash`, deregister/reactivate), `FileController` (upload, filter, config-show, download), `ServiceController`. Tests: existing legacy tests pass unchanged (they send plaintext).
-- [ ] 5d. Dashboards and search (`DashboardController`, `AdminDashboardController`), `SecretMask`, `ActivityLogger` redaction list. Tests: masked display; search by last four.
+- [ ] 5d. Dashboards and search (`DashboardController`, `AdminDashboardController`), the blade views `systems-registered-edit`, `view-configuration`, `view-service-versions` (show `system_key_last_four`), `SecretMask`, `ActivityLogger` redaction list. Tests: masked display; search by last four.
 - [ ] 5e. **One-way, separate approval:** stop writing and then drop the plaintext columns (`system_register.validation_hash`, and the copies on `configuration_files`, `raw_data`, `services.system_hash`) after a release in which 5a–5d ran in production. Take a DB backup first. Not part of this plan's automatic execution.
 - Review Focus 2/3 apply. Host test after 5d: 1.x host (legacy) and v2 host (v1) both still back up and restore.
 
