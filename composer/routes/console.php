@@ -110,8 +110,10 @@ Artisan::command('atglance:credentials-sweep', function (\App\Services\Credentia
     return 0;
 })->purpose('Send API key and service account key expiry notices');
 
+// CRIT-002: Cleanup expired temporary credential messages hourly
 if (InstallationState::isInstalled()) {
     Schedule::command('atglance:credentials-sweep')->dailyAt('06:10')->withoutOverlapping();
+    Schedule::command('messages:cleanup-expired')->hourly()->withoutOverlapping();
 }
 
 Artisan::command('backup:workspace {workspace : Workspace id}', function (BackupService $backups) {
