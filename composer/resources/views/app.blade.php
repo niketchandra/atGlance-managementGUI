@@ -564,6 +564,10 @@
                 }
             })();
         </script>
+
+        @if(auth()->check())
+            @include('partials.temporary-messages')
+        @endif
     @endif
 </body>
 </html>
