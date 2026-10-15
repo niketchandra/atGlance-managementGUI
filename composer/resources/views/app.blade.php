@@ -97,6 +97,8 @@
                     </form>
                 @endif
 
+                @include('partials.messages-badge')
+
                 <div class="ag-user">
                     <button type="button" class="ag-user-chip" id="agUserToggle" aria-haspopup="true" aria-expanded="false">
                         <x-user-avatar :user="$agUser" size="36" />
