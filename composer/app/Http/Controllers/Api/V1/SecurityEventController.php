@@ -124,4 +124,41 @@ class SecurityEventController extends Controller
 
         return response()->json(['locked_accounts' => $locked]);
     }
+
+    /**
+     * Unlock an account (admin action).
+     * Admin PAT required; scoped to caller's org (super admin: all).
+     */
+    public function unlock(Request $request)
+    {
+        $admin = $request->user();
+
+        // Only admins can unlock accounts
+        if (!$admin || !$admin->isAdmin()) {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+
+        $userId = (int) $request->input('user_id');
+        if (!$userId) {
+            return response()->json(['message' => 'user_id is required'], 422);
+        }
+
+        $user = User::find($userId);
+        if (!$user) {
+            return response()->json(['message' => 'User not found'], 404);
+        }
+
+        // Scope check: admins can only unlock users in their org
+        if (!$admin->isSuperAdmin() && $user->org_id !== $admin->org_id) {
+            return response()->json(['message' => 'User not found'], 404);
+        }
+
+        // Unlock the account
+        \App\Support\ForceLockout::unlock($user, $admin);
+
+        return response()->json([
+            'message' => 'Account unlocked',
+            'user_id' => $user->id,
+        ]);
+    }
 }

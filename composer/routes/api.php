@@ -124,4 +124,5 @@ Route::prefix('v1')->name('v1.')->group(function () {
     // Security events API - admin PAT only
     Route::get('/security/events', [SecurityEventController::class, 'index'])->middleware(['auth.pat', 'active.user'])->name('security.events');
     Route::get('/security/lockouts', [SecurityEventController::class, 'lockedAccounts'])->middleware(['auth.pat', 'active.user'])->name('security.lockouts');
+    Route::post('/security/lockouts/unlock', [SecurityEventController::class, 'unlock'])->middleware(['auth.pat', 'active.user'])->name('security.lockouts.unlock');
 });
