@@ -2,6 +2,8 @@
 
 namespace Database\Factories;
 
+use App\Models\Organization;
+use App\Models\Workspace;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
@@ -16,10 +18,15 @@ class ServiceAccountFactory extends Factory
      */
     public function definition(): array
     {
+        $org = Organization::factory()->create();
+        $workspace = Workspace::factory()->create(['org_id' => $org->id]);
+
         return [
             'name' => fake()->words(2, true),
             'description' => fake()->sentence(),
             'scope' => 'workspace',
+            'org_id' => $org->id,
+            'workspace_id' => $workspace->id,
             'status' => 'active',
         ];
     }

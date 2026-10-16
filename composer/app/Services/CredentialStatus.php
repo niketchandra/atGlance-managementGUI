@@ -125,7 +125,7 @@ class CredentialStatus
             return -1;
         }
 
-        return (int) $now->diffInDays($token->expires_at);
+        return (int) $now->diffInCalendarDays($token->expires_at);
     }
 
     private function getNoticeStage(?int $daysLeft): ?int
