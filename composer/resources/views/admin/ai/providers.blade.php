@@ -86,8 +86,11 @@
                                 <div>
                                     <label class="ag-label" for="ai-{{ $aiKey }}-key">API key <span style="color: var(--ag-muted);">{{ $aiMeta['key'] === 'required' ? '(required)' : '(optional)' }}</span></label>
                                     <input class="ag-input ai-api-key" id="ai-{{ $aiKey }}-key" type="password" name="ai_key[{{ $aiKey }}]" autocomplete="new-password" placeholder="{{ $aiHasKey ? 'Saved; leave blank to keep' : 'Not set' }}" style="width: 100%;">
+                                    <div style="font-size: 11px; color: var(--ag-muted); margin-top: 4px;">
+                                        API keys are encrypted and masked in responses for security.
+                                    </div>
                                     @if($aiHasKey)
-                                        <label style="display: flex; gap: 6px; align-items: center; font-size: 12px; color: var(--ag-muted); margin-top: 4px;">
+                                        <label style="display: flex; gap: 6px; align-items: center; font-size: 12px; color: var(--ag-muted); margin-top: 6px;">
                                             <input type="checkbox" class="ai-clear-key" name="ai_clear_key[{{ $aiKey }}]" value="1"> Remove saved key
                                         </label>
                                     @endif
