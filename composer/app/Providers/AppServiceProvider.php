@@ -36,6 +36,11 @@ class AppServiceProvider extends ServiceProvider
             Limit::perMinute(10)->by('v1-force|' . $request->ip() . '|' . strtolower(trim((string) $request->input('email', '')))),
             Limit::perMinute(30)->by('v1-force-ip|' . $request->ip()),
         ]);
+
+        RateLimiter::for('login', fn (Request $request) => [
+            Limit::perMinute(5)->by('login|' . $request->ip() . '|' . strtolower(trim((string) $request->input('email', '')))),
+            Limit::perMinute(20)->by('login-ip|' . $request->ip()),
+        ]);
     }
 
     /**

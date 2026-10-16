@@ -41,7 +41,7 @@ Route::get('/login', function () {
 
 Route::middleware('app.installed')->group(function () {
     // Authentication routes
-    Route::post('/login', [AuthController::class, 'login'])->name('login');
+    Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:login')->name('login');
     Route::post('/register', [AuthController::class, 'register'])->name('register');
     Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
     Route::get('/auth/sso/{provider}', [AuthController::class, 'redirectToSso'])->name('auth.sso.redirect');
