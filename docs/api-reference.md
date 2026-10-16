@@ -1878,6 +1878,36 @@ Sends the expiry notices for the calling key's current notice day, at once, if t
 {"sent": false, "reason": "not_expiring"}
 ```
 
+### GET /api/v1/temporary-messages
+
+Retrieves temporary messages for the calling key (PAT or service account). Messages expire after 12 hours and are marked read to avoid duplication.
+
+```bash
+curl http://localhost:8002/api/v1/temporary-messages \
+  -H "Authorization: Bearer atgsa-..."
+```
+
+```json
+{
+  "count": 1,
+  "messages": [
+    {
+      "id": 42,
+      "days_left": 5,
+      "notice_stage": 7,
+      "message": "Your credential 'fleet-a' (…Xy12) expires in 5 days.",
+      "severity": "warn",
+      "credential_type": "service_account",
+      "owner": "my-account",
+      "created_at": "2026-10-20T10:00:00.000000Z",
+      "expires_at": "2026-10-20T22:00:00.000000Z"
+    }
+  ]
+}
+```
+
+Messages are automatically created when the credential's expiry status changes (active, expiring, expired). `notice_stage` is the number of days before expiry when the message was created. Messages with status `read` or expired are not returned. Mark a message as read with `POST /api/v1/temporary-messages/{id}/read`.
+
 ### POST /api/v1/systems
 
 Body (JSON or form):
