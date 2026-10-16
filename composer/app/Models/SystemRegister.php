@@ -8,6 +8,8 @@ use App\Notifications\NotificationEvents;
 use App\Services\Notifier;
 use App\Support\ActivityRecorder;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Query\Builder as QueryBuilder;
+use Illuminate\Database\Eloquent\Builder;
 
 class SystemRegister extends Model
 {
@@ -43,6 +45,9 @@ class SystemRegister extends Model
         'validation_hash',
     ];
     
+    // Derived from validation_hash on save (see booted()); never mass-assigned or serialized.
+    protected $hidden = ['system_key_hash'];
+
     protected $attributes = [
         'status' => 'active',
         'public_facing' => false,
@@ -65,6 +70,17 @@ class SystemRegister extends Model
      */
     protected static function booted(): void
     {
+        // Every write of the key (validation_hash) also writes its hash and last four, so
+        // all paths (v1 and legacy register, rotate-key) stay in step. validation_hash is
+        // still written until Task 5e drops it.
+        static::saving(function (SystemRegister $system) {
+            if ($system->isDirty('validation_hash') || ($system->system_key_hash === null && !empty($system->validation_hash))) {
+                $key = (string) $system->validation_hash;
+                $system->system_key_hash = $key === '' ? null : self::keyHash($key);
+                $system->system_key_last_four = $key === '' ? null : self::keyLastFour($key);
+            }
+        });
+
         static::created(function (SystemRegister $system) {
             $account = $system->service_account_id ? ServiceAccount::query()->find($system->service_account_id) : null;
             ActivityRecorder::record(
@@ -177,6 +193,61 @@ class SystemRegister extends Model
             if (empty($model->id)) {
                 $model->id = self::generateUniqueId();
             }
+        });
+    }
+
+    // ------------------------------------------------------------------ system key (hashed)
+
+    /** sha256 hex of a plaintext system key, as stored in system_key_hash. */
+    public static function keyHash(string $key): string
+    {
+        return hash('sha256', $key);
+    }
+
+    /**
+     * Last 4 characters of a key for display; null for keys under 12 characters, which
+     * show only the mask (same rule as SecretMask::key).
+     */
+    public static function keyLastFour(string $key): ?string
+    {
+        return mb_strlen($key) < 12 ? null : mb_substr($key, -4);
+    }
+
+    /**
+     * Whether $key is this system's key: compares hashes, or the plaintext column for a
+     * row that has no hash yet (written before the backfill).
+     */
+    public function matchesKey(string $key): bool
+    {
+        if ($key === '') {
+            return false;
+        }
+
+        if (!empty($this->system_key_hash)) {
+            return hash_equals((string) $this->system_key_hash, self::keyHash($key));
+        }
+
+        return !empty($this->validation_hash) && hash_equals((string) $this->validation_hash, $key);
+    }
+
+    /** Systems whose key is $key (by hash, or plaintext for rows without a hash). */
+    public function scopeWhereSystemKey(Builder $query, string $key): Builder
+    {
+        self::whereKeyMatches($query->getQuery(), $key, $this->getTable());
+
+        return $query;
+    }
+
+    /**
+     * Adds "key of the system row aliased $alias is $key" to a query builder.
+     */
+    public static function whereKeyMatches(QueryBuilder|Builder $query, string $key, string $alias = 'system_register'): void
+    {
+        $query->where(function ($match) use ($key, $alias) {
+            $match->where($alias . '.system_key_hash', self::keyHash($key))
+                ->orWhere(function ($legacy) use ($key, $alias) {
+                    $legacy->whereNull($alias . '.system_key_hash')->where($alias . '.validation_hash', $key);
+                });
         });
     }
 
