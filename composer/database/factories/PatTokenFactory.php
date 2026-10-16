@@ -44,14 +44,15 @@ class PatTokenFactory extends Factory
     }
 
     /**
-     * Configure the factory to make the plain token accessible in tests.
+     * Configure the factory to ensure user_id matches tokenable_id for user tokens.
      */
     public function configure()
     {
-        return $this->afterCreating(function (PatToken $token) {
-            // Store a reference to the plain token that can be accessed by tests
-            // We'll store it in the token_encrypted field if it's not already there
-            // For now, we've already set it in the definition
+        return $this->afterMaking(function (PatToken $token) {
+            // If this is a user token, ensure user_id matches tokenable_id
+            if ($token->tokenable_type === User::class && $token->user_id !== $token->tokenable_id) {
+                $token->user_id = $token->tokenable_id;
+            }
         });
     }
 

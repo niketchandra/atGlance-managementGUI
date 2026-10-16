@@ -120,12 +120,14 @@ class CredentialStatus
             return null;
         }
 
-        $now = now();
-        if ($token->expires_at < $now) {
+        $now = now()->startOfDay();
+        $expiresAt = $token->expires_at->copy()->startOfDay();
+
+        if ($expiresAt < $now) {
             return -1;
         }
 
-        return (int) $now->diffInCalendarDays($token->expires_at);
+        return (int) $now->diffInDays($expiresAt);
     }
 
     private function getNoticeStage(?int $daysLeft): ?int

@@ -23,7 +23,7 @@ class SecurityEventApiTest extends TestCase
     {
         parent::setUp();
 
-        $this->org = Organization::create(['name' => 'Test Org']);
+        $this->org = Organization::create(['id' => 1, 'name' => 'Test Org']);
         Organization::create(['id' => 100, 'name' => 'Super Org']);
 
         $this->admin = User::create([
@@ -88,7 +88,7 @@ class SecurityEventApiTest extends TestCase
 
     public function test_security_events_scoped_to_organization(): void
     {
-        $otherOrg = Organization::create(['name' => 'Other Org']);
+        $otherOrg = Organization::create(['id' => 2, 'name' => 'Other Org']);
         $otherUser = User::create([
             'name' => 'Other Admin',
             'email' => 'other@example.test',
@@ -125,7 +125,7 @@ class SecurityEventApiTest extends TestCase
 
     public function test_super_admin_sees_all_events(): void
     {
-        $otherOrg = Organization::create(['name' => 'Other Org']);
+        $otherOrg = Organization::create(['id' => 3, 'name' => 'Other Org']);
         $otherUser = User::create([
             'name' => 'Other Admin',
             'email' => 'other@example.test',

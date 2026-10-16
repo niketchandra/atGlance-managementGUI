@@ -11,6 +11,7 @@ use App\Support\ApiIdentity;
 use App\Support\ServiceAccountSettings;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 /**
  * /api/v1/credentials for the atglance CLI: how long the calling key (person or service
@@ -50,7 +51,7 @@ class CredentialController extends Controller
         ]);
     }
 
-    public function expiryNotice(Request $request, CredentialStatus $status): JsonResponse
+    public function expiryNotice(Request $request, CredentialStatus $status, CredentialSweep $sweep): JsonResponse
     {
         [$system, $denied] = $this->optionalSystem($request);
         if ($denied) {
@@ -60,16 +61,26 @@ class CredentialController extends Controller
         $token = ApiIdentity::current($request)->token;
 
         try {
-            $result = $status->createMessage($token);
+            // Create the temporary message
+            $status->createMessage($token);
 
-            // Log the result for debugging
-            \Log::info('CredentialStatus::expiryNotice called', [
-                'pat_token_id' => $token->id,
-                'token_name' => $token->name,
-                'result' => $result,
-            ]);
+            // Determine days left for this token
+            $daysLeft = CredentialSweep::daysLeft($token);
 
-            return response()->json($result);
+            // For expired tokens (daysLeft < 0), don't try to send notifications
+            // since notifyIfDue() only handles pre-expiry notifications
+            if ($daysLeft !== null && $daysLeft < 0) {
+                return response()->json([
+                    'sent' => false,
+                    'stage' => null,
+                    'reason' => 'expired',
+                ]);
+            }
+
+            // Send notifications if due
+            $notificationResult = $sweep->notifyIfDue($token, $system);
+
+            return response()->json($notificationResult);
         } catch (\Exception $e) {
             \Log::error('CredentialStatus::expiryNotice exception', [
                 'pat_token_id' => $token->id,
