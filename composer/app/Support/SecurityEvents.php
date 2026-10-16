@@ -107,10 +107,15 @@ class SecurityEvents
     }
 
     /**
-     * Record a legacy API usage event.
+     * Record a legacy API usage event. The security_events.org_id column is not nullable,
+     * so a call whose organization cannot be resolved is not recorded.
      */
-    public static function recordLegacyApiUsed(int $orgId, ?int $userId, string $ip, array $details = []): void
+    public static function recordLegacyApiUsed(?int $orgId, ?int $userId, ?string $ip, array $details = []): void
     {
+        if ($orgId === null) {
+            return;
+        }
+
         self::record(SecurityEvent::TYPE_LEGACY_API_USED, $orgId, [
             'user_id' => $userId,
             'ip' => $ip,

@@ -10,7 +10,6 @@ use App\Models\Workspace;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
 
 /**
@@ -183,9 +182,7 @@ class SystemKeyHashV1Test extends TestCase
         $this->workspace->addUser($user->id, false);
         $pat = $this->pat($user);
 
-        // Registered by a 1.x host on the legacy route with the same key. The queue is faked
-        // because LegacyApiSunset queues a closure that cannot be serialized (pre-existing).
-        Queue::fake();
+        // Registered by a 1.x host on the legacy route with the same key.
         $legacyId = $this->postJson('/api/system-register', [
             'system_name' => 'web-02', 'os_type' => 'linux', 'ip_address' => '10.0.0.6',
             'workspace_id' => $this->workspace->id, 'validation_hash' => self::KEY,

@@ -11,7 +11,6 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
@@ -33,9 +32,6 @@ class SystemKeyHashLegacyTest extends TestCase
         parent::setUp();
         config(['app.key' => 'base64:' . base64_encode(str_repeat('k', 32))]);
         Storage::fake('local');
-        // LegacyApiSunset queues a closure holding the request, which cannot be serialized
-        // (pre-existing since 777e5a6, unrelated to Task 5); faking the queue skips that.
-        Queue::fake();
 
         Organization::query()->updateOrCreate(['id' => 200], ['name' => 'Acme Ops']);
         $this->workspace = Workspace::create(['org_id' => 200, 'name' => 'ansible', 'status' => 'active']);

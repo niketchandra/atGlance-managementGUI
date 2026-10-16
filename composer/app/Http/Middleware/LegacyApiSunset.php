@@ -2,9 +2,14 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\SystemRegister;
+use App\Support\SecurityEvents;
 use Closure;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 use Symfony\Component\HttpFoundation\Response;
+use Throwable;
 
 /**
  * Adds deprecation headers to legacy CLI API routes.
@@ -19,68 +24,59 @@ class LegacyApiSunset
     {
         $response = $next($request);
 
-        // Add deprecation headers to the response
-        $response->header('Deprecation', 'true');
-        $response->header('Sunset', 'Thu, 31 Dec 2026 23:59:59 GMT');
-        $response->header('Link', '<https://docs.atglance.example.com/docs/api-reference#cli-api-v1-apiv1>; rel="successor-version"');
-
-        // Record legacy API usage (one entry per system/token per day)
-        // This is done asynchronously to avoid blocking the response
-        if ($response->isSuccessful()) {
-            \Illuminate\Support\Facades\Queue::push(function () use ($request) {
-                $this->recordLegacyUsage($request);
-            });
-        }
+        $response->headers->set('Deprecation', 'true');
+        $response->headers->set('Sunset', 'Thu, 31 Dec 2026 23:59:59 GMT');
+        $response->headers->set('Link', '<https://docs.atglance.example.com/docs/api-reference#cli-api-v1-apiv1>; rel="successor-version"');
 
         return $response;
     }
 
     /**
-     * Record that a legacy API route was used.
-     * One activity per (system_id or token_id, day) to avoid spam.
+     * Runs after the response is sent. Recording never affects the response.
      */
-    private function recordLegacyUsage(Request $request): void
+    public function terminate(Request $request, Response $response): void
     {
         try {
-            $identifierType = null;
-            $identifierId = null;
-
-            // Identify by PAT token if available
-            if ($request->user()) {
-                $identifierType = 'user_id';
-                $identifierId = $request->user()->id;
-            } elseif ($request->header('X-Atglance-System-Id')) {
-                $identifierType = 'system_id';
-                $identifierId = $request->header('X-Atglance-System-Id');
-            }
-
-            if (!$identifierType || !$identifierId) {
+            if (!$response->isSuccessful()) {
                 return;
             }
 
-            // One entry per day per identifier
-            $today = now()->startOfDay();
-            \App\Models\ActivityLog::updateOrCreate(
+            $user = $request->user();
+            if ($user) {
+                $type = 'user';
+                $id = (string) $user->id;
+            } elseif (trim((string) $request->header('X-Atglance-System-Id')) !== '') {
+                $type = 'system';
+                $id = trim((string) $request->header('X-Atglance-System-Id'));
+            } else {
+                return;
+            }
+
+            // Once per identifier per day.
+            $now = now();
+            $key = 'legacy_api_used:' . $type . ':' . $id . ':' . $now->format('Y-m-d');
+            $ttl = max(1, $now->diffInSeconds($now->copy()->endOfDay()) + 1);
+            if (!Cache::add($key, 1, (int) $ttl)) {
+                return;
+            }
+
+            $orgId = $user?->org_id;
+            if ($orgId === null && $type === 'system' && ctype_digit($id)) {
+                $orgId = SystemRegister::query()->whereKey((int) $id)->value('org_id');
+            }
+
+            SecurityEvents::recordLegacyApiUsed(
+                $orgId !== null ? (int) $orgId : null,
+                $user ? (int) $user->id : null,
+                $request->ip(),
                 [
-                    'event' => 'legacy_api.used',
-                    $identifierType => $identifierId,
-                    'created_date' => $today,
-                ],
-                [
-                    'route' => $request->path(),
+                    'route' => '/' . ltrim($request->path(), '/'),
                     'method' => $request->method(),
                     'user_agent' => $request->userAgent(),
-                    'ip' => $request->ip(),
-                    'details' => [
-                        'route' => $request->path(),
-                        'method' => $request->method(),
-                        'user_agent' => $request->userAgent(),
-                    ],
                 ]
             );
-        } catch (\Throwable $e) {
-            // Silently fail to not impact API responses
-            \Illuminate\Support\Facades\Log::warning('Failed to record legacy API usage', ['error' => $e->getMessage()]);
+        } catch (Throwable $e) {
+            Log::warning('Legacy API usage not recorded', ['error' => $e->getMessage()]);
         }
     }
 }
