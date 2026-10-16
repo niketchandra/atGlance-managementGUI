@@ -54,7 +54,7 @@
                 </div>
                 <div>
                     <label class="ag-label">Hash Key</label>
-                    <input class="ag-input" type="text" name="hash" value="{{ request('hash') }}" placeholder="Full system key (exact match)" style="width: 100%; transition: border-color 0.2s;" onfocus="this.style.borderColor='#667eea'" onblur="this.style.borderColor='#e0e0e0'">
+                    <input class="ag-input" type="text" name="hash" value="{{ request('hash') }}" placeholder="Full system key or its last 4 characters" style="width: 100%; transition: border-color 0.2s;" onfocus="this.style.borderColor='#667eea'" onblur="this.style.borderColor='#e0e0e0'">
                 </div>
             </div>
             <div style="display: flex; gap: 12px;">

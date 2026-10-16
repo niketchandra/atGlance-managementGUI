@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use App\Notifications\NotificationEvents;
 use App\Services\Notifier;
 use App\Support\ActivityRecorder;
+use App\Support\SecretMask;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Database\Eloquent\Builder;
@@ -249,6 +250,37 @@ class SystemRegister extends Model
                     $legacy->whereNull($alias . '.system_key_hash')->where($alias . '.validation_hash', $key);
                 });
         });
+    }
+
+    /**
+     * The key as the console shows it: mask plus last four, from the hash columns; a row
+     * without a hash falls back to masking the plaintext. '' when there is no key.
+     */
+    public static function maskedKey(?string $keyHash, ?string $lastFour, ?string $plainKey = null): string
+    {
+        if (!empty($keyHash)) {
+            return SecretMask::MASK . (string) $lastFour;
+        }
+
+        return SecretMask::key($plainKey);
+    }
+
+    /**
+     * The key a config file was uploaded with, masked: from the system's last four when it
+     * is the system's key, else from the file's own copy (a 1.x host can upload with a key
+     * it regenerated locally). '' when the file has no key.
+     */
+    public static function maskedFileKey(?string $fileKey, ?string $systemKeyHash, ?string $systemLastFour): string
+    {
+        if ($fileKey === null || $fileKey === '') {
+            return '';
+        }
+
+        if (!empty($systemKeyHash) && hash_equals((string) $systemKeyHash, self::keyHash($fileKey))) {
+            return self::maskedKey($systemKeyHash, $systemLastFour);
+        }
+
+        return SecretMask::key($fileKey);
     }
 
     public function serviceAccount(): \Illuminate\Database\Eloquent\Relations\BelongsTo

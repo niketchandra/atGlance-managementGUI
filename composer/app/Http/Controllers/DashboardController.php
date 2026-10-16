@@ -230,7 +230,7 @@ class DashboardController extends Controller
         }
 
         if ($request->filled('hash')) {
-            $this->filterByExactKey($query, 'cf.validation_hash', (string) $request->hash);
+            $this->filterBySystemKey($query, 'sr', (string) $request->hash, 'cf.validation_hash');
         }
 
         $items = $query->orderByDesc('cf.created_at')
@@ -244,19 +244,33 @@ class DashboardController extends Controller
 
     /**
      * System keys are shown masked, so the search must not reveal them piece by piece:
-     * only the full key matches, and an input under 12 characters matches nothing.
+     * 4 characters match the shown last four (system_key_last_four); 12 or more match the
+     * full key by its hash (or, for a system not hashed yet, its plaintext; for backups,
+     * also the key the file was uploaded with). Anything else matches nothing.
      */
-    private function filterByExactKey($query, string $column, string $value): void
+    private function filterBySystemKey($query, string $systemAlias, string $value, ?string $fileKeyColumn = null): void
     {
         $value = trim($value);
+        $length = mb_strlen($value);
 
-        if (mb_strlen($value) < 12) {
+        if ($length === 4) {
+            $query->where($systemAlias . '.system_key_last_four', '=', $value);
+
+            return;
+        }
+
+        if ($length < 12) {
             $query->whereRaw('1 = 0');
 
             return;
         }
 
-        $query->where($column, '=', $value);
+        $query->where(function ($match) use ($systemAlias, $value, $fileKeyColumn) {
+            SystemRegister::whereKeyMatches($match, $value, $systemAlias);
+            if ($fileKeyColumn !== null) {
+                $match->orWhere($fileKeyColumn, '=', $value);
+            }
+        });
     }
 
     public function systemsRegistered(Request $request)
@@ -296,7 +310,7 @@ class DashboardController extends Controller
         }
 
         if ($request->filled('hash')) {
-            $this->filterByExactKey($query, 'sr.validation_hash', (string) $request->hash);
+            $this->filterBySystemKey($query, 'sr', (string) $request->hash);
         }
 
         $items = $query->orderByDesc('sr.created_at')
@@ -698,7 +712,9 @@ class DashboardController extends Controller
                 'cf.created_at',
                 'cf.updated_at',
                 'sr.system_name',
-                'sr.status as system_status'
+                'sr.status as system_status',
+                'sr.system_key_hash',
+                'sr.system_key_last_four'
             )
             ->orderByDesc('cf.created_at')
             ->get();
@@ -760,7 +776,9 @@ class DashboardController extends Controller
                 'cf.updated_at',
                 'sr.system_name',
                 'sr.status as system_status',
-                'cf.system_register_id'
+                'cf.system_register_id',
+                'sr.system_key_hash',
+                'sr.system_key_last_four'
             )
             ->orderByDesc('cf.created_at')
             ->get();
@@ -788,7 +806,7 @@ class DashboardController extends Controller
             ->leftJoin('raw_data', 'configuration_files.id', '=', 'raw_data.file_id')
             ->leftJoin('system_register as sr', 'configuration_files.system_register_id', '=', 'sr.id')
             ->where('configuration_files.id', $id)
-            ->select('configuration_files.*', 'raw_data.file_data as data', 'sr.workspace_id as system_workspace_id', 'sr.user_id as system_user_id')
+            ->select('configuration_files.*', 'raw_data.file_data as data', 'sr.workspace_id as system_workspace_id', 'sr.user_id as system_user_id', 'sr.system_key_hash', 'sr.system_key_last_four')
             ->first();
 
         if (!$config) {

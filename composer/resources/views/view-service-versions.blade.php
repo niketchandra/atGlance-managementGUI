@@ -79,8 +79,9 @@
                             <td style="padding: 14px 12px; color: var(--ag-muted);">{{ $version->system_name ?? '-' }}</td>
                             <td style="padding: 14px 12px; color: var(--ag-muted); white-space: nowrap;">{{ \App\Support\UserPreferences::datetime($version->created_at) }}</td>
                             <td style="padding: 14px 12px; white-space: nowrap;">
-                                @if($version->validation_hash)
-                                    <code title="System key (only the last 4 characters are shown)" style="font-size: 12px; color: var(--ag-muted);">{{ \App\Support\SecretMask::key($version->validation_hash) }}</code>
+                                @php($maskedKey = \App\Models\SystemRegister::maskedFileKey($version->validation_hash, $version->system_key_hash ?? null, $version->system_key_last_four ?? null))
+                                @if($maskedKey !== '')
+                                    <code title="System key (only the last 4 characters are shown)" style="font-size: 12px; color: var(--ag-muted);">{{ $maskedKey }}</code>
                                 @else
                                     <span style="color: var(--ag-subtle);">-</span>
                                 @endif
