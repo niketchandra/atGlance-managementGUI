@@ -25,7 +25,7 @@
 
 1. Lockout must also count failures on the legacy force routes and the v1 force routes together (same account), and an unknown email must behave the same as a known one (no enumeration via 423).
 2. Hashing system keys must keep every existing host working (1.x and v2 send the plaintext key; the console hashes and compares).
-3. Rotate-key, register (idempotent + replaces), config uploads and legacy lookups must all use the hash after Task 5.
+3. Rotate-key, register (idempotent + replaces), config uploads and system lookups must all use the hash after Task 5; legacy file lookups (filter, config-show) match the per-file key copy (see Task 5 amendment).
 4. Removing GET routes must not break 1.x CLI (it uses POST for these routes — verify in its source on `main`).
 5. AI Connect: no config content leaves the console unmasked.
 
@@ -135,7 +135,8 @@ Subtasks (one commit each, tests first):
 - [ ] 5b. Auth paths: `AuthenticateSystemKey`, `V1/SystemController` (idempotent register, `replaces_*`, rotate-key), `CredentialController::optionalSystem`, `V1/ConfigFileController`. New keys are written to `system_key_hash`/`last_four` (and, until 5e, still to `validation_hash`). Tests: every existing v1 test passes; rotate-key updates the hash; old key → 404.
 - [ ] 5c. Legacy paths: `SystemRegisterController` (register with `validation_hash`, deregister/reactivate), `FileController` (upload, filter, config-show, download), `ServiceController`. Tests: existing legacy tests pass unchanged (they send plaintext).
 - [ ] 5d. Dashboards and search (`DashboardController`, `AdminDashboardController`), the blade views `systems-registered-edit`, `view-configuration`, `view-service-versions` (show `system_key_last_four`), `SecretMask`, `ActivityLogger` redaction list. Tests: masked display; search by last four.
-- [ ] 5e. **One-way, separate approval:** stop writing and then drop the plaintext columns (`system_register.validation_hash`, and the copies on `configuration_files`, `raw_data`, `services.system_hash`) after a release in which 5a–5d ran in production. Take a DB backup first. Not part of this plan's automatic execution.
+- Amendment (2026-10-16, from the 5a–5d review): legacy `config-files/filter` and `config-show` keep matching each file's own stored key copy (`configuration_files.validation_hash`), not the system's hash, because the 1.x CLI can regenerate its key on the host without telling the console (`cli.py` ~885); those hosts would otherwise lose their history. A test pins this.
+- [ ] 5e. **One-way, separate approval:** stop writing and then drop the plaintext columns (`system_register.validation_hash`, and the copies on `configuration_files`, `raw_data`, `services.system_hash`) after a release in which 5a–5d ran in production. Take a DB backup first. Not part of this plan's automatic execution. Before dropping `configuration_files.validation_hash`, add per-file `key_hash` and `key_last_four` columns (backfilled), switch the legacy filter/config-show and the backups search to them, and only then drop the plaintext copies.
 - Review Focus 2/3 apply. Host test after 5d: 1.x host (legacy) and v2 host (v1) both still back up and restore.
 
 ### Task 6: AI Connect — no unmasked configs to third parties
