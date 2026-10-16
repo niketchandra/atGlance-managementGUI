@@ -1809,10 +1809,12 @@ Behind Kong every request reaches the app from the gateway's IP unless `ATGLANCE
 | `POST /api/v1/systems/self/deregister` | PAT (password or PIN), system | Set the system inactive |
 | `POST /api/v1/systems/self/reactivate` | PAT (password or PIN), system | Set the system active |
 | `POST /api/v1/systems/self/rotate-key` | PAT (password or PIN) or service account key with `systems.rotate_key`, system | Replace the system key |
+| `POST /api/v1/systems/self/service-account` | PAT (person only) + service account key header, system | Attach or replace the service account the system runs as |
+| `DELETE /api/v1/systems/self/service-account` | PAT (person only), system | Detach the service account |
 | `POST /api/v1/systems/{id}/deregister-force` | email + password/pin (`v1-force`, 10/min) | Admin force deregister |
 | `POST /api/v1/systems/{id}/reactivate-force` | email + password/pin (`v1-force`, 10/min) | Admin force reactivate |
 | `POST /api/v1/config-files` | PAT or service account key (`configs.write`), system | Upload a config backup |
-| `GET /api/v1/config-files` | PAT or service account key (`configs.read`), system | List the system's config backups |
+| `GET /api/v1/config-files` | PAT or service account key (`configs.read`), system | List the system's config backups (`latest=1`: newest per service) |
 | `GET /api/v1/config-files/{id}` | PAT or service account key (`configs.read`), system | Download one config backup |
 
 ### GET /api/v1/meta
@@ -1952,6 +1954,30 @@ curl -X POST http://localhost:8002/api/v1/systems/self/rotate-key \
 ```
 Errors: `422` credentials or `new_key` (missing, too short, same as current), `403` permission.
 
+### POST and DELETE /api/v1/systems/self/service-account
+
+Attach a service account to a registered system, or replace the one it runs as, without registering again: the system keeps its id, its key and its config history. Rotating an expiring service account key no longer needs `register --force-new`.
+
+- `Authorization`: a person's key (`atgla-`). A service account key there is `401` (`Service account keys work only with the atglance CLI API (/api/v1)`), as for register.
+- System headers (`X-Atglance-System-Id`, `X-Atglance-System-Key`) as for the other system routes; a wrong id or key is `404 System not found`.
+- POST only: `X-Atglance-Service-Account-Key: atgsa-...`, the account the system will run as. It must be active, of the system's organisation, and have `systems.register` in the system's workspace. No body. No password or PIN.
+- The caller must be allowed to manage the system: its owner, an admin of its organisation, or a workspace admin of its workspace.
+
+```bash
+curl -X POST http://localhost:8002/api/v1/systems/self/service-account   -H "Authorization: Bearer atgla-xPyt2TeLn3TbbalkBMN"   -H "X-Atglance-System-Id: 4057010410" -H "X-Atglance-System-Key: 3f9c2b..."   -H "X-Atglance-Service-Account-Key: atgsa-..."
+```
+Response `200` (keys are never echoed):
+```json
+{"system": {"id": 4057010410, "system_name": "web-01", "service_account_id": 12, "workspace_id": 3}}
+```
+From that moment the previous account's key gets `404` on the system routes and the new key works. Sending the same account again answers the same `200` and changes nothing, so the CLI can retry.
+
+`DELETE` (same headers without the service account key) detaches the account and answers `200` with `"service_account_id": null`; the host then needs a person's key.
+
+Each change is recorded in the activity log and as a security event (`system.service_account_changed`, with the system id and the old and new account ids, never a key).
+
+Errors: `401 {"message":"Invalid service account key"}` (bad, revoked, expired, disabled or other-organisation account), `403 {"message":"Service account lacks systems.register in this workspace"}`, `403 {"message":"Only the system owner, a workspace admin of its workspace or an admin of its organisation can change this system"}`, `422 {"message":"The X-Atglance-Service-Account-Key header is required"}` (POST without it), plus the key and header errors above.
+
 ### POST /api/v1/systems/{id}/deregister-force and /reactivate-force
 
 No bearer token. Body: `email` and `password` or `pin` of an admin. The admin must be active and belong to the system's organisation; a super admin may act on any organisation. Rate limit `v1-force` (10 per minute per IP + email, shared with the legacy force routes). The system id comes from the path only (1 to 18 digits).
@@ -1977,15 +2003,20 @@ curl -X POST http://localhost:8002/api/v1/config-files \
   -H "X-Atglance-System-Id: 4057010410" -H "X-Atglance-System-Key: 3f9c2b..." \
   -F "file=@/etc/ssh/sshd_config" -F "service_name=ssh"
 ```
-Response `201` (no hash, no storage paths):
+Response `201` (no system key, no storage paths). `sha256` is the SHA-256 (lowercase hex) of exactly the bytes stored:
 ```json
-{"file": {"id": 2051, "file_name": "sshd_config", "service_name": "ssh", "version": "v3", "created_at": "2026-10-11T09:31:00.000000Z"}}
+{"file": {"id": 2051, "file_name": "sshd_config", "service_name": "ssh", "version": "v3", "created_at": "2026-10-11T09:31:00.000000Z", "sha256": "9f2c5e0d7a41b3c8e6f1a2b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7f8"}}
 ```
+The 1.x upload (`POST /api/config-files/upload`) answer gains the same `file.sha256`.
 Errors: `409 {"message":"System is deregistered; reactivate it first"}` when the system is inactive (nothing is stored; listing and downloading still work), `422` (no file, wrong type, missing `service_name`), `403` inactive user, header errors above.
 
 ### GET /api/v1/config-files
 
-Active config backups of the calling system, whoever uploaded them, newest first. Optional query `service_name`.
+Active config backups of the calling system, whoever uploaded them, newest first. Optional query:
+- `service_name`: only that service.
+- `latest=1` (or `true`): only the newest version (highest id) of each service, so a host that lost its state needs one request for all services. With `service_name`, at most one item. `latest=0` or no `latest`: every version, as before. Any other value: `422`.
+
+Each item has `sha256`, the SHA-256 (lowercase hex) of the stored file, so the CLI can tell whether a local file differs without downloading it. It is `null` for versions stored before October 2026 until an admin runs `php artisan atglance:config-hash-backfill` (then the CLI downloads that version to compare, as before). The backfill reads each stored file once (local disk or S3, the same lookup as a download), in chunks, touches only rows without a hash (so it can be stopped and run again), and logs a missing file without failing (`--chunk=N`, default 200).
 
 ```bash
 curl "http://localhost:8002/api/v1/config-files?service_name=ssh" \
@@ -1996,7 +2027,22 @@ curl "http://localhost:8002/api/v1/config-files?service_name=ssh" \
 {
   "files": [
     {"id": 2051, "file_name": "sshd_config", "service_name": "ssh", "version": "v3",
-     "created_at": "2026-10-11T09:31:00.000000Z", "created_by": {"id": 1010, "name": "Jane Ops"}}
+     "created_at": "2026-10-11T09:31:00.000000Z", "created_by": {"id": 1010, "name": "Jane Ops"},
+     "sha256": "9f2c5e0d7a41b3c8e6f1a2b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7f8"}
+  ]
+}
+```
+
+```bash
+curl "http://localhost:8002/api/v1/config-files?latest=1"   -H "Authorization: Bearer atgla-xPyt2TeLn3TbbalkBMN"   -H "X-Atglance-System-Id: 4057010410" -H "X-Atglance-System-Key: 3f9c2b..."
+```
+```json
+{
+  "files": [
+    {"id": 2051, "file_name": "sshd_config", "service_name": "ssh", "version": "v3", "created_at": "2026-10-11T09:31:00.000000Z",
+     "created_by": {"id": 1010, "name": "Jane Ops"}, "sha256": "9f2c5e0d7a41b3c8e6f1a2b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7f8"},
+    {"id": 2040, "file_name": "nginx.conf", "service_name": "nginx", "version": "v7", "created_at": "2026-09-30T08:00:00.000000Z",
+     "created_by": {"service_account": {"id": 12, "name": "backup-agent"}}, "sha256": null}
   ]
 }
 ```
@@ -2118,6 +2164,10 @@ Shipped with v1, because the code is shared:
 ---
 
 ## Changelog
+
+**CLI API v1: service account and config hashes** - October 16, 2026
+- `POST`/`DELETE /api/v1/systems/self/service-account`: attach, replace or detach a system's service account without registering again
+- Config versions carry `sha256` (v1 list and upload, 1.x upload answer); `GET /api/v1/config-files?latest=1` lists the newest version per service; `php artisan atglance:config-hash-backfill` fills older versions
 
 **CLI API v1** - October 11, 2026
 - New versioned API under `/api/v1` for the atglance CLI v2 (see [CLI API v1](#cli-api-v1-apiv1))

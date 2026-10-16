@@ -40,6 +40,7 @@ class ConfigurationFile extends Model
         'storage_disk',
         'file_location',
         'validation_hash',
+        'content_sha256',
         'version',
         'status',
     ];

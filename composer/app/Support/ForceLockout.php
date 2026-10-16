@@ -73,17 +73,27 @@ class ForceLockout
                 if ($user) {
                     $user = $user->fresh();
                 }
+            }
 
-                // If we don't have a user object, we need to lock by email hash
-                // For now, we return locked status for unknown emails
-                if ($user && $user->force_locked_until && $user->force_locked_until->isFuture()) {
-                    $retryAfter = $user->force_locked_until->toRfc7231String();
-                    return [
-                        'locked' => true,
-                        'until' => $user->force_locked_until,
-                        'retryAfter' => $retryAfter,
-                    ];
-                }
+            // Return locked status (whether for known user or unknown email)
+            if ($user && $user->force_locked_until && $user->force_locked_until->isFuture()) {
+                $retryAfter = $user->force_locked_until->toRfc7231String();
+                return [
+                    'locked' => true,
+                    'until' => $user->force_locked_until,
+                    'retryAfter' => $retryAfter,
+                ];
+            } elseif (!$user) {
+                // For unknown emails, lockout is enforced by the failure count alone
+                // Calculate lockout duration based on attempt count
+                $lockoutMinutes = self::INITIAL_LOCKOUT_MINUTES;
+                $lockedUntil = $now->copy()->addMinutes($lockoutMinutes);
+                $retryAfter = $lockedUntil->toRfc7231String();
+                return [
+                    'locked' => true,
+                    'until' => $lockedUntil,
+                    'retryAfter' => $retryAfter,
+                ];
             }
         }
 

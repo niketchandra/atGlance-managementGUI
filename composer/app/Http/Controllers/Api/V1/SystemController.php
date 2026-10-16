@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Models\SystemRegister;
 use App\Support\ActivityRecorder;
 use App\Support\ApiIdentity;
+use App\Support\SecurityEvents;
 use App\Support\ServiceAccountKeyHeader;
 use App\Support\ServiceAccountSettings;
 use Illuminate\Http\JsonResponse;
@@ -195,6 +196,65 @@ class SystemController extends Controller
         $this->systems->rotateSystemKey($system, $data['new_key'], $request->user(), $identity?->serviceAccount);
 
         return response()->json(['system_id' => $system->id, 'rotated' => true]);
+    }
+
+    /**
+     * POST: attach or replace the service account the system runs as (the account's key
+     * in X-Atglance-Service-Account-Key). DELETE: detach it. A person's key only (route:
+     * auth.pat without :service), and only someone who may manage the system. The system
+     * keeps its id, key and config history; the previous account's key stops working for
+     * this system at once.
+     */
+    public function serviceAccount(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        $system = $this->system($request);
+
+        if (!$this->systems->canManageSystem($user, $system)) {
+            return response()->json(['message' => 'Only the system owner, a workspace admin of its workspace or an admin of its organisation can change this system'], 403);
+        }
+
+        $account = null;
+        if (!$request->isMethod('DELETE')) {
+            [$account, $denied] = ServiceAccountKeyHeader::resolve($request, (int) ($system->org_id ?? 200));
+            if ($denied) {
+                return $denied;
+            }
+            if ($account === null) {
+                return response()->json(['message' => 'The ' . ServiceAccountKeyHeader::HEADER . ' header is required'], 422);
+            }
+            if (!$account->can('systems.register', (int) ($system->workspace_id ?? 0))) {
+                return response()->json(['message' => 'Service account lacks systems.register in this workspace'], 403);
+            }
+        }
+
+        $oldId = $system->service_account_id ? (int) $system->service_account_id : null;
+        $newId = $account?->id !== null ? (int) $account->id : null;
+
+        if ($oldId !== $newId) {
+            $system->service_account_id = $newId;
+            $system->save();
+
+            ActivityRecorder::record(
+                (int) $user->id,
+                'system.service_account_changed',
+                'Service account of system ' . $system->id . ' changed from ' . ($oldId ?? 'none') . ' to ' . ($newId ?? 'none') . ' by ' . $user->email,
+                ActivityRecorder::SUCCESS,
+                $request,
+                (int) $system->workspace_id,
+                (int) $system->id,
+            );
+            SecurityEvents::recordSystemServiceAccountChanged((int) ($system->org_id ?? 200), (int) $user->id, (int) $system->id, $oldId, $newId, $request->ip());
+        }
+
+        return response()->json([
+            'system' => [
+                'id' => $system->id,
+                'system_name' => $system->system_name,
+                'service_account_id' => $newId,
+                'workspace_id' => (int) $system->workspace_id,
+            ],
+        ]);
     }
 
     public function deregisterForce(Request $request, int $id)

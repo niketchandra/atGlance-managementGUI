@@ -107,6 +107,23 @@ class SecurityEvents
     }
 
     /**
+     * Record that a system's service account was attached, replaced or detached.
+     * Ids only: never a key.
+     */
+    public static function recordSystemServiceAccountChanged(int $orgId, int $userId, int $systemId, ?int $oldAccountId, ?int $newAccountId, ?string $ip): void
+    {
+        self::record(SecurityEvent::TYPE_SYSTEM_SERVICE_ACCOUNT_CHANGED, $orgId, [
+            'user_id' => $userId,
+            'ip' => $ip,
+            'details' => [
+                'system_id' => $systemId,
+                'old_service_account_id' => $oldAccountId,
+                'new_service_account_id' => $newAccountId,
+            ],
+        ]);
+    }
+
+    /**
      * Record a legacy API usage event. The security_events.org_id column is not nullable,
      * so a call whose organization cannot be resolved is not recorded.
      */

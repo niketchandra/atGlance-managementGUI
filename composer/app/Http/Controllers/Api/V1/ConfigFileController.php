@@ -40,19 +40,32 @@ class ConfigFileController extends Controller
         }
 
         return response()->json([
-            'file' => Arr::only($response->getData(true)['file'] ?? [], ['id', 'file_name', 'service_name', 'version', 'created_at']),
+            'file' => Arr::only($response->getData(true)['file'] ?? [], ['id', 'file_name', 'service_name', 'version', 'created_at', 'sha256']),
         ], 201);
     }
 
+    /**
+     * Active versions of the calling system, newest first. Optional service_name; with
+     * latest=1 only the newest version (highest id) of each service. sha256 is null for
+     * versions stored before hashes were kept and not backfilled yet.
+     */
     public function index(Request $request): JsonResponse
     {
-        $request->validate(['service_name' => ['nullable', 'string', 'max:255']]);
+        $request->validate([
+            'service_name' => ['nullable', 'string', 'max:255'],
+            'latest' => ['nullable', 'in:0,1,true,false'],
+        ]);
 
-        $files = ConfigurationFile::query()
-            ->with(['user:id,name', 'serviceAccount:id,name'])
-            ->where('system_register_id', $this->system($request)->id)
+        $systemId = (int) $this->system($request)->id;
+        $scoped = fn () => ConfigurationFile::query()
+            ->where('system_register_id', $systemId)
             ->where('status', 'active')
-            ->when($request->filled('service_name'), fn ($query) => $query->where('service_name', $request->query('service_name')))
+            ->when($request->filled('service_name'), fn ($query) => $query->where('service_name', $request->query('service_name')));
+        $hasHash = FileController::hasContentHashColumn();
+
+        $files = $scoped()
+            ->with(['user:id,name', 'serviceAccount:id,name'])
+            ->when($request->boolean('latest'), fn ($query) => $query->whereIn('id', $scoped()->selectRaw('max(id)')->groupBy('service_name')))
             ->orderByDesc('created_at')
             ->orderByDesc('id')
             ->get()
@@ -65,6 +78,7 @@ class ConfigFileController extends Controller
                 'created_by' => $file->user
                     ? ['id' => $file->user->id, 'name' => $file->user->name]
                     : ($file->serviceAccount ? ['service_account' => ['id' => $file->serviceAccount->id, 'name' => $file->serviceAccount->name]] : null),
+                'sha256' => $hasHash ? $file->content_sha256 : null,
             ]);
 
         return response()->json(['files' => $files]);

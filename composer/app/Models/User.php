@@ -33,6 +33,9 @@ class User extends Authenticatable
         'phone',
         'password',
         'password_hash',
+        'force_locked_until',
+        'force_lock_level',
+        'force_lock_level_at',
     ];
 
     /**
@@ -60,6 +63,8 @@ class User extends Authenticatable
             'password_changed_at' => 'datetime',
             'last_login_at' => 'datetime',
             'previous_login_at' => 'datetime',
+            'force_locked_until' => 'datetime',
+            'force_lock_level_at' => 'datetime',
             'preferences' => 'array',
         ];
     }

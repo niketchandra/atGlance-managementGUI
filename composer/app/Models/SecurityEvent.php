@@ -42,5 +42,6 @@ class SecurityEvent extends Model
     public const TYPE_KEY_EXPIRED_USED = 'key.expired_used';
     public const TYPE_SYSTEM_KEY_ROTATED = 'system.key_rotated';
     public const TYPE_SYSTEM_REPLACED = 'system.replaced';
+    public const TYPE_SYSTEM_SERVICE_ACCOUNT_CHANGED = 'system.service_account_changed';
     public const TYPE_LEGACY_API_USED = 'legacy_api.used';
 }

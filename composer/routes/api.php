@@ -101,6 +101,9 @@ Route::prefix('v1')->name('v1.')->group(function () {
 
     Route::post('/systems', [V1SystemController::class, 'store'])->middleware(['auth.pat', 'active.user'])->name('systems.store');
 
+    // A person's key only (an atgsa- key is 401 here, as for register); the system headers as below.
+    Route::match(['post', 'delete'], '/systems/self/service-account', [V1SystemController::class, 'serviceAccount'])->middleware(['auth.pat', 'active.user', 'atglance.system'])->name('systems.service-account');
+
     // Ids are at most 18 digits (fits a signed 64-bit integer); longer ones are a 404.
     Route::middleware(['auth.pat:service', 'active.user', 'atglance.system'])->group(function () {
         Route::get('/systems/self', [V1SystemController::class, 'show'])->name('systems.self');

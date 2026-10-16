@@ -131,6 +131,8 @@ class FileController extends Controller
 
         // Read file content for raw_data table
         $fileContent = Storage::disk($storageDisk)->get($filePath);
+        // sha256 of exactly the bytes stored (the CLI compares it without downloading).
+        $contentSha256 = hash('sha256', (string) $fileContent);
 
         if ($service) {
             $systemId = $service->system_id;
@@ -189,7 +191,7 @@ class FileController extends Controller
         $resolvedVersion = $this->resolveNextVersionLabel((int) $service->service_id);
         
         try {
-            $configFile = DB::transaction(function () use ($user, $account, $systemId, $service, $originalName, $serviceName, $filePath, $storageDisk, $request, $fileContent, $resolvedVersion) {
+            $configFile = DB::transaction(function () use ($user, $account, $systemId, $service, $originalName, $serviceName, $filePath, $storageDisk, $request, $fileContent, $resolvedVersion, $contentSha256) {
                 $payload = [
                     'user_id' => $user?->id,
                     'service_account_id' => $account?->id,
@@ -204,6 +206,10 @@ class FileController extends Controller
 
                 if ($this->hasStorageDiskColumn()) {
                     $payload['storage_disk'] = $storageDisk;
+                }
+
+                if (self::hasContentHashColumn()) {
+                    $payload['content_sha256'] = $contentSha256;
                 }
 
                 $configFile = ConfigurationFile::create($payload);
@@ -251,6 +257,7 @@ class FileController extends Controller
                 'validation_hash' => $configFile->validation_hash,
                 'version' => $configFile->version,
                 'created_at' => $configFile->created_at,
+                'sha256' => $configFile->content_sha256,
             ],
         ], 201);
     }
@@ -816,6 +823,32 @@ class FileController extends Controller
         }
 
         return rtrim($baseUrl, '/') . '/' . ltrim($path, '/');
+    }
+
+    /**
+     * Content of a stored config version, read the same way as a download (the active
+     * disk first, then the row's own disk). Null when the file is missing.
+     */
+    public function storedContent(ConfigurationFile $configFile): ?string
+    {
+        [$disk, $path] = $this->resolveDiskAndPath($configFile->storage_disk ?? null, (string) $configFile->file_location);
+
+        if ($path === '' || !Storage::disk($disk)->exists($path)) {
+            return null;
+        }
+
+        $content = Storage::disk($disk)->get($path);
+
+        return $content === null ? null : (string) $content;
+    }
+
+    /**
+     * configuration_files.content_sha256 exists (Task 10 migration). Not cached: cheap,
+     * and a request served before the migration ran must not remember "no".
+     */
+    public static function hasContentHashColumn(): bool
+    {
+        return Schema::hasColumn('configuration_files', 'content_sha256');
     }
 
     private function hasStorageDiskColumn(): bool
