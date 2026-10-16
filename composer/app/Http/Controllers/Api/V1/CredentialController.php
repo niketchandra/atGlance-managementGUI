@@ -145,8 +145,7 @@ class CredentialController extends Controller
         $system = preg_match('/^[0-9]{1,18}$/', $systemId) ? SystemRegister::find((int) $systemId) : null;
 
         $allowed = $system !== null
-            && !empty($system->validation_hash)
-            && hash_equals((string) $system->validation_hash, $key)
+            && $system->matchesKey($key)
             && (int) ($system->org_id ?? 200) === $identity->orgId()
             && ($identity->isServiceAccount()
                 ? AuthenticateSystemKey::accountMayUseSystem($identity->serviceAccount, $system)

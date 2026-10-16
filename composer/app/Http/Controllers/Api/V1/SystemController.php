@@ -55,12 +55,13 @@ class SystemController extends Controller
         }
 
         // Idempotent on system_key: a CLI retrying a registration whose answer was lost
-        // gets the existing system back (200) instead of a duplicate.
+        // gets the existing system back (200) instead of a duplicate. Found by the key's hash,
+        // or by the plaintext key for a system not hashed yet (e.g. registered before 5a).
         $existing = SystemRegister::query()
             ->where('org_id', $orgId)
-            ->where('validation_hash', $data['system_key'])
+            ->whereSystemKey((string) $data['system_key'])
             ->first();
-        if ($existing && hash_equals((string) $existing->validation_hash, (string) $data['system_key'])) {
+        if ($existing && $existing->matchesKey((string) $data['system_key'])) {
             $mayManage = (int) $existing->user_id === (int) $user->id
                 || $user->isAdmin()
                 || ($account !== null && (int) $existing->service_account_id === (int) $account->id);
@@ -86,8 +87,7 @@ class SystemController extends Controller
             $rkey = (string) $request->input('replaces_system_key', '');
             $candidate = preg_match('/^[0-9]{1,18}$/', $rid) ? SystemRegister::where('org_id', $orgId)->find((int) $rid) : null;
             $ok = $candidate !== null
-                && !empty($candidate->validation_hash)
-                && hash_equals((string) $candidate->validation_hash, $rkey)
+                && $candidate->matchesKey($rkey)
                 && ($this->systems->canManageSystem($user, $candidate)
                     || ($account !== null && (int) $candidate->service_account_id === (int) $account->id));
             if (!$ok) {
@@ -96,6 +96,7 @@ class SystemController extends Controller
             $replaces = $candidate;
         }
 
+        // Saving validation_hash also writes system_key_hash and system_key_last_four.
         $data['validation_hash'] = $data['system_key'];
         unset($data['system_key']);
 
@@ -184,7 +185,7 @@ class SystemController extends Controller
                 'min:32',
                 'max:255',
                 function (string $attribute, mixed $value, \Closure $fail) use ($system): void {
-                    if (is_string($value) && hash_equals((string) $system->validation_hash, $value)) {
+                    if (is_string($value) && $system->matchesKey($value)) {
                         $fail('The new key must differ from the current key.');
                     }
                 },
