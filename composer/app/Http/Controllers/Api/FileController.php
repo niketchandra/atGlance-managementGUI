@@ -420,6 +420,11 @@ class FileController extends Controller
 
     /**
      * List configuration files filtered by system_id and validation_hash (active only)
+     *
+     * validation_hash here matches the key each file was uploaded with (its stored copy),
+     * not the system's current key: a 1.x host that regenerated its key locally uploads
+     * and lists with the new key while the console still holds the old one. So this does
+     * not check the system key hash; Task 5e must keep an equivalent per-file match.
      */
     public function listConfigFilesBySystemAndHash(Request $request)
     {
@@ -468,6 +473,7 @@ class FileController extends Controller
 
     /**
      * List all versions by system_id, validation_key, and service_name across all users.
+     * validation_key matches each file's stored key copy, as in listConfigFilesBySystemAndHash.
      */
     public function listConfigVersionsBySystemValidationAndService(Request $request)
     {
