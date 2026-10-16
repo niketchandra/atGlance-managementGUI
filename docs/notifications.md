@@ -63,6 +63,7 @@ Earlier versions sent `message.{to, from, text}` to `api/1.0` without `consent`.
 | `organization.service_account_owner_missing` | Organization | A service account lost its owner (the owner left) |
 | `organization.user_keys_revoked` | Organization | A user was deactivated, deleted or moved, and their API keys were revoked |
 | `organization.user_key_expiring` | Organization | A person's API key expires in 15, 7, 3, 2, 1 or 0 days |
+| `security.force_lockout` | Organization | An account is locked due to repeated failed force actions (deregister, reactivate) |
 
 Organization-level groups (`workspace_id` empty) are install-wide: only the super admin, who manages every organization, sets them up, and they receive the organization events of all organizations on this install.
 

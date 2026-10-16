@@ -45,6 +45,7 @@ final class NotificationEvents
     public const ORG_SERVICE_ACCOUNT_OWNER_MISSING = 'organization.service_account_owner_missing';
     public const ORG_USER_KEYS_REVOKED = 'organization.user_keys_revoked';
     public const ORG_USER_KEY_EXPIRING = 'organization.user_key_expiring';
+    public const SECURITY_FORCE_LOCKOUT = 'security.force_lockout';
 
     private const EVENTS = [
         self::SYSTEM_REGISTERED => ['label' => 'System registered', 'scope' => self::SCOPE_WORKSPACE],
@@ -76,6 +77,7 @@ final class NotificationEvents
         self::ORG_SERVICE_ACCOUNT_OWNER_MISSING => ['label' => 'Service account has no owner', 'scope' => self::SCOPE_ORGANIZATION],
         self::ORG_USER_KEYS_REVOKED => ['label' => "A user's API keys were revoked", 'scope' => self::SCOPE_ORGANIZATION],
         self::ORG_USER_KEY_EXPIRING => ['label' => "A user's API key expires soon", 'scope' => self::SCOPE_ORGANIZATION],
+        self::SECURITY_FORCE_LOCKOUT => ['label' => 'Account locked due to failed force actions', 'scope' => self::SCOPE_ORGANIZATION],
     ];
 
     /**

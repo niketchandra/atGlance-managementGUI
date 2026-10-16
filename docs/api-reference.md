@@ -1804,6 +1804,9 @@ Behind Kong every request reaches the app from the gateway's IP unless `ATGLANCE
 | `GET /api/v1/whoami` | PAT or service account key | The key's user or service account, and the key |
 | `GET /api/v1/credentials/status` | PAT or service account key; system headers optional | Days left before the key expires |
 | `POST /api/v1/credentials/expiry-notice` | PAT or service account key; system headers optional (6/min) | Send the key's expiry notices now |
+| `GET /api/v1/temporary-messages` | PAT or service account key | Temporary messages for credential status changes |
+| `GET /api/v1/security/events` | PAT (admin), active user | List security events for the organization |
+| `GET /api/v1/security/lockouts` | PAT (admin), active user | List locked accounts in the organization |
 | `POST /api/v1/systems` | PAT, active user; optional service account key header | Register a system |
 | `GET /api/v1/systems/self` | PAT or service account key, system | The calling system |
 | `POST /api/v1/systems/self/deregister` | PAT (password or PIN), system | Set the system inactive |
@@ -1907,6 +1910,58 @@ curl http://localhost:8002/api/v1/temporary-messages \
 ```
 
 Messages are automatically created when the credential's expiry status changes (active, expiring, expired). `notice_stage` is the number of days before expiry when the message was created. Messages with status `read` or expired are not returned. Mark a message as read with `POST /api/v1/temporary-messages/{id}/read`.
+
+### GET /api/v1/security/events
+
+List security events in the calling key's organization (admin PAT only). Events include failed force actions, lockouts, key revocations and expirations. Paginated (50 per page), ordered newest first. Optional query parameters: `type` (filter by event type), `page`.
+
+```bash
+curl http://localhost:8002/api/v1/security/events \
+  -H "Authorization: Bearer atgla-..." 
+```
+
+```json
+{
+  "events": [
+    {
+      "id": 42,
+      "type": "force.failed",
+      "org_id": 1,
+      "user_id": 5,
+      "user": {"id": 5, "name": "Alice", "email": "alice@example.com"},
+      "ip": "203.0.113.42",
+      "created_at": "2026-10-20T10:15:00.000000Z"
+    }
+  ],
+  "next": "/api/v1/security/events?page=2"
+}
+```
+
+Event types: `force.failed`, `force.locked`, `force.unlocked`, `key.revoked`, `key.expired_used`.
+
+### GET /api/v1/security/lockouts
+
+List accounts currently locked due to repeated force action failures (admin PAT only). Paginated (50 per page).
+
+```bash
+curl http://localhost:8002/api/v1/security/lockouts \
+  -H "Authorization: Bearer atgla-..."
+```
+
+```json
+{
+  "locked_accounts": [
+    {
+      "id": 12,
+      "name": "Bob",
+      "email": "bob@example.com",
+      "locked_until": "2026-10-20T11:30:00.000000Z",
+      "lock_level": 2
+    }
+  ],
+  "count": 1
+}
+```
 
 ### POST /api/v1/systems
 

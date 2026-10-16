@@ -261,13 +261,25 @@ class ForceLockout
      */
     private static function notifyOrgAdmins(User $user, Carbon $lockedUntil, int $attemptCount): void
     {
-        // Send notification to org admins
-        // This is a placeholder - implement based on your notification system
-        // notification('security.force_lockout', [
-        //     'user' => $user,
-        //     'locked_until' => $lockedUntil,
-        //     'attempt_count' => $attemptCount,
-        // ])->sendToOrgAdmins($user->org_id);
+        try {
+            $title = "Account locked: {$user->name}";
+            $facts = [
+                'User' => $user->name,
+                'Email' => $user->email,
+                'Locked until' => $lockedUntil->toDateTimeString(),
+                'Failed attempts' => $attemptCount,
+            ];
+
+            app(\App\Services\Notifier::class)->notify(
+                'security.force_lockout',
+                null,
+                $title,
+                $facts,
+                ['user_id' => $user->id, 'org_id' => $user->org_id]
+            );
+        } catch (\Throwable $e) {
+            Log::warning('Failed to send force lockout notification', ['error' => $e->getMessage()]);
+        }
     }
 
     /**
