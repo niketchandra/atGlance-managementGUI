@@ -43,6 +43,8 @@ class SystemRegister extends Model
         'tags',
         'metadata',
         'status',
+        // Write-only input: the saving hook hashes it and clears it, so plaintext is never stored.
+        'validation_hash',
     ];
     
     // Derived from validation_hash on save (see booted()); never mass-assigned or serialized.
