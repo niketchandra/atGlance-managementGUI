@@ -5,10 +5,13 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\ActivityLog;
 use App\Models\PatToken;
+use App\Models\ServiceAccount;
 use App\Models\SystemRegister;
 use App\Models\User;
 use App\Models\Workspace;
 use App\Support\ActivityRecorder;
+use App\Support\ForceLockout;
+use App\Support\ServiceAccountSettings;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -75,14 +78,27 @@ class SystemRegisterController extends Controller
             ], 422)];
         }
 
+        $user = User::where('email', $email)->first();
+        $ip = (string) $request->ip();
+
+        // Check for account lockout before validating credentials
+        $lockout = ForceLockout::checkLockout($user, $email);
+        if ($lockout['locked']) {
+            return [null, response()->json([
+                'message' => sprintf('Too many failed attempts; try again after %s', $lockout['until']?->toIso8601String()),
+            ], 423)->header('Retry-After', $lockout['retryAfter'])];
+        }
+
         $invalid = [null, response()->json([
             'message' => 'Invalid credentials',
         ], 401)];
 
-        $user = User::where('email', $email)->first();
         if (!$user) {
             // Same bcrypt work as for a real user, so timing does not reveal unknown emails.
             Hash::check($password !== '' ? $password : $pin, self::DUMMY_HASH);
+
+            // Record failure for unknown email (same lockout counting)
+            ForceLockout::recordFailure(null, $email, $ip);
 
             return $invalid;
         }
@@ -94,13 +110,19 @@ class SystemRegisterController extends Controller
         $pinValid = $pin !== '' && !empty($pinHash) && Hash::check($pin, $pinHash);
 
         if (!$passwordValid && !$pinValid) {
+            // Record failure for known email
+            ForceLockout::recordFailure($user, $email, $ip);
             return $invalid;
         }
 
         // A deactivated account cannot act, whatever its role.
         if (strtolower((string) ($user->status ?? 'active')) !== 'active') {
+            ForceLockout::recordFailure($user, $email, $ip);
             return $invalid;
         }
+
+        // Record successful authentication
+        ForceLockout::recordSuccess($user, $email, $ip);
 
         return [$user, null];
     }
@@ -293,7 +315,7 @@ class SystemRegisterController extends Controller
      * Creates a system for the PAT's user from validated $data. Shared by the legacy
      * and the /api/v1 register endpoints. Returns the 401 response without a PAT.
      */
-    public function createSystem(Request $request, array $data)
+    public function createSystem(Request $request, array $data, ?ServiceAccount $account = null)
     {
         $user = $request->user();
         $patToken = $request->attributes->get('patToken');
@@ -322,6 +344,7 @@ class SystemRegisterController extends Controller
         return SystemRegister::create([
             'pat_token_id' => $patToken->id,
             'user_id' => $user->id,
+            'service_account_id' => $account?->id,
             'org_id' => $resolvedOrgId,
             'workspace_id' => $resolvedWorkspaceId,
             'system_name' => $data['system_name'],
@@ -340,6 +363,10 @@ class SystemRegisterController extends Controller
 
     public function store(Request $request)
     {
+        if (ServiceAccountSettings::requireForRegistration()) {
+            return response()->json(['message' => 'Registration needs a user key and a service account key'], 422);
+        }
+
         $data = $request->validate(self::systemFieldRules() + [
             'workspace_id' => self::workspaceIdRule(),
             'public_ip' => ['nullable', 'string', 'max:45'],
@@ -372,7 +399,6 @@ class SystemRegisterController extends Controller
                 'is_locked' => $system->is_locked,
                 'tags' => $system->tags,
                 'metadata' => $system->metadata,
-                'validation_hash' => $system->validation_hash,
                 'status' => $system->status,
                 'created_at' => $system->created_at,
             ],
@@ -461,8 +487,9 @@ class SystemRegisterController extends Controller
     }
 
     /**
-     * Who may change a system from the host (/api/v1/systems/self/*): its owner, or an
-     * admin of the system's organisation.
+     * Who may change a system from the host (/api/v1/systems/self/*): its owner, an admin
+     * of the system's organisation, or a workspace admin of the system's workspace (for
+     * example after the owner left).
      */
     public function canManageSystem(User $user, SystemRegister $system): bool
     {
@@ -470,13 +497,22 @@ class SystemRegisterController extends Controller
             return true;
         }
 
-        return $user->isAdmin() && (int) ($system->org_id ?? 200) === (int) ($user->org_id ?? 200);
+        if ((int) ($system->org_id ?? 200) !== (int) ($user->org_id ?? 200)) {
+            return false;
+        }
+
+        if ($user->isAdmin()) {
+            return true;
+        }
+
+        return (int) ($system->workspace_id ?? 0) > 0 && (bool) $system->workspace?->hasUserAsAdmin($user->id);
     }
 
     /**
-     * Replaces the system's key (validation_hash) and records it in the activity log.
+     * Replaces the system's key (validation_hash) and records who did it: a person or the
+     * service account the system runs as.
      */
-    public function rotateSystemKey(SystemRegister $system, string $newKey, User $actor): void
+    public function rotateSystemKey(SystemRegister $system, string $newKey, ?User $actor, ?ServiceAccount $account = null): void
     {
         DB::transaction(function () use ($system, $newKey): void {
             $oldKey = (string) $system->validation_hash;
@@ -495,9 +531,9 @@ class SystemRegisterController extends Controller
         });
 
         ActivityRecorder::record(
-            (int) $actor->id,
+            $actor?->id,
             'system.key_rotated',
-            'Rotated the key of system ' . $system->system_name,
+            'Rotated the key of system ' . $system->system_name . ($account ? ' (service account ' . $account->name . ')' : ''),
             ActivityRecorder::SUCCESS,
             null,
             $system->workspace_id ? (int) $system->workspace_id : null,

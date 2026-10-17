@@ -18,7 +18,7 @@ x-app-env: &app-env
   DB_PORT: 3306
   DB_DATABASE: atglance
   DB_USERNAME: atglance
-  DB_PASSWORD: ${DB_PASSWORD:-atglance}
+  DB_PASSWORD: ${DB_PASSWORD}
   REDIS_HOST: redis
   REDIS_PORT: 6379
   CACHE_STORE: redis
@@ -80,8 +80,8 @@ services:
     environment:
       MYSQL_DATABASE: atglance
       MYSQL_USER: atglance
-      MYSQL_PASSWORD: ${DB_PASSWORD:-atglance}
-      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-atglance-root}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
     volumes:
       - db-data:/var/lib/mysql
     healthcheck:

@@ -14,6 +14,7 @@ class Service extends Model
     protected $primaryKey = 'service_id';
 
     protected $fillable = [
+        'service_account_id',
         'service_name',
         'system_id',
         'system_hash',
@@ -45,5 +46,10 @@ class Service extends Model
     public function configurationFiles(): HasMany
     {
         return $this->hasMany(ConfigurationFile::class, 'service_id', 'service_id');
+    }
+
+    public function serviceAccount(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(ServiceAccount::class, 'service_account_id');
     }
 }

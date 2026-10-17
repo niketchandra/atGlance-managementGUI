@@ -3,6 +3,7 @@
 namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
+use App\Services\UserKeyRevoker;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
@@ -32,6 +33,9 @@ class User extends Authenticatable
         'phone',
         'password',
         'password_hash',
+        'force_locked_until',
+        'force_lock_level',
+        'force_lock_level_at',
     ];
 
     /**
@@ -59,6 +63,8 @@ class User extends Authenticatable
             'password_changed_at' => 'datetime',
             'last_login_at' => 'datetime',
             'previous_login_at' => 'datetime',
+            'force_locked_until' => 'datetime',
+            'force_lock_level_at' => 'datetime',
             'preferences' => 'array',
         ];
     }
@@ -73,6 +79,29 @@ class User extends Authenticatable
             if ($user->isDirty('password_hash') && !$user->isDirty('password_changed_at')) {
                 $user->password_changed_at = now();
             }
+        });
+
+        // Removal from the organization ends every API key at once (spec 2026-10-13, section 7).
+        // updated fires only after the row was saved, so a failed save revokes nothing.
+        static::updated(function (User $user) {
+            $reason = null;
+            if ($user->wasChanged('status') && strtolower((string) $user->status) !== 'active') {
+                $reason = UserKeyRevoker::REASON_DEACTIVATED;
+            } elseif ($user->wasChanged('org_id')) {
+                $reason = UserKeyRevoker::REASON_ORG_CHANGED;
+            }
+
+            if ($reason !== null) {
+                $revoker = app(UserKeyRevoker::class);
+                $revoker->revokeAll($user, $reason);
+                $revoker->releaseOwnedAccounts($user);
+            }
+        });
+
+        static::deleting(function (User $user) {
+            $revoker = app(UserKeyRevoker::class);
+            $revoker->revokeAll($user, UserKeyRevoker::REASON_DELETED);
+            $revoker->releaseOwnedAccounts($user);
         });
     }
 

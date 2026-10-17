@@ -32,7 +32,7 @@
                 <div style="font-size: 18px; font-weight: 700;">{{ $system->system_name }}</div>
                 <div style="margin-top: 8px; font-size: 11px; color: rgba(255,255,255,0.8);">SYSTEM KEY</div>
                 <div style="font-size: 12px; word-break: break-all; color: #f3f4f6; max-width: 640px;">
-                    {{ $system->validation_hash ? \App\Support\SecretMask::key($system->validation_hash) : 'N/A' }}
+                    {{ \App\Models\SystemRegister::maskedKey($system->system_key_hash, $system->system_key_last_four, $system->validation_hash) ?: 'N/A' }}
                 </div>
             </div>
             <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 8px;">
