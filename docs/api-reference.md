@@ -1916,8 +1916,8 @@ Messages are automatically created when the credential's expiry status changes (
 List security events in the calling key's organization (admin PAT only). Events include failed force actions, lockouts, key revocations and expirations. Paginated (50 per page), ordered newest first. Optional query parameters: `type` (filter by event type), `page`.
 
 ```bash
-curl http://localhost:8002/api/v1/security/events \
-  -H "Authorization: Bearer atgla-..." 
+curl -X GET http://localhost:8002/api/v1/security/events \
+  -H "Authorization: Bearer atgla-xPyt2TeLn3TbbalkBMN"
 ```
 
 ```json
@@ -1944,8 +1944,8 @@ Event types: `force.failed`, `force.locked`, `force.unlocked`, `key.revoked`, `k
 List accounts currently locked due to repeated force action failures (admin PAT only). Paginated (50 per page).
 
 ```bash
-curl http://localhost:8002/api/v1/security/lockouts \
-  -H "Authorization: Bearer atgla-..."
+curl -X GET http://localhost:8002/api/v1/security/lockouts \
+  -H "Authorization: Bearer atgla-xPyt2TeLn3TbbalkBMN"
 ```
 
 ```json
@@ -1962,6 +1962,58 @@ curl http://localhost:8002/api/v1/security/lockouts \
   "count": 1
 }
 ```
+
+### POST /api/v1/security/lockouts/unlock
+
+Unlock a force-locked account (admin PAT only). Allows an admin to immediately unlock a user who has been locked out due to repeated failed force action attempts.
+
+```bash
+curl -X POST http://localhost:8002/api/v1/security/lockouts/unlock \
+  -H "Authorization: Bearer atgla-xPyt2TeLn3TbbalkBMN" \
+  -H "Content-Type: application/json" \
+  -d '{"user_id": 12}'
+```
+
+```json
+{
+  "message": "User unlocked successfully",
+  "user_id": 12,
+  "unlocked_at": "2026-10-20T11:35:00.000000Z"
+}
+```
+
+Errors: `404 User not found`, `422 User is not locked`, `401/403` authentication or permission issues.
+
+### GET /api/v1/temporary-messages
+
+List temporary credential expiry messages for the caller (PAT or service account key).
+
+```bash
+curl -X GET http://localhost:8002/api/v1/temporary-messages \
+  -H "Authorization: Bearer atgla-xPyt2TeLn3TbbalkBMN"
+```
+
+```json
+{
+  "messages": [
+    {
+      "id": 5,
+      "days_left": 14,
+      "notice_stage": 30,
+      "message": "Your credential expires in 14 days",
+      "severity": "warn",
+      "credential_type": "personal_access_token",
+      "owner": "john-api-key",
+      "status": "active",
+      "expires_at": "2026-11-03T00:00:00.000000Z",
+      "created_at": "2026-10-20T08:00:00.000000Z"
+    }
+  ],
+  "count": 1
+}
+```
+
+Messages with status `read` or past their `expires_at` are not returned. Mark a message as read with `POST /api/v1/temporary-messages/{id}/read`.
 
 ### POST /api/v1/systems
 
@@ -2191,6 +2243,20 @@ Shipped with v1, because the code is shared:
 }
 ```
 
+### 423 Locked
+```json
+{
+  "message": "Too many failed attempts; try again after 2026-10-20T12:00:00Z"
+}
+```
+
+Returned by force endpoints (`/api/v1/systems/{id}/deregister-force`, `/reactivate-force`, etc.) when the account is locked due to repeated failed authentication attempts. Response includes a `Retry-After` header with the number of seconds until the user can retry.
+
+**Headers**:
+```
+Retry-After: 3600
+```
+
 ### 429 Too Many Requests
 ```json
 {
@@ -2232,6 +2298,25 @@ Shipped with v1, because the code is shared:
 - **Applied To**: User and Product endpoints
 - **Exceeded**: Returns 429 status code
 - **Reset**: After 1 minute
+
+**Login Rate Limiter**:
+- **Limit**: 5 attempts per minute per email+IP combination
+- **Global Limit**: 20 attempts per minute per IP
+- **Applied To**: `POST /auth/login` and legacy force endpoints
+- **Exceeded**: Returns 429 status code with `Retry-After` header
+
+---
+
+## Deprecated Endpoints (Sunset)
+
+The legacy API v1 endpoints (e.g., `/api/system-register`, `/api/config-files`) are deprecated in favor of the new `/api/v1/*` endpoints (the atglance CLI v2 API). Legacy endpoints return the `Sunset` header indicating when they will be removed.
+
+**Sunset Header Example**:
+```
+Sunset: Sun, 31 Dec 2026 23:59:59 GMT
+```
+
+Clients should migrate to the `/api/v1/*` endpoints before the sunset date. See [CLI API v1](#cli-api-v1-apiv1) for the new endpoints.
 
 ---
 

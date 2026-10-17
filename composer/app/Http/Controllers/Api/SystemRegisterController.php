@@ -399,7 +399,6 @@ class SystemRegisterController extends Controller
                 'is_locked' => $system->is_locked,
                 'tags' => $system->tags,
                 'metadata' => $system->metadata,
-                'validation_hash' => $system->validation_hash,
                 'status' => $system->status,
                 'created_at' => $system->created_at,
             ],
