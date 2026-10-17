@@ -15,9 +15,9 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        // Seed default admin user
-        $this->call(AdminUserSeeder::class);
-        
+        // Seed installation defaults (organization, admin user)
+        $this->call(InstallationSeeder::class);
+
         // Seed default workspaces
         $this->call(WorkspaceSeeder::class);
     }
