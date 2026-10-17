@@ -15,10 +15,10 @@ class InstallationSeeder extends Seeder
      */
     public function run(): void
     {
-        $organizationName = config('installer.organization_name', 'Default Organization');
-        $adminName = config('installer.admin_name', 'Administrator');
-        $adminEmail = config('installer.admin_email', 'admin@example.com');
-        $adminPassword = config('installer.admin_password', 'password');
+        $organizationName = config('installer.organization_name') ?: 'Default Organization';
+        $adminName = config('installer.admin_name') ?: 'Administrator';
+        $adminEmail = config('installer.admin_email') ?: 'admin@example.com';
+        $adminPassword = config('installer.admin_password') ?: 'password';
 
         $hashedPassword = Hash::make($adminPassword);
 
