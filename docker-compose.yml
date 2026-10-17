@@ -44,8 +44,8 @@ services:
     environment:
       <<: *app-env
       ATGLANCE_ROLE: app
-    # App service is not exposed to the host. Access only through the gateway at :8002.
-    # For debugging with direct app access, use: docker-compose port app 8000
+    ports:
+      - "${APP_PORT:-8000}:8000"
 
   worker:
     <<: *app
@@ -109,8 +109,6 @@ services:
     restart: unless-stopped
     ports:
       - "${GATEWAY_PORT:-8002}:8002"
-      - "${GATEWAY_HTTPS_PORT:-8443}:8443"
-    # TODO: Set up HTTPS with TLS cert/key mounted from ./certs/ or via env KONG_SSL_CERT_PATH
     healthcheck:
       test: ["CMD", "kong", "health"]
       interval: 10s
