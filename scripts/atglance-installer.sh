@@ -344,7 +344,8 @@ echo "  MCP server:    off by default. Turn on: Site Setting > Plugins > MCP Ser
 echo "  CLI setup:     atglance --configure   (management URL: http://$host_ip:$GATEWAY_PORT)"
 echo "  Install dir:   $ATGLANCE_DIR"
 echo
-echo "  Open ports $APP_PORT and $GATEWAY_PORT in the firewall for users and servers."
+echo "  Open port $GATEWAY_PORT (and 443 for HTTPS when configured) in the firewall for users and servers."
+echo "  Port $APP_PORT is internal-only and should NOT be exposed."
 echo
 echo "  Manage:  cd $ATGLANCE_DIR && docker compose ps | logs -f | restart | down"
 echo "  Upgrade: re-run this installer"
