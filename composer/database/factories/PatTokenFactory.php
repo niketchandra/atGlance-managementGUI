@@ -44,7 +44,8 @@ class PatTokenFactory extends Factory
     }
 
     /**
-     * Configure the factory to ensure user_id matches tokenable_id for user tokens.
+     * Configure the factory to ensure user_id matches tokenable_id for user tokens,
+     * and generate correct token prefix for service accounts.
      */
     public function configure()
     {
@@ -52,6 +53,23 @@ class PatTokenFactory extends Factory
             // If this is a user token, ensure user_id matches tokenable_id
             if ($token->tokenable_type === User::class && $token->user_id !== $token->tokenable_id) {
                 $token->user_id = $token->tokenable_id;
+            }
+
+            // If this is a service account token, regenerate with atgsa- prefix
+            if ($token->tokenable_type === \App\Models\ServiceAccount::class) {
+                $characters = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+                $randomPart = '';
+                $randomLength = 25 - strlen('atgsa-');
+
+                for ($i = 0; $i < $randomLength; $i++) {
+                    $randomPart .= $characters[random_int(0, strlen($characters) - 1)];
+                }
+
+                $plainToken = 'atgsa-' . $randomPart;
+                $token->token = hash('sha256', $plainToken);
+                $token->token_encrypted = $plainToken;
+                $token->last_four = substr($plainToken, -4);
+                $token->user_id = null;
             }
         });
     }
