@@ -43,7 +43,6 @@ class SystemRegister extends Model
         'tags',
         'metadata',
         'status',
-        'validation_hash',
     ];
     
     // Derived from validation_hash on save (see booted()); never mass-assigned or serialized.
@@ -72,13 +71,14 @@ class SystemRegister extends Model
     protected static function booted(): void
     {
         // Every write of the key (validation_hash) also writes its hash and last four, so
-        // all paths (v1 and legacy register, rotate-key) stay in step. validation_hash is
-        // still written until Task 5e drops it.
+        // all paths (v1 and legacy register, rotate-key) stay in step.
+        // Task 5e: plaintext validation_hash is no longer written; only hash and last four persist.
         static::saving(function (SystemRegister $system) {
             if ($system->isDirty('validation_hash') || ($system->system_key_hash === null && !empty($system->validation_hash))) {
                 $key = (string) $system->validation_hash;
                 $system->system_key_hash = $key === '' ? null : self::keyHash($key);
                 $system->system_key_last_four = $key === '' ? null : self::keyLastFour($key);
+                $system->validation_hash = null;
             }
         });
 

@@ -26,7 +26,8 @@ class LegacyApiSunset
 
         $response->headers->set('Deprecation', 'true');
         $response->headers->set('Sunset', 'Thu, 31 Dec 2026 23:59:59 GMT');
-        $response->headers->set('Link', '<https://docs.atglance.example.com/docs/api-reference#cli-api-v1-apiv1>; rel="successor-version"');
+        $docsUrl = config('app.docs_url') ?: rtrim((string) config('app.url'), '/') . '/docs';
+        $response->headers->set('Link', '<' . $docsUrl . '/api-reference>; rel="successor-version"');
 
         return $response;
     }

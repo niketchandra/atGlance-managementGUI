@@ -17,7 +17,7 @@ use App\Http\Controllers\DomainTlsController;
 use App\Http\Middleware\LegacyApiSunset;
 use Illuminate\Support\Facades\Route;
 
-Route::post('/auth/register', [AuthController::class, 'register']);
+Route::post('/auth/register', [AuthController::class, 'register'])->middleware('throttle:5,1');
 Route::post('/auth/login', [AuthController::class, 'login'])->middleware('throttle:login');
 Route::post('/auth/logout', [AuthController::class, 'logout'])->middleware('auth.session');
 
