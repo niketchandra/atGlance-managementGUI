@@ -38,6 +38,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'auth.session' => \App\Http\Middleware\AuthenticateSession::class,
             'auth.pat' => \App\Http\Middleware\AuthenticatePatToken::class,
+            'auth.pat.expired' => \App\Http\Middleware\AuthenticatePatTokenAllowExpired::class,
             'admin.role' => \App\Http\Middleware\AdminRoleMiddleware::class,
             'super.admin.role' => \App\Http\Middleware\SuperAdminRoleMiddleware::class,
             'active.user' => \App\Http\Middleware\EnsureUserIsActive::class,
