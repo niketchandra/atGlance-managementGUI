@@ -127,6 +127,8 @@ services:
     image: ${ATGLANCE_REGISTRY:-atglance}/ce-atglance-mcp:${ATGLANCE_VERSION:-latest}
     container_name: ce-atglance-mcp
     restart: unless-stopped
+    profiles:
+      - mcp
     environment:
       ATGLANCE_URL: http://app:8000
       # Reached only through Kong on the internal network; Kong sends Host "mcp:8010".
