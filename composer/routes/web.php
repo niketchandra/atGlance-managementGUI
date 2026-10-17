@@ -147,6 +147,7 @@ Route::middleware('app.installed')->group(function () {
             Route::post('/settings/migration/analyze', [AdminDashboardController::class, 'analyzeMigration'])->name('admin.settings.migration.analyze');
             Route::post('/settings/migration/start', [AdminDashboardController::class, 'startMigration'])->name('admin.settings.migration.start');
             Route::post('/settings/mail', [AdminDashboardController::class, 'updateMailSettings'])->name('admin.settings.mail');
+            Route::post('/settings/security', [AdminDashboardController::class, 'updateSecuritySettings'])->name('admin.settings.security');
             Route::post('/settings/mail/test', [MailTestController::class, 'send'])->middleware('throttle:5,1')->name('admin.settings.mail.test');
             Route::post('/settings/sso', [AdminDashboardController::class, 'updateSsoSettings'])->name('admin.settings.sso');
             Route::post('/settings/sso/plugin', [AdminDashboardController::class, 'toggleSsoPlugin'])->name('admin.settings.sso.plugin');

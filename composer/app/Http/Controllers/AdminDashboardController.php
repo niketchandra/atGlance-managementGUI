@@ -1179,6 +1179,7 @@ class AdminDashboardController extends Controller
             'ssoEnabled' => SsoSettings::enabled(),
             'disableEmailRegistration' => $this->isFeatureEnabledSetting('disable_email_registration'),
             'ssoEnabledProviders' => SsoSettings::enabledProviders(),
+            'forceLockedEnabled' => (bool) AdminSetting::getValue('force_lockout_enabled', false),
         ]);
     }
 
@@ -1738,6 +1739,24 @@ class AdminDashboardController extends Controller
         AdminSetting::putValue('mail', 'mail_recipients', $recipientList->all());
 
         return redirect()->route('admin.settings', ['tab' => 'email'])->with('success', 'Mail settings saved successfully.');
+    }
+
+    public function updateSecuritySettings(Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'force_lockout_enabled' => ['nullable', 'boolean'],
+        ]);
+
+        AdminSetting::putValue('security', 'force_lockout_enabled', $validated['force_lockout_enabled'] ? '1' : '0');
+
+        ActivityRecorder::record(
+            Auth::id(),
+            'settings.security_updated',
+            'Force account lockout ' . ($validated['force_lockout_enabled'] ? 'enabled' : 'disabled'),
+            ActivityRecorder::SUCCESS
+        );
+
+        return redirect()->route('admin.settings', ['tab' => 'security'])->with('success', 'Security settings saved successfully.');
     }
 
     public function toggleSsoPlugin(Request $request): RedirectResponse
