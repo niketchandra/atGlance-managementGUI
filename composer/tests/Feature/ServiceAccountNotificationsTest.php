@@ -1,0 +1,181 @@
+<?php
+
+namespace Tests\Feature;
+
+use App\Models\ServiceAccount;
+use App\Notifications\NotificationEvents;
+use App\Services\CredentialSweep;
+use App\Services\Notifier;
+use App\Services\ServiceAccounts;
+use App\Support\ServiceAccountNotices;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Queue;
+use Mockery;
+use Tests\Feature\Concerns\MakesServiceAccounts;
+use Tests\TestCase;
+
+class ServiceAccountNotificationsTest extends TestCase
+{
+    use RefreshDatabase, MakesServiceAccounts;
+
+    /** @var list<array{event: string, workspace: ?int, title: string, facts: array}> */
+    private array $sent = [];
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->setUpServiceAccountWorld();
+
+        // Records what would be sent; delivery itself is covered by NotificationsTest.
+        $notifier = Mockery::mock(Notifier::class);
+        $notifier->shouldReceive('notify')->andReturnUsing(function (string $event, ?int $workspaceId, string $title, array $facts = []) {
+            $this->sent[] = ['event' => $event, 'workspace' => $workspaceId, 'title' => $title, 'facts' => $facts];
+        });
+        $this->app->instance(Notifier::class, $notifier);
+    }
+
+    private function events(): array
+    {
+        return array_column($this->sent, 'event');
+    }
+
+    public function test_personal_key_expiry_notice_names_type_owner_and_days_left(): void
+    {
+        $user = $this->makeUser('jane@example.test');
+        $user->forceFill(['name' => 'Jane Ops'])->save();
+        [, $key] = $this->userKey($user);
+        $key->update(['name' => 'web-01 cli', 'last_four' => 'xy12', 'expires_at' => now()->addDays(7)]);
+        $system = $this->makeSystem($user, ['pat_token_id' => $key->id]);
+
+        ServiceAccountNotices::userKeyExpiring($user, $key->fresh(), $system);
+
+        $notice = collect($this->sent)->firstWhere('event', NotificationEvents::ORG_USER_KEY_EXPIRING);
+        $this->assertSame('atglance key expires in 7 days: personal key "web-01 cli" for system web-01 (owner Jane Ops)', $notice['title']);
+        $this->assertSame('personal key', $notice['facts']['Type']);
+        $this->assertSame('Jane Ops (jane@example.test)', $notice['facts']['Owner']);
+        $this->assertSame('7', $notice['facts']['Days left']);
+        $this->assertSame(now()->addDays(7)->toDateString(), $notice['facts']['Expires']);
+        $this->assertSame('web-01', $notice['facts']['System']);
+        $this->assertSame('web-01 cli (…xy12)', $notice['facts']['Key']);
+    }
+
+    public function test_service_account_key_expiring_today_without_owner_or_system(): void
+    {
+        $account = $this->makeAccount(ServiceAccount::SCOPE_ORGANIZATION, null, ['name' => 'fleet-a']);
+        [, $key] = $this->accountKey($account, ['name' => 'fleet-a', 'expires_at' => now()->addHours(2)]);
+
+        ServiceAccountNotices::keyEvent($account, $key->fresh(), 'expiring');
+
+        $notice = collect($this->sent)->firstWhere('event', NotificationEvents::ORG_SERVICE_ACCOUNT_KEY_EXPIRING);
+        $this->assertSame('atglance key expires today: service account key "fleet-a" (owner no owner)', $notice['title']);
+        $this->assertSame('service account key', $notice['facts']['Type']);
+        $this->assertSame('no owner', $notice['facts']['Owner']);
+        $this->assertSame('0', $notice['facts']['Days left']);
+        $this->assertArrayNotHasKey('System', $notice['facts']);
+    }
+
+    public function test_events_have_scopes(): void
+    {
+        $this->assertSame('workspace', NotificationEvents::scope(NotificationEvents::SERVICE_ACCOUNT_KEY_EXPIRING));
+        $this->assertSame('organization', NotificationEvents::scope(NotificationEvents::ORG_SERVICE_ACCOUNT_KEY_EXPIRING));
+        $this->assertSame('organization', NotificationEvents::scope(NotificationEvents::ORG_USER_KEYS_REVOKED));
+        $this->assertSame('workspace', NotificationEvents::scope(NotificationEvents::SYSTEM_REACTIVATED));
+    }
+
+    public function test_create_routes_by_scope(): void
+    {
+        $admin = $this->makeUser('admin@example.test', 101);
+        $accounts = app(ServiceAccounts::class);
+
+        $accounts->create($admin, ['name' => 'ws', 'scope' => 'workspace', 'workspace_id' => $this->workspace->id]);
+        $accounts->create($admin, ['name' => 'org', 'scope' => 'organization']);
+
+        $created = collect($this->sent)->firstWhere('event', NotificationEvents::SERVICE_ACCOUNT_CREATED);
+        $this->assertSame($this->workspace->id, $created['workspace']);
+        $this->assertContains(NotificationEvents::ORG_SERVICE_ACCOUNT_CREATED, $this->events());
+    }
+
+    public function test_org_account_key_revoked_goes_to_org_and_each_granted_workspace(): void
+    {
+        $admin = $this->makeUser('admin@example.test', 101);
+        $account = $this->makeAccount(ServiceAccount::SCOPE_ORGANIZATION);
+        $this->grant($account, $this->workspace);
+        $this->grant($account, $this->otherWorkspace);
+        [$plain, $key] = $this->accountKey($account);
+
+        app(ServiceAccounts::class)->revokeKey($key, $admin, 'leaked');
+
+        $this->assertContains(NotificationEvents::ORG_SERVICE_ACCOUNT_KEY_REVOKED, $this->events());
+        $workspaces = array_column(array_filter($this->sent, fn ($s) => $s['event'] === NotificationEvents::SERVICE_ACCOUNT_KEY_REVOKED), 'workspace');
+        $this->assertEqualsCanonicalizing([$this->workspace->id, $this->otherWorkspace->id], $workspaces);
+
+        foreach ($this->sent as $notice) {
+            $this->assertStringNotContainsString($plain, json_encode($notice));
+        }
+    }
+
+    public function test_sweep_sends_each_notice_once(): void
+    {
+        Queue::fake();
+        $owner = $this->makeUser('owner@example.test', 101);
+        $account = $this->makeAccount(attributes: ['owner_user_id' => $owner->id]);
+        [, $soon] = $this->accountKey($account, ['expires_at' => now()->addDays(10)]);
+        [, $late] = $this->accountKey($account, ['expires_at' => now()->addDays(2)]);
+        $user = $this->makeUser('u@example.test');
+        [, $userKey] = $this->userKey($user);
+        $userKey->update(['expires_at' => now()->addDays(13)]);
+        $expiredUser = $this->makeUser('e@example.test');
+        [, $expiredKey] = $this->userKey($expiredUser);
+        $expiredKey->update(['expires_at' => now()->subHour()]);
+
+        $first = app(CredentialSweep::class)->run();
+        $this->assertSame(['expiring' => 3, 'expired' => 1], $first);
+        $this->assertSame(15, (int) $soon->fresh()->expiry_notified_stage);
+        $this->assertSame(2, (int) $late->fresh()->expiry_notified_stage);
+        $this->assertNotNull($expiredKey->fresh()->expired_notified_at);
+
+        $this->assertSame(['expiring' => 0, 'expired' => 0], app(CredentialSweep::class)->run());
+
+        // 8 days on: $soon has 2 days left (2-day notice), $userKey has 5 (7-day notice),
+        // $late has expired.
+        $this->travel(8)->days();
+        $this->assertSame(['expiring' => 2, 'expired' => 1], app(CredentialSweep::class)->run());
+    }
+
+    public function test_user_keys_revoked_notice(): void
+    {
+        $user = $this->makeUser('leaver@example.test');
+        $this->userKey($user);
+        $user->status = 'inactive';
+        $user->save();
+
+        $notice = collect($this->sent)->firstWhere('event', NotificationEvents::ORG_USER_KEYS_REVOKED);
+        $this->assertNotNull($notice);
+        $this->assertSame('1', $notice['facts']['Keys revoked']);
+    }
+
+    public function test_owner_missing_notice(): void
+    {
+        $owner = $this->makeUser('owner@example.test', 101);
+        $this->makeAccount(attributes: ['owner_user_id' => $owner->id]);
+
+        $owner->status = 'inactive';
+        $owner->save();
+
+        $this->assertContains(NotificationEvents::ORG_SERVICE_ACCOUNT_OWNER_MISSING, $this->events());
+    }
+
+    public function test_reactivation_uses_its_own_event_with_actor_facts(): void
+    {
+        $owner = $this->makeUser('owner@example.test');
+        $system = $this->makeSystem($owner, ['status' => 'inactive']);
+        $this->actingAs($this->makeUser('admin@example.test', 101));
+
+        $system->status = 'active';
+        $system->save();
+
+        $notice = collect($this->sent)->firstWhere('event', NotificationEvents::SYSTEM_REACTIVATED);
+        $this->assertSame('admin@example.test', $notice['facts']['Actor']);
+        $this->assertSame('owner@example.test', $notice['facts']['Original owner']);
+    }
+}

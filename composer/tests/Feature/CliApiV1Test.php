@@ -262,6 +262,7 @@ class CliApiV1Test extends TestCase
         $response = $this->getJson('/api/v1/whoami', $headers)->assertOk();
 
         $response->assertExactJson([
+            'identity_type' => 'user',
             'user' => ['id' => $user->id, 'name' => $user->name, 'status' => 'active', 'org_id' => 200],
             'token' => ['id' => $token->id, 'name' => 'cli', 'expires_at' => $token->fresh()->expires_at?->toIso8601String()],
         ]);
@@ -278,7 +279,7 @@ class CliApiV1Test extends TestCase
 
         $inactive = $this->user('gone@example.test', 102, 200, 'inactive');
         $this->getJson('/api/v1/whoami', $this->pat($inactive))
-            ->assertForbidden()->assertJsonPath('message', 'User is inactive');
+            ->assertUnauthorized()->assertJsonPath('message', 'Identity is disabled');
     }
 
     // ---------------------------------------------------------------- register
@@ -297,7 +298,7 @@ class CliApiV1Test extends TestCase
             'system_key' => self::KEY,
         ], $this->pat($user))->assertCreated();
 
-        $this->assertSame(['id', 'system_name', 'status', 'workspace_id', 'created_at'], array_keys($response->json('system')));
+        $this->assertSame(['id', 'system_name', 'status', 'workspace_id', 'service_account_id', 'created_at', 'replaced_system_id'], array_keys($response->json('system')));
         $this->assertStringNotContainsString(self::KEY, $response->getContent());
         $response->assertJsonPath('system.status', 'active')->assertJsonPath('system.workspace_id', $this->workspace->id);
 
@@ -305,6 +306,161 @@ class CliApiV1Test extends TestCase
         $this->assertSame(self::KEY, $system->validation_hash);
         $this->assertSame(200, (int) $system->org_id);
         $this->assertSame($user->id, (int) $system->user_id);
+    }
+
+    private function registerBody(int $workspaceId): array
+    {
+        return [
+            'system_name' => 'web-02',
+            'os_type' => 'linux',
+            'ip_address' => '10.0.0.6',
+            'workspace_id' => $workspaceId,
+            'system_key' => self::KEY,
+        ];
+    }
+
+    public function test_register_is_idempotent_on_system_key(): void
+    {
+        $user = $this->user('me@example.test');
+        $this->workspace->addUser($user->id, false);
+        $headers = $this->pat($user);
+        $body = $this->registerBody($this->workspace->id);
+
+        $first = $this->postJson('/api/v1/systems', $body, $headers)->assertCreated();
+        $second = $this->postJson('/api/v1/systems', $body, $headers)->assertOk();
+
+        $this->assertSame($first->json('system.id'), $second->json('system.id'));
+        $this->assertSame(['id', 'system_name', 'status', 'workspace_id', 'service_account_id', 'created_at'], array_keys($second->json('system')));
+        $this->assertSame(1, SystemRegister::count());
+    }
+
+    public function test_register_with_a_key_of_another_users_system_is_rejected(): void
+    {
+        $owner = $this->user('owner@example.test');
+        $other = $this->user('other@example.test');
+        $this->workspace->addUser($owner->id, false);
+        $this->workspace->addUser($other->id, false);
+        $body = $this->registerBody($this->workspace->id);
+
+        $this->postJson('/api/v1/systems', $body, $this->pat($owner))->assertCreated();
+        $this->postJson('/api/v1/systems', $body, $this->pat($other))
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('system_key')
+            ->assertJsonPath('errors.system_key.0', 'The system key is already in use.');
+        $this->assertSame(1, SystemRegister::count());
+    }
+
+    public function test_register_with_a_key_used_in_another_org_creates_a_system(): void
+    {
+        $theirs = $this->user('theirs@example.test', 102, 300);
+        $this->system($theirs, ['workspace_id' => $this->foreignWorkspace->id]);
+        $me = $this->user('me@example.test');
+        $this->workspace->addUser($me->id, false);
+
+        $this->postJson('/api/v1/systems', $this->registerBody($this->workspace->id), $this->pat($me))->assertCreated();
+        $this->assertSame(2, SystemRegister::count());
+    }
+
+    private const KEY2 = 'k2-0123456789abcdef0123456789abcdef01234567';
+
+    public function test_register_with_replaces_retires_the_old_system(): void
+    {
+        $user = $this->user('me@example.test');
+        $this->workspace->addUser($user->id, false);
+        $old = $this->system($user);
+        $body = ['system_key' => self::KEY2, 'replaces_system_id' => (string) $old->id, 'replaces_system_key' => self::KEY] + $this->registerBody($this->workspace->id);
+
+        $response = $this->postJson('/api/v1/systems', $body, $this->pat($user))->assertCreated();
+
+        $this->assertSame($old->id, $response->json('system.replaced_system_id'));
+        $this->assertSame('active', $response->json('system.status'));
+        $this->assertSame('inactive', $old->fresh()->status);
+        $this->assertSame('active', SystemRegister::findOrFail($response->json('system.id'))->status);
+        $log = \App\Models\ActivityLog::where('event', 'system.replaced')->firstOrFail();
+        $this->assertStringContainsString((string) $old->id, $log->description);
+        $this->assertStringContainsString((string) $response->json('system.id'), $log->description);
+        $this->assertStringNotContainsString(self::KEY, (string) $log->description . $log->request_payload);
+        $this->assertStringNotContainsString(self::KEY2, (string) $log->description . $log->request_payload);
+    }
+
+    public function test_register_without_replaces_reports_null_replaced_system(): void
+    {
+        $user = $this->user('me@example.test');
+        $this->workspace->addUser($user->id, false);
+
+        $this->postJson('/api/v1/systems', $this->registerBody($this->workspace->id), $this->pat($user))
+            ->assertCreated()->assertJsonPath('system.replaced_system_id', null);
+    }
+
+    public function test_register_with_a_wrong_replaces_key_is_rejected(): void
+    {
+        $user = $this->user('me@example.test');
+        $this->workspace->addUser($user->id, false);
+        $old = $this->system($user);
+        $body = ['system_key' => self::KEY2, 'replaces_system_id' => (string) $old->id, 'replaces_system_key' => 'wrong-key-0123456789abcdef0123456789abcdef'] + $this->registerBody($this->workspace->id);
+
+        $this->postJson('/api/v1/systems', $body, $this->pat($user))
+            ->assertStatus(422)->assertJsonValidationErrors('replaces_system_id');
+        $this->assertSame(1, SystemRegister::count());
+        $this->assertSame('active', $old->fresh()->status);
+    }
+
+    public function test_register_cannot_replace_a_system_of_another_org(): void
+    {
+        $theirs = $this->user('theirs@example.test', 102, 300);
+        $old = $this->system($theirs, ['workspace_id' => $this->foreignWorkspace->id]);
+        $me = $this->user('me@example.test');
+        $this->workspace->addUser($me->id, false);
+        $body = ['system_key' => self::KEY2, 'replaces_system_id' => (string) $old->id, 'replaces_system_key' => self::KEY] + $this->registerBody($this->workspace->id);
+
+        $this->postJson('/api/v1/systems', $body, $this->pat($me))
+            ->assertStatus(422)->assertJsonValidationErrors('replaces_system_id');
+        $this->assertSame(1, SystemRegister::count());
+        $this->assertSame('active', $old->fresh()->status);
+    }
+
+    public function test_register_cannot_replace_a_system_the_user_may_not_manage(): void
+    {
+        $owner = $this->user('owner@example.test');
+        $member = $this->user('member@example.test');
+        $this->workspace->addUser($owner->id, false);
+        $this->workspace->addUser($member->id, false);
+        $old = $this->system($owner);
+        $body = ['system_key' => self::KEY2, 'replaces_system_id' => (string) $old->id, 'replaces_system_key' => self::KEY] + $this->registerBody($this->workspace->id);
+
+        $this->postJson('/api/v1/systems', $body, $this->pat($member))
+            ->assertStatus(422)->assertJsonValidationErrors('replaces_system_id');
+        $this->assertSame(1, SystemRegister::count());
+        $this->assertSame('active', $old->fresh()->status);
+    }
+
+    public function test_a_workspace_admin_can_replace_a_system_of_another_member(): void
+    {
+        $owner = $this->user('owner@example.test');
+        $wsAdmin = $this->user('wsadmin@example.test');
+        $this->workspace->addUser($owner->id, false);
+        $this->workspace->addUser($wsAdmin->id, true);
+        $old = $this->system($owner);
+        $body = ['system_key' => self::KEY2, 'replaces_system_id' => (string) $old->id, 'replaces_system_key' => self::KEY] + $this->registerBody($this->workspace->id);
+
+        $this->postJson('/api/v1/systems', $body, $this->pat($wsAdmin))->assertCreated();
+        $this->assertSame('inactive', $old->fresh()->status);
+    }
+
+    public function test_the_idempotent_register_path_never_retires_a_system(): void
+    {
+        $user = $this->user('me@example.test');
+        $this->workspace->addUser($user->id, false);
+        $headers = $this->pat($user);
+        $other = $this->system($user, ['validation_hash' => 'k9-0123456789abcdef0123456789abcdef01234567']);
+        $first = $this->postJson('/api/v1/systems', $this->registerBody($this->workspace->id), $headers)->assertCreated();
+        $body = ['replaces_system_id' => (string) $other->id, 'replaces_system_key' => 'k9-0123456789abcdef0123456789abcdef01234567'] + $this->registerBody($this->workspace->id);
+
+        $again = $this->postJson('/api/v1/systems', $body, $headers)->assertOk();
+
+        $this->assertSame($first->json('system.id'), $again->json('system.id'));
+        $this->assertSame('active', $other->fresh()->status);
+        $this->assertSame(2, SystemRegister::count());
     }
 
     public function test_register_rejects_workspace_of_other_org_and_missing_key(): void
@@ -662,9 +818,9 @@ class CliApiV1Test extends TestCase
         $gone = $this->user('gone@example.test', 102, 200, 'inactive');
         $headers = $this->pat($gone) + $this->systemHeaders($system);
 
-        $this->getJson('/api/v1/systems/self', $headers)->assertForbidden()->assertExactJson(['message' => 'User is inactive']);
-        $this->getJson('/api/v1/config-files', $headers)->assertForbidden()->assertExactJson(['message' => 'User is inactive']);
-        $this->get('/api/v1/config-files/' . $fileId, $headers)->assertForbidden()->assertExactJson(['message' => 'User is inactive']);
+        $this->getJson('/api/v1/systems/self', $headers)->assertUnauthorized()->assertExactJson(['message' => 'Identity is disabled']);
+        $this->getJson('/api/v1/config-files', $headers)->assertUnauthorized()->assertExactJson(['message' => 'Identity is disabled']);
+        $this->get('/api/v1/config-files/' . $fileId, $headers)->assertUnauthorized()->assertExactJson(['message' => 'Identity is disabled']);
     }
 
     public function test_ids_longer_than_18_digits_are_not_found(): void
@@ -838,7 +994,7 @@ class CliApiV1Test extends TestCase
             ->assertStatus(422)->assertJsonValidationErrors('workspace_id');
         $this->postJson('/api/v1/systems', $body, $this->pat($this->user('admin@example.test', 101)))
             ->assertCreated();
-        $this->postJson('/api/v1/systems', ['workspace_id' => 0] + $body, $this->pat($this->user('plain@example.test')))
+        $this->postJson('/api/v1/systems', ['workspace_id' => 0, 'system_key' => 'k2-0123456789abcdef0123456789abcdef01234567'] + $body, $this->pat($this->user('plain@example.test')))
             ->assertCreated();
     }
 
@@ -984,5 +1140,200 @@ class CliApiV1Test extends TestCase
 
         $this->assertSame($filesBefore, count(Storage::disk('local')->allFiles()));
         $this->assertSame(1, ConfigurationFile::count());
+    }
+
+    // ---------------------------------------------------------------- Task 3: Account lockout for force actions
+
+    public function test_force_lockout_after_five_failures(): void
+    {
+        $owner = $this->user('owner@example.test');
+        $admin = $this->user('admin@example.test', 101);
+        $system = $this->system($owner);
+
+        // 5 failed attempts
+        for ($i = 0; $i < 5; $i++) {
+            $this->postJson('/api/system-deregister-force', [
+                'system_id' => $system->id,
+                'email' => $admin->email,
+                'password' => 'wrong-password',
+            ])->assertUnauthorized();
+        }
+
+        // 6th attempt should return 423 with Retry-After header
+        $response = $this->postJson('/api/system-deregister-force', [
+            'system_id' => $system->id,
+            'email' => $admin->email,
+            'password' => 'wrong-password',
+        ]);
+
+        $response->assertStatus(423);
+        $response->assertJsonPath('message', fn ($msg) => str_contains($msg, 'Too many failed attempts'));
+        $this->assertTrue($response->headers->has('Retry-After'));
+    }
+
+    public function test_force_lockout_with_correct_credentials_still_blocked(): void
+    {
+        $owner = $this->user('owner@example.test');
+        $admin = $this->user('admin@example.test', 101);
+        $system = $this->system($owner);
+
+        // 5 failed attempts
+        for ($i = 0; $i < 5; $i++) {
+            $this->postJson('/api/system-deregister-force', [
+                'system_id' => $system->id,
+                'email' => $admin->email,
+                'password' => 'wrong',
+            ])->assertUnauthorized();
+        }
+
+        // Even with correct password, should still be locked
+        $response = $this->postJson('/api/system-deregister-force', [
+            'system_id' => $system->id,
+            'email' => $admin->email,
+            'password' => 'secret-pass',
+        ]);
+
+        $response->assertStatus(423)->assertJsonPath('message', fn ($msg) => str_contains($msg, 'Too many failed attempts'));
+    }
+
+    public function test_force_lockout_unknown_email_same_as_known(): void
+    {
+        $owner = $this->user('owner@example.test');
+        $system = $this->system($owner);
+
+        // 5 failed attempts with unknown email
+        for ($i = 0; $i < 5; $i++) {
+            $this->postJson('/api/system-deregister-force', [
+                'system_id' => $system->id,
+                'email' => 'unknown@example.test',
+                'password' => 'wrong',
+            ])->assertUnauthorized();
+        }
+
+        // 6th attempt should also return 423, not revealing email existence
+        $response = $this->postJson('/api/system-deregister-force', [
+            'system_id' => $system->id,
+            'email' => 'unknown@example.test',
+            'password' => 'anything',
+        ]);
+
+        $response->assertStatus(423)->assertJsonPath('message', fn ($msg) => str_contains($msg, 'Too many failed attempts'));
+    }
+
+    public function test_successful_attempt_clears_failure_window(): void
+    {
+        $owner = $this->user('owner@example.test');
+        $admin = $this->user('admin@example.test', 101);
+        $system = $this->system($owner);
+
+        // 4 failed attempts
+        for ($i = 0; $i < 4; $i++) {
+            $this->postJson('/api/system-deregister-force', [
+                'system_id' => $system->id,
+                'email' => $admin->email,
+                'password' => 'wrong',
+            ])->assertUnauthorized();
+        }
+
+        // Successful attempt with correct credentials
+        $this->postJson('/api/system-deregister-force', [
+            'system_id' => $system->id,
+            'email' => $admin->email,
+            'password' => 'secret-pass',
+        ])->assertOk();
+
+        // Failure counter should be reset; 5 new failures needed for lockout
+        for ($i = 0; $i < 4; $i++) {
+            $this->postJson('/api/system-deregister-force', [
+                'system_id' => $system->id,
+                'email' => $admin->email,
+                'password' => 'wrong',
+            ])->assertUnauthorized();
+        }
+
+        // Still not locked (only 4 failures since success)
+        $this->postJson('/api/system-deregister-force', [
+            'system_id' => $system->id,
+            'email' => $admin->email,
+            'password' => 'wrong',
+        ])->assertUnauthorized(); // Would be locked on 5th, but this is only the 4th
+    }
+
+    public function test_legacy_and_v1_force_routes_share_lockout_count(): void
+    {
+        $owner = $this->user('owner@example.test');
+        $admin = $this->user('admin@example.test', 101);
+        $system = $this->system($owner);
+
+        // 3 failures on legacy route
+        for ($i = 0; $i < 3; $i++) {
+            $this->postJson('/api/system-deregister-force', [
+                'system_id' => $system->id,
+                'email' => $admin->email,
+                'password' => 'wrong',
+            ])->assertUnauthorized();
+        }
+
+        // 2 failures on v1 route
+        for ($i = 0; $i < 2; $i++) {
+            $this->postJson('/api/v1/systems/' . $system->id . '/deregister-force', [
+                'email' => $admin->email,
+                'password' => 'wrong',
+            ])->assertUnauthorized();
+        }
+
+        // 6th attempt (either route) should be locked
+        $response = $this->postJson('/api/system-deregister-force', [
+            'system_id' => $system->id,
+            'email' => $admin->email,
+            'password' => 'wrong',
+        ]);
+
+        $response->assertStatus(423);
+    }
+
+    // ---------------------------------------------------------------- Task 2: Drop GET force routes
+
+    public function test_get_system_deregister_force_returns_405(): void
+    {
+        $owner = $this->user('owner@example.test');
+        $admin = $this->user('admin@example.test', 101);
+        $system = $this->system($owner);
+
+        $this->get('/api/system-deregister-force', ['X-Requested-With' => 'XMLHttpRequest'])
+            ->assertMethodNotAllowed();
+    }
+
+    public function test_get_system_reactivate_force_returns_405(): void
+    {
+        $owner = $this->user('owner@example.test');
+        $super = $this->user('super@example.test', 100);
+        $system = $this->system($owner, ['status' => 'inactive']);
+
+        $this->get('/api/system-reactivate-force', ['X-Requested-With' => 'XMLHttpRequest'])
+            ->assertMethodNotAllowed();
+    }
+
+    public function test_get_system_reactive_returns_405(): void
+    {
+        $this->get('/api/system-reactive', ['X-Requested-With' => 'XMLHttpRequest'])
+            ->assertMethodNotAllowed();
+    }
+
+    public function test_legacy_routes_include_sunset_headers(): void
+    {
+        $owner = $this->user('owner@example.test');
+        $admin = $this->user('admin@example.test', 101);
+        $system = $this->system($owner);
+
+        $response = $this->postJson('/api/system-deregister-force', ['system_id' => $system->id, 'email' => $admin->email, 'password' => 'secret-pass']);
+
+        $response->assertOk();
+        $this->assertTrue($response->headers->has('Deprecation'));
+        $this->assertSame('true', $response->headers->get('Deprecation'));
+        $this->assertTrue($response->headers->has('Sunset'));
+        $this->assertSame('Thu, 31 Dec 2026 23:59:59 GMT', $response->headers->get('Sunset'));
+        $this->assertTrue($response->headers->has('Link'));
+        $this->assertStringContainsString('successor-version', $response->headers->get('Link'));
     }
 }

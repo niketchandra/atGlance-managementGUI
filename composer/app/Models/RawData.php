@@ -13,6 +13,7 @@ class RawData extends Model
     protected $table = 'raw_data';
 
     protected $fillable = [
+        'service_account_id',
         'file_id',
         'user_id',
         'system_register_id',
@@ -42,5 +43,10 @@ class RawData extends Model
     public function service(): BelongsTo
     {
         return $this->belongsTo(Service::class, 'service_id', 'service_id');
+    }
+
+    public function serviceAccount(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(ServiceAccount::class, 'service_account_id');
     }
 }

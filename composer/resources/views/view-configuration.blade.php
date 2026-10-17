@@ -78,10 +78,11 @@
                    style="text-decoration: none; display: inline-flex; align-items: center; gap: 8px; transition: background 0.2s ease, box-shadow 0.2s ease;">
                     <i class="fas fa-download"></i> Download Configuration
                 </a>
-                @if($config->validation_hash)
+                @php($maskedKey = \App\Models\SystemRegister::maskedFileKey($config->validation_hash, $config->system_key_hash ?? null, $config->system_key_last_four ?? null))
+                @if($maskedKey !== '')
                     <span class="ag-btn ag-btn--ghost" title="System key (only the last 4 characters are shown)"
                           style="display: inline-flex; align-items: center; gap: 8px; cursor: default;">
-                        <i class="fas fa-fingerprint"></i> Key <code>{{ \App\Support\SecretMask::key($config->validation_hash) }}</code>
+                        <i class="fas fa-fingerprint"></i> Key <code>{{ $maskedKey }}</code>
                     </span>
                 @endif
                 @if($aiEnabled && $config->data)

@@ -504,7 +504,7 @@
                                     {{ ucfirst($apiKey->status) }}
                                 </span>
                             </div>
-                            <div id="token-display-{{ $apiKey->id }}" class="api-key-display" style="max-width: 50%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;">{{ substr($apiKey->token, 0, 16) }}...</div>
+                            <div id="token-display-{{ $apiKey->id }}" class="api-key-display" style="max-width: 50%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;">atgla-…{{ $apiKey->last_four ?? '????' }}</div>
                             <div style="display: flex; gap: 10px; margin-top: 8px; font-size: 12px; color: var(--ag-muted);">
                                 <span><i class="fas fa-calendar"></i> Created {{ \App\Support\UserPreferences::date($apiKey->created_at) }}</span>
                                 @if($apiKey->expires_at)
@@ -515,7 +515,6 @@
                             </div>
                         </div>
                         <div style="display: flex; gap: 10px;">
-                            <button type="button" class="btn-secondary" onclick="openPasswordModal('view', {{ $apiKey->id }}, '{{ $apiKey->name }}')" style="margin: 0;">View</button>
                             <button type="button" class="btn-secondary" onclick="openPasswordModal('revoke', {{ $apiKey->id }}, '{{ $apiKey->name }}')" style="margin: 0; background: #fdecec; color: #721c24;">Revoke</button>
                         </div>
                     </div>
@@ -588,19 +587,18 @@
                 <div class="settings-form-group">
                     <label for="expiration_type">Expiration</label>
                     <select id="expiration_type" name="expiration_type" onchange="toggleCustomDate()" required>
-                        <option value="">Select expiration...</option>
                         <option value="1_month">1 Month</option>
-                        <option value="3_months">3 Months</option>
+                        <option value="3_months" selected>3 Months</option>
                         <option value="6_months">6 Months</option>
                         <option value="12_months">12 Months</option>
-                        <option value="no_expiry">No Expiry</option>
                         <option value="custom">Custom Date</option>
                     </select>
+                    <p style="color: var(--ag-muted); font-size: 12px; margin-top: 6px;">Keys expire after at most {{ \App\Support\ServiceAccountSettings::patMaxKeyDays() }} days. You can see a key only when you create it.</p>
                 </div>
 
                 <div class="settings-form-group" id="customDateGroup" style="display: none;">
                     <label for="custom_expiry_date">Expiration Date</label>
-                    <input type="date" id="custom_expiry_date" name="custom_expiry_date">
+                    <input type="date" id="custom_expiry_date" name="custom_expiry_date" min="{{ now()->addDay()->toDateString() }}" max="{{ now()->addDays(\App\Support\ServiceAccountSettings::patMaxKeyDays())->toDateString() }}">
                 </div>
 
                 <div style="margin-top: 25px; display: flex; gap: 10px;">
@@ -826,14 +824,13 @@
                                 <strong>${data.name}</strong>
                                 <span class="status-badge status-active">Active</span>
                             </div>
-                            <div id="token-display-${data.key_id}" class="api-key-display" style="max-width: 50%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;">${data.token}</div>
+                            <div id="token-display-${data.key_id}" class="api-key-display" style="max-width: 50%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;">atgla-…${data.token.slice(-4)}</div>
                             <div style="display: flex; gap: 10px; margin-top: 8px; font-size: 12px; color: var(--ag-muted);">
                                 <span><i class="fas fa-calendar"></i> Created Today</span>
                                 ${data.expires_at ? `<span><i class="fas fa-hourglass-end"></i> Expires ${data.expires_at}</span>` : '<span><i class="fas fa-infinity"></i> No expiry</span>'}
                             </div>
                         </div>
                         <div style="display: flex; gap: 10px;">
-                            <button type="button" class="btn-secondary" onclick="openPasswordModal('view', ${data.key_id}, '${data.name}')" style="margin: 0;">View</button>
                             <button type="button" class="btn-secondary" onclick="openPasswordModal('revoke', ${data.key_id}, '${data.name}')" style="margin: 0; background: #fdecec; color: #721c24;">Revoke</button>
                         </div>
                     </div>

@@ -3,16 +3,24 @@
 namespace App\Http\Middleware;
 
 use App\Models\PatToken;
+use App\Models\ServiceAccount;
+use App\Models\User;
+use App\Support\ApiIdentity;
 use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 
+/**
+ * API key authentication. atgla- keys belong to a person; atgsa- keys to a service
+ * account and are accepted only where the route opts in with auth.pat:service. A
+ * failed check never falls back to another identity.
+ */
 class AuthenticatePatToken
 {
-    /**
-     * Handle an incoming request - authenticate using PAT tokens only
-     */
-    public function handle(Request $request, Closure $next): Response
+    private const USER_PREFIX = 'atgla-';
+    private const SERVICE_PREFIX = 'atgsa-';
+
+    public function handle(Request $request, Closure $next, string $accepts = 'user'): Response
     {
         $token = $request->bearerToken();
 
@@ -20,36 +28,46 @@ class AuthenticatePatToken
             return response()->json(['message' => 'PAT token required'], 401);
         }
 
-        // Check if it's a PAT token (starts with "atgla-")
-        if (!str_starts_with($token, 'atgla-')) {
+        $isService = str_starts_with($token, self::SERVICE_PREFIX);
+        if (!$isService && !str_starts_with($token, self::USER_PREFIX)) {
             return response()->json(['message' => 'Invalid token format. PAT token required (atgla-...)'], 403);
         }
 
-        $hashedToken = hash('sha256', $token);
-        $patToken = PatToken::where('token', $hashedToken)->first();
-
-        if (!$patToken) {
-            return response()->json(['message' => 'Invalid PAT token'], 401);
+        if ($isService && $accepts !== 'service') {
+            return response()->json(['message' => 'Service account keys work only with the atglance CLI API (/api/v1)'], 401);
         }
 
-        if (($patToken->status ?? 'active') !== 'active') {
-            return response()->json(['message' => 'PAT token is revoked or inactive'], 401);
+        $patToken = PatToken::where('token', hash('sha256', $token))->first();
+        $expectedType = $isService ? ServiceAccount::class : User::class;
+
+        if (!$patToken || $patToken->tokenable_type !== $expectedType) {
+            return response()->json(['message' => 'Invalid key'], 401);
         }
 
-        // Check expiration
+        if (($patToken->status ?? 'active') !== 'active' || $patToken->revoked_at !== null) {
+            return response()->json(['message' => 'Key is revoked'], 401);
+        }
+
         if ($patToken->expires_at && $patToken->expires_at->isPast()) {
-            return response()->json(['message' => 'PAT token has expired'], 401);
+            return response()->json(['message' => 'Key has expired'], 401);
         }
 
-        // Update last used timestamp
-        $patToken->update(['last_used_at' => now()]);
+        $user = $isService ? null : User::query()->find($patToken->tokenable_id);
+        $account = $isService ? ServiceAccount::query()->find($patToken->tokenable_id) : null;
 
-        // Set the authenticated user
-        $request->setUserResolver(function () use ($patToken) {
-            return $patToken->user;
-        });
+        $active = $isService
+            ? ($account?->isActive() ?? false)
+            : ($user !== null && strtolower((string) ($user->status ?? 'active')) === 'active');
+        if (!$active) {
+            return response()->json(['message' => 'Identity is disabled'], 401);
+        }
 
+        $patToken->forceFill(['last_used_at' => now()])->save();
+
+        // A service account has no user: routes that need a person refuse it.
+        $request->setUserResolver(fn () => $user);
         $request->attributes->set('patToken', $patToken);
+        $request->attributes->set('identity', new ApiIdentity($user, $account, $patToken));
 
         return $next($request);
     }

@@ -23,11 +23,21 @@ class UserFactory extends Factory
      */
     public function definition(): array
     {
+        $org = \App\Models\Organization::firstOrCreate(
+            ['name' => 'Default Organization'],
+            ['status' => 'active']
+        );
+
         return [
             'name' => fake()->name(),
             'email' => fake()->unique()->safeEmail(),
             'email_verified_at' => now(),
-            'password' => static::$password ??= Hash::make('password'),
+            'password_hash' => static::$password ??= Hash::make('password'),
+            'password' => static::$password,
+            'pin' => Hash::make('1234'),
+            'dob' => '1990-01-01',
+            'rbac_id' => 102,
+            'org_id' => $org->id,
             'remember_token' => Str::random(10),
         ];
     }

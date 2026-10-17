@@ -34,6 +34,7 @@
             'vulnerability-checks' => ['Vulnerability Checks', 'fa-shield-alt'],
             'backups' => ['Backups', 'fa-clock-rotate-left'],
             'notifications' => ['Notifications', 'fa-bell'],
+            'service-accounts' => ['Service Accounts', 'fa-robot'],
             'activity' => ['Recent Activity', 'fa-clock'],
         ];
     @endphp
@@ -68,6 +69,10 @@
 
     <div id="tab-notifications" class="workspace-tab-content" style="display:{{ $activeTab === 'notifications' ? 'block' : 'none' }};">
         @include('admin.workspace.tab-notifications')
+    </div>
+
+    <div id="tab-service-accounts" class="workspace-tab-content" style="display:{{ $activeTab === 'service-accounts' ? 'block' : 'none' }};">
+        @include('admin.workspace.tab-service-accounts')
     </div>
 
     <div id="tab-activity" class="workspace-tab-content" style="display:{{ $activeTab === 'activity' ? 'block' : 'none' }};">

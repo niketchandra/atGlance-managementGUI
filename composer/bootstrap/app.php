@@ -38,12 +38,14 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'auth.session' => \App\Http\Middleware\AuthenticateSession::class,
             'auth.pat' => \App\Http\Middleware\AuthenticatePatToken::class,
+            'auth.pat.expired' => \App\Http\Middleware\AuthenticatePatTokenAllowExpired::class,
             'admin.role' => \App\Http\Middleware\AdminRoleMiddleware::class,
             'super.admin.role' => \App\Http\Middleware\SuperAdminRoleMiddleware::class,
             'active.user' => \App\Http\Middleware\EnsureUserIsActive::class,
             'profile.completed' => \App\Http\Middleware\EnsureProfileSetupComplete::class,
             'app.installed' => \App\Http\Middleware\EnsureApplicationInstalled::class,
             'atglance.system' => \App\Http\Middleware\AuthenticateSystemKey::class,
+            'sa.permission' => \App\Http\Middleware\RequireServiceAccountPermission::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
