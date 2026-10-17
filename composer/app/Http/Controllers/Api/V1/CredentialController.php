@@ -62,7 +62,7 @@ class CredentialController extends Controller
 
         try {
             // Create the temporary message
-            $status->createMessage($token);
+            $messageResult = $status->createMessage($token);
 
             // Determine days left for this token
             $daysLeft = CredentialSweep::daysLeft($token);
@@ -70,17 +70,17 @@ class CredentialController extends Controller
             // For expired tokens (daysLeft < 0), don't try to send notifications
             // since notifyIfDue() only handles pre-expiry notifications
             if ($daysLeft !== null && $daysLeft < 0) {
-                return response()->json([
+                return response()->json(array_merge($messageResult, [
                     'sent' => false,
                     'stage' => null,
                     'reason' => 'expired',
-                ]);
+                ]));
             }
 
             // Send notifications if due
             $notificationResult = $sweep->notifyIfDue($token, $system);
 
-            return response()->json($notificationResult);
+            return response()->json(array_merge($messageResult, $notificationResult));
         } catch (\Exception $e) {
             \Log::error('CredentialStatus::expiryNotice exception', [
                 'pat_token_id' => $token->id,
