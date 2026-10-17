@@ -79,9 +79,12 @@ class ActivityLogger
                 'ai_api_key',
                 // System keys (atglance CLI) and their stored copies.
                 'system_key',
+                'replaces_system_key',
                 'new_key',
                 'validation_hash',
+                'validation_key',
                 'system_hash',
+                'system_key_hash',
             ]);
 
             ActivityLog::create([

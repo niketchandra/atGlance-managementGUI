@@ -57,6 +57,7 @@
         <button type="button" class="ag-tab settings-tab-btn {{ $activeTab === 'migration' ? 'active' : '' }}" data-tab="migration"><i class="fas fa-right-left"></i> Migration</button>
         <button type="button" class="ag-tab settings-tab-btn {{ $activeTab === 'backup-restore' ? 'active' : '' }}" data-tab="backup-restore"><i class="fas fa-clock-rotate-left"></i> Backup &amp; Restore</button>
         <button type="button" class="ag-tab settings-tab-btn {{ $activeTab === 'plugins' ? 'active' : '' }}" data-tab="plugins"><i class="fas fa-puzzle-piece"></i> Plugins</button>
+        <button type="button" class="ag-tab settings-tab-btn {{ $activeTab === 'security' ? 'active' : '' }}" data-tab="security"><i class="fas fa-shield"></i> Security</button>
         <button type="button" class="ag-tab settings-tab-btn {{ $activeTab === 'crons' ? 'active' : '' }}" data-tab="crons"><i class="fas fa-stopwatch"></i> Crons</button>
         @if($aiPluginEnabled)
         <button type="button" class="ag-tab settings-tab-btn {{ $activeTab === 'ai-connect' ? 'active' : '' }}" data-tab="ai-connect"><i class="fas fa-robot"></i> AI Connect</button>
@@ -703,6 +704,41 @@
             ])
             </div>
         </div>
+    </div>
+
+    <div id="tab-security" class="settings-tab-content ag-card" style="display:{{ $activeTab === 'security' ? 'block' : 'none' }}; padding:24px;">
+        <h2 style="font-size: 18px; margin-bottom: 8px;">Security</h2>
+        <p style="font-size: 13px; color: var(--ag-muted); margin-bottom: 16px;">Control security features and account protection settings.</p>
+        @unless((int) auth()->user()->rbac_id === 100)
+            <div style="margin-bottom: 12px; padding: 10px; border-radius: 12px; background: var(--ag-surface); color: var(--ag-subtle); font-size: 13px;">Only the super admin can change these settings.</div>
+        @endunless
+
+        <form method="POST" action="{{ route('admin.settings.security') }}">
+            @csrf
+            <fieldset id="security-fieldset" {{ (int) auth()->user()->rbac_id !== 100 ? 'disabled' : '' }} style="border: 0; padding: 0; margin: 0; {{ (int) auth()->user()->rbac_id !== 100 ? 'opacity: .55;' : '' }}">
+                <div class="ag-card ag-card--flat" style="margin-bottom: 18px;">
+                    <h3 style="font-size: 15px; font-weight: 500; margin-bottom: 12px;">Force Account Lockout</h3>
+                    <p style="font-size: 13px; color: var(--ag-muted); margin-bottom: 12px;">
+                        When enabled, user accounts are automatically locked after multiple failed login attempts.
+                        Locked accounts receive email notifications and can be unlocked by administrators.
+                    </p>
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                            <input type="checkbox" name="force_lockout_enabled" value="1"
+                                   {{ $forceLockedEnabled ? 'checked' : '' }}
+                                   style="width: 16px; height: 16px; cursor: pointer;">
+                            <span style="font-size: 14px; font-weight: 500;">Enable force account lockout</span>
+                        </label>
+                    </div>
+                </div>
+
+                <div style="display: flex; gap: 8px;">
+                    <button type="submit" class="ag-button ag-button--primary" style="padding: 8px 16px; border-radius: 8px; border: 0; background: var(--ag-teal); color: white; cursor: pointer; font-weight: 500; font-size: 14px;">
+                        <i class="fas fa-save"></i> Save Changes
+                    </button>
+                </div>
+            </fieldset>
+        </form>
     </div>
 
     <div id="tab-crons" class="settings-tab-content ag-card" style="display:{{ $activeTab === 'crons' ? 'block' : 'none' }}; padding:24px;">

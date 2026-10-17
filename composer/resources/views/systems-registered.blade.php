@@ -54,7 +54,7 @@
                 </div>
                 <div>
                     <label class="ag-label">Hash Key</label>
-                    <input class="ag-input" type="text" name="hash" value="{{ request('hash') }}" placeholder="Full system key (exact match)" style="width: 100%; transition: border-color 0.2s;" onfocus="this.style.borderColor='#667eea'" onblur="this.style.borderColor='#e0e0e0'">
+                    <input class="ag-input" type="text" name="hash" value="{{ request('hash') }}" placeholder="Full system key or its last 4 characters" style="width: 100%; transition: border-color 0.2s;" onfocus="this.style.borderColor='#667eea'" onblur="this.style.borderColor='#e0e0e0'">
                 </div>
             </div>
             <div style="display: flex; gap: 12px;">
@@ -162,6 +162,7 @@
                             <th>OS</th>
                             <th>IP</th>
                             <th>Workspace</th>
+                            <th>Service account</th>
                             <th>Services</th>
                             <th>Backups</th>
                             <th>Issues</th>
@@ -182,6 +183,20 @@
                                 <td>{{ $row->os }}</td>
                                 <td>{{ $row->item->ip_address ?? 'N/A' }}</td>
                                 <td>{{ $row->item->workspace_name ?? 'Not assigned' }}</td>
+                                <td>
+                                    {{ $serviceAccountNames[$row->item->service_account_id ?? 0] ?? '—' }}
+                                    @if(!empty($assignableAccounts[(int) ($row->item->workspace_id ?? 0)]))
+                                        <form method="POST" action="{{ route('systems-registered.service-account', ['systemId' => $row->item->id]) }}" style="display: inline-flex; gap: 6px;">
+                                            @csrf
+                                            <select class="ag-input" name="service_account_id" aria-label="Service account">
+                                                @foreach($assignableAccounts[(int) $row->item->workspace_id] as $candidate)
+                                                    <option value="{{ $candidate->id }}" @selected($candidate->id === (int) ($row->item->service_account_id ?? 0))>{{ $candidate->name }}</option>
+                                                @endforeach
+                                            </select>
+                                            <button class="ag-btn ag-btn--ghost" type="submit">Assign</button>
+                                        </form>
+                                    @endif
+                                </td>
                                 <td>{{ $row->stats['services'] }}</td>
                                 <td>{{ $row->stats['configs'] }}</td>
                                 <td title="{{ $row->stats['error'] }} errors, {{ $row->stats['warning'] }} warnings"><strong style="color: {{ $row->issueColor }};">{{ $row->stats['error'] + $row->stats['warning'] }}</strong></td>

@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Support\AiSettings;
+use App\Support\SecretMask;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Response;
@@ -15,6 +16,19 @@ use RuntimeException;
  *
  * A connection is ['provider', 'base_url', 'model', 'api_key'], as returned
  * by AiSettings::connection().
+ *
+ * SECURITY: All API keys are masked in error messages and responses using SecretMask.
+ * - Plaintext keys are NEVER returned to the user
+ * - Error messages mask keys using provider-specific patterns (e.g., sk-proj-...a1b2)
+ * - Connection errors, HTTP errors, and all other error paths properly redact keys
+ * - The redact() method is called on all error messages before they're thrown
+ *
+ * Supported key types that are auto-detected and masked:
+ * - OpenAI: sk-proj-* or sk-* (shows prefix + last 4 chars)
+ * - Anthropic: sk-ant-* (shows prefix + last 4 chars)
+ * - Google Gemini: AIza* (shows prefix + last 4 chars)
+ * - Generic keys: Shows only ••••••••last4 (masks 12+ char keys)
+ * - URLs: Base URLs are not masked as they are not sensitive
  */
 class AiClient
 {
@@ -219,10 +233,22 @@ class AiClient
         return 'HTTP ' . $response->status() . ': ' . $error . $hint;
     }
 
+    /**
+     * Redact sensitive information from error messages.
+     * Masks the API key and any other secrets found in the message.
+     */
     private function redact(string $message, array $connection): string
     {
         $key = trim((string) ($connection['api_key'] ?? ''));
 
-        return strlen($key) >= 6 ? str_replace($key, '***', $message) : $message;
+        // Use SecretMask to properly mask the key in the error message
+        if ($key !== '') {
+            $message = str_replace($key, SecretMask::mask($key), $message);
+        }
+
+        // Also mask any other secrets that might have leaked into the message
+        $message = SecretMask::maskInText($message);
+
+        return $message;
     }
 }

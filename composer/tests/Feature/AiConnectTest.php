@@ -295,4 +295,109 @@ class AiConnectTest extends TestCase
 
         Http::assertSent(fn (HttpRequest $request) => !$request->hasHeader('Authorization'));
     }
+
+    public function test_error_messages_redact_api_key(): void
+    {
+        $this->actingAsRole(100);
+
+        Http::fake(['api.openai.com/*' => Http::response([
+            'error' => ['message' => 'Invalid API key provided: ' . self::KEY],
+        ], 401)]);
+
+        $response = $this->postJson(route('admin.settings.ai.test'), [
+            'ai_provider' => 'openai',
+            'ai_model' => 'gpt-test',
+            'ai_api_key' => self::KEY,
+        ])->assertOk()->assertJson(['ok' => false]);
+
+        $message = $response->json('message');
+        $this->assertStringNotContainsString(self::KEY, $message);
+        $this->assertStringContainsString('sk-', $message);
+        // Should show masking format with last 4
+    }
+
+    public function test_gemini_key_is_masked_in_error_messages(): void
+    {
+        $this->actingAsRole(100);
+
+        $geminiKey = 'AIzaSyDEfGhIjKlMnOpQrStUvWxYzAbCdEfGhIj';
+        Http::fake(['generativelanguage.googleapis.com/*' => Http::response([
+            'error' => ['message' => 'API key invalid: ' . $geminiKey],
+        ], 401)]);
+
+        $response = $this->postJson(route('admin.settings.ai.test'), [
+            'ai_provider' => 'gemini',
+            'ai_model' => 'gemini-pro',
+            'ai_api_key' => $geminiKey,
+        ])->assertOk()->assertJson(['ok' => false]);
+
+        $message = $response->json('message');
+        $this->assertStringNotContainsString($geminiKey, $message);
+        $this->assertStringNotContainsString('DEfGhIjKlMn', $message);
+        $this->assertStringContainsString('AIzaSy', $message);
+    }
+
+    public function test_anthropic_key_is_masked_in_error_messages(): void
+    {
+        $this->actingAsRole(100);
+
+        $anthropicKey = 'sk-ant-v1-abc123def456ghi789jklmnop';
+        Http::fake(['api.anthropic.com/*' => Http::response([
+            'error' => ['message' => 'Invalid API key: ' . $anthropicKey],
+        ], 401)]);
+
+        $response = $this->postJson(route('admin.settings.ai.test'), [
+            'ai_provider' => 'anthropic',
+            'ai_model' => 'claude-opus-5',
+            'ai_api_key' => $anthropicKey,
+        ])->assertOk()->assertJson(['ok' => false]);
+
+        $message = $response->json('message');
+        $this->assertStringNotContainsString($anthropicKey, $message);
+        $this->assertStringNotContainsString('abc123def456', $message);
+        $this->assertStringContainsString('sk-ant', $message);
+    }
+
+    public function test_model_listing_error_redacts_key(): void
+    {
+        $this->actingAsRole(100);
+
+        Http::fake(['api.openai.com/*' => Http::response([
+            'error' => ['message' => 'Bad API key: ' . self::KEY],
+        ], 401)]);
+
+        $response = $this->postJson(route('admin.settings.ai.models'), [
+            'ai_provider' => 'openai',
+            'ai_api_key' => self::KEY,
+        ])->assertOk()->assertJson(['ok' => false]);
+
+        $this->assertStringNotContainsString(self::KEY, $response->json('message'));
+    }
+
+    public function test_settings_view_does_not_show_plaintext_keys(): void
+    {
+        $this->saveAnthropic();
+        $this->actingAsRole(100);
+
+        $response = $this->get(route('admin.settings', ['tab' => 'ai-connect']));
+        $response->assertOk();
+        $response->assertDontSee(self::KEY);
+    }
+
+    public function test_saved_key_not_returned_in_test_response(): void
+    {
+        $this->saveAnthropic();
+        $this->actingAsRole(100);
+
+        Http::fake(['api.anthropic.com/*' => Http::response([
+            'content' => [['type' => 'text', 'text' => 'OK']],
+        ])]);
+
+        $response = $this->postJson(route('admin.settings.ai.test'), [
+            'ai_provider' => 'anthropic',
+            'ai_model' => 'claude-opus-5',
+        ])->assertOk();
+
+        $this->assertStringNotContainsString(self::KEY, json_encode($response->json()));
+    }
 }

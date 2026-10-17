@@ -12,6 +12,7 @@ use App\Notifications\NotificationEvents;
 use App\Services\Notifier;
 use App\Services\ConfigAiReviewer;
 use App\Support\AiSettings;
+use App\Support\ApiIdentity;
 use App\Support\S3Settings;
 use App\Support\WorkspaceSettings;
 use Illuminate\Http\Request;
@@ -64,7 +65,10 @@ class FileController extends Controller
             'version' => 'nullable|string|max:50',
         ]);
 
+        $identity = ApiIdentity::current($request);
         $user = $request->user();
+        $account = $identity?->isServiceAccount() ? $identity->serviceAccount : null;
+        $orgId = $identity?->orgId() ?? (int) ($user->org_id ?? 200);
         $file = $request->file('file');
 
         $systemId = $request->input('system_register_id', $request->input('system_id'));
@@ -72,7 +76,7 @@ class FileController extends Controller
         // Only systems of the uploader's organisation (teammates included).
         if ($systemId) {
             $systemOrgId = SystemRegister::query()->whereKey((int) $systemId)->value('org_id');
-            if ((int) ($systemOrgId ?? 200) !== (int) ($user->org_id ?? 200)) {
+            if ((int) ($systemOrgId ?? 200) !== $orgId) {
                 return response()->json(['message' => 'System not found'], 404);
             }
         }
@@ -117,8 +121,8 @@ class FileController extends Controller
         $extension = $file->getClientOriginalExtension();
         $fileName = Str::uuid() . ($extension ? '.' . $extension : '');
         
-        // Define storage path: config_files/{user_id}/
-        $storagePath = "config_files/{$user->id}";
+        // Define storage path: config_files/{user_id}/ or config_files/sa-{service_account_id}/
+        $storagePath = $account ? "config_files/sa-{$account->id}" : "config_files/{$user->id}";
 
         $storageDisk = $this->resolveStorageDisk();
 
@@ -127,25 +131,46 @@ class FileController extends Controller
 
         // Read file content for raw_data table
         $fileContent = Storage::disk($storageDisk)->get($filePath);
+        // sha256 of exactly the bytes stored (the CLI compares it without downloading).
+        $contentSha256 = hash('sha256', (string) $fileContent);
 
         if ($service) {
             $systemId = $service->system_id;
         }
 
         if (!$service && $systemId && $request->filled('service_name')) {
-            $service = Service::firstOrCreate(
-                [
-                    'user_id' => $user->id,
+            $serviceDefaults = [
+                'system_hash' => $request->input('system_hash', $request->input('validation_hash')),
+                'org_id' => $request->input('org_id'),
+                'share_with' => $request->input('share_with'),
+                'status' => 'active',
+            ];
+
+            $sameService = Service::query()->where('system_id', $systemId)->where('service_name', $request->input('service_name'));
+
+            if ($account) {
+                // A service account continues the system's existing service row, whoever
+                // created it, and takes it over: with user_id null, deleting the person who
+                // created it no longer cascades to the row and cuts the history.
+                $service = (clone $sameService)->orderBy('service_id')->first();
+                if ($service && ($service->user_id !== null || (int) $service->service_account_id !== (int) $account->id)) {
+                    $service->forceFill(['user_id' => null, 'service_account_id' => $account->id])->save();
+                }
+                $service ??= Service::create($serviceDefaults + [
+                    'user_id' => null,
+                    'service_account_id' => $account->id,
                     'system_id' => $systemId,
                     'service_name' => $request->input('service_name'),
-                ],
-                [
-                    'system_hash' => $request->input('system_hash', $request->input('validation_hash')),
-                    'org_id' => $request->input('org_id'),
-                    'share_with' => $request->input('share_with'),
-                    'status' => 'active',
-                ]
-            );
+                ]);
+            } else {
+                // A person continues a row owned by a service account, so one service keeps
+                // one version line.
+                $service = (clone $sameService)->whereNull('user_id')->orderBy('service_id')->first()
+                    ?? Service::firstOrCreate(
+                        ['user_id' => $user->id, 'system_id' => $systemId, 'service_name' => $request->input('service_name')],
+                        $serviceDefaults,
+                    );
+            }
         }
 
         if (!$service) {
@@ -166,9 +191,10 @@ class FileController extends Controller
         $resolvedVersion = $this->resolveNextVersionLabel((int) $service->service_id);
         
         try {
-            $configFile = DB::transaction(function () use ($user, $systemId, $service, $originalName, $serviceName, $filePath, $storageDisk, $request, $fileContent, $resolvedVersion) {
+            $configFile = DB::transaction(function () use ($user, $account, $systemId, $service, $originalName, $serviceName, $filePath, $storageDisk, $request, $fileContent, $resolvedVersion, $contentSha256) {
                 $payload = [
-                    'user_id' => $user->id,
+                    'user_id' => $user?->id,
+                    'service_account_id' => $account?->id,
                     'system_register_id' => $systemId,
                     'service_id' => $service->service_id,
                     'file_name' => $originalName,
@@ -182,11 +208,16 @@ class FileController extends Controller
                     $payload['storage_disk'] = $storageDisk;
                 }
 
+                if (self::hasContentHashColumn()) {
+                    $payload['content_sha256'] = $contentSha256;
+                }
+
                 $configFile = ConfigurationFile::create($payload);
 
                 RawData::create([
                     'file_id' => $configFile->id,
-                    'user_id' => $user->id,
+                    'user_id' => $user?->id,
+                    'service_account_id' => $account?->id,
                     'system_register_id' => $systemId,
                     'service_id' => $service->service_id,
                     'file_name' => $originalName,
@@ -226,6 +257,7 @@ class FileController extends Controller
                 'validation_hash' => $configFile->validation_hash,
                 'version' => $configFile->version,
                 'created_at' => $configFile->created_at,
+                'sha256' => $configFile->content_sha256,
             ],
         ], 201);
     }
@@ -395,6 +427,11 @@ class FileController extends Controller
 
     /**
      * List configuration files filtered by system_id and validation_hash (active only)
+     *
+     * validation_hash here matches the key each file was uploaded with (its stored copy),
+     * not the system's current key: a 1.x host that regenerated its key locally uploads
+     * and lists with the new key while the console still holds the old one. So this does
+     * not check the system key hash; Task 5e must keep an equivalent per-file match.
      */
     public function listConfigFilesBySystemAndHash(Request $request)
     {
@@ -443,6 +480,7 @@ class FileController extends Controller
 
     /**
      * List all versions by system_id, validation_key, and service_name across all users.
+     * validation_key matches each file's stored key copy, as in listConfigFilesBySystemAndHash.
      */
     public function listConfigVersionsBySystemValidationAndService(Request $request)
     {
@@ -785,6 +823,32 @@ class FileController extends Controller
         }
 
         return rtrim($baseUrl, '/') . '/' . ltrim($path, '/');
+    }
+
+    /**
+     * Content of a stored config version, read the same way as a download (the active
+     * disk first, then the row's own disk). Null when the file is missing.
+     */
+    public function storedContent(ConfigurationFile $configFile): ?string
+    {
+        [$disk, $path] = $this->resolveDiskAndPath($configFile->storage_disk ?? null, (string) $configFile->file_location);
+
+        if ($path === '' || !Storage::disk($disk)->exists($path)) {
+            return null;
+        }
+
+        $content = Storage::disk($disk)->get($path);
+
+        return $content === null ? null : (string) $content;
+    }
+
+    /**
+     * configuration_files.content_sha256 exists (Task 10 migration). Not cached: cheap,
+     * and a request served before the migration ran must not remember "no".
+     */
+    public static function hasContentHashColumn(): bool
+    {
+        return Schema::hasColumn('configuration_files', 'content_sha256');
     }
 
     private function hasStorageDiskColumn(): bool

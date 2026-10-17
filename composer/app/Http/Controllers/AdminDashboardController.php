@@ -692,6 +692,17 @@ class AdminDashboardController extends Controller
                 ->filter(fn (User $member) => $this->canRemoveMember($actor, $member, $workspace))
                 ->pluck('id')->map(fn ($id) => (int) $id)->all(),
             'settings' => \App\Support\WorkspaceSettings::get($workspace->id),
+            'serviceAccountsTab' => [
+                'canCreate' => \App\Support\ServiceAccountAccess::canManageWorkspaceAccounts($actor, $workspace),
+                'accounts' => \App\Models\ServiceAccount::query()
+                    ->with('owner:id,email')
+                    ->where('org_id', (int) ($workspace->org_id ?? 200))
+                    ->where(fn ($query) => $query
+                        ->where('workspace_id', $workspace->id)
+                        ->orWhereHas('grants', fn ($grants) => $grants->where('workspace_id', $workspace->id)->where('status', 'active')))
+                    ->orderBy('scope')->orderBy('name')
+                    ->get(),
+            ],
             'notificationGroups' => \App\Models\NotificationGroup::where('workspace_id', $workspace->id)->orderBy('name')->get(),
             'memberPreferences' => \App\Models\WorkspaceNotificationPreference::where('workspace_id', $workspace->id)->get()->keyBy('user_id'),
             'backupRuns' => \App\Models\WorkspaceBackupRun::where('workspace_id', $workspace->id)->latest('id')->limit(20)->get(),
@@ -1168,6 +1179,7 @@ class AdminDashboardController extends Controller
             'ssoEnabled' => SsoSettings::enabled(),
             'disableEmailRegistration' => $this->isFeatureEnabledSetting('disable_email_registration'),
             'ssoEnabledProviders' => SsoSettings::enabledProviders(),
+            'forceLockedEnabled' => (bool) AdminSetting::getValue('force_lockout_enabled', false),
         ]);
     }
 
@@ -1727,6 +1739,24 @@ class AdminDashboardController extends Controller
         AdminSetting::putValue('mail', 'mail_recipients', $recipientList->all());
 
         return redirect()->route('admin.settings', ['tab' => 'email'])->with('success', 'Mail settings saved successfully.');
+    }
+
+    public function updateSecuritySettings(Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'force_lockout_enabled' => ['nullable', 'boolean'],
+        ]);
+
+        AdminSetting::putValue('security', 'force_lockout_enabled', $validated['force_lockout_enabled'] ? '1' : '0');
+
+        ActivityRecorder::record(
+            Auth::id(),
+            'settings.security_updated',
+            'Force account lockout ' . ($validated['force_lockout_enabled'] ? 'enabled' : 'disabled'),
+            ActivityRecorder::SUCCESS
+        );
+
+        return redirect()->route('admin.settings', ['tab' => 'security'])->with('success', 'Security settings saved successfully.');
     }
 
     public function toggleSsoPlugin(Request $request): RedirectResponse

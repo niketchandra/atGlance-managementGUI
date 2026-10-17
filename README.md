@@ -200,17 +200,17 @@ docker run --rm -e VIEW_COMPILED_PATH=/tmp/views -v "$(pwd)/composer:/app" -w /a
 
 ### Publish images
 
-Before a release, set the version in `composer/config/app.php` (`'version'`, shown in the console sidebar and sent to the licence server) and in `mcp/pyproject.toml` and `mcp/src/atglance_mcp/__init__.py`. The current release is `2.1.1`.
+Before a release, set the version in `composer/config/app.php` (`'version'`, shown in the console sidebar and sent to the licence server) and in `mcp/pyproject.toml` and `mcp/src/atglance_mcp/__init__.py`. The current release is `2.1.2`.
 
 Images are published for `linux/amd64` only. Tag every release with its version and with `latest`, because the installer and the update scripts always deploy `latest`:
 
 ```bash
 docker buildx build --platform linux/amd64 \
-  -t atglance/ce-atglance-app:2.1.1 -t atglance/ce-atglance-app:latest --push .
+  -t atglance/ce-atglance-app:2.1.2 -t atglance/ce-atglance-app:latest --push .
 docker buildx build --platform linux/amd64 \
-  -t atglance/ce-atglance-gateway:2.1.1 -t atglance/ce-atglance-gateway:latest --push kong
+  -t atglance/ce-atglance-gateway:2.1.2 -t atglance/ce-atglance-gateway:latest --push kong
 docker buildx build --platform linux/amd64 \
-  -t atglance/ce-atglance-mcp:2.1.1 -t atglance/ce-atglance-mcp:latest --push mcp
+  -t atglance/ce-atglance-mcp:2.1.2 -t atglance/ce-atglance-mcp:latest --push mcp
 ```
 
 ## Documentation
@@ -232,6 +232,7 @@ All documents are in the [docs](docs/) folder:
 |---|---|---|
 | Install | [INSTALLATION-UPDATE.md](INSTALLATION-UPDATE.md) | VM installer and update scripts (`scripts/`), ECS Fargate walkthrough, Kubernetes and other platforms |
 | Use | [web-console.md](docs/web-console.md) | Web console layout, pages and white-label pages |
+| Use | [service-accounts.md](docs/service-accounts.md) | Service accounts (machine identities for the CLI), personal key rules, expiry notices |
 | Use | [notifications.md](docs/notifications.md) | Notification channels (Email, Teams, Slack, n8n, Telegram, webhooks, SMS) and events |
 | Use | [ai-connect.md](docs/ai-connect.md) | Connecting an AI provider, per-provider setup |
 | Use | [licence.md](docs/licence.md) | Licence key, verification, and what an unlicensed instance blocks |
