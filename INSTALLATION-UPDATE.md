@@ -700,7 +700,71 @@ The gateway forwards `/<path>` to the app's `/api/<path>`, see [api-gateway.md](
 | CLI says `Connection refused` or times out | Port 8002 (or 8000 for logout) is closed between the server and the management host. Open it in the firewall or security group. |
 | CLI gets 404 | The management URL points at the app (8000) or ends in `/api`. Use `http://<host>:8002`. |
 | App never becomes healthy | `docker compose logs app`. `migrations failed` means the app cannot reach MySQL: check `DB_HOST`, `DB_PASSWORD` and the security group. |
+| App log shows `Access denied for user 'atglance'` and the DB is healthy | The database volume was created with other passwords than the ones in `.env`. See [App fails with "Access denied for user 'atglance'" after an update](#app-fails-with-access-denied-for-user-atglance-after-an-update). |
 | Worker or scheduler exits with `/app/storage/.env not found` | The app has not started yet, or the three do not share the same `/app/storage` volume. |
 | HTTP 500 on every page after a restore or key change | `APP_KEY` changed. Restore the saved `/app/storage/.env`. |
 | Scheduled backups run twice | More than one scheduler is running. Scale it to exactly 1. |
 | Gateway returns 502 or `name resolution failed` | The gateway cannot resolve `app`. Check Service Connect, or that a Kubernetes Service named `app` exists. |
+
+### App fails with "Access denied for user 'atglance'" after an update
+
+**Symptom.** `docker compose up` or the updater ends with `Container ce-atglance-app Error dependency app failed to start`. The app restarts in a loop and `docker logs ce-atglance-app` shows:
+
+```
+SQLSTATE[HY000] [1045] Access denied for user 'atglance'@'172.18.0.5' (using password: YES)
+atglance: database not ready, retrying migrations in 5s
+```
+
+`ce-atglance-db` still shows `healthy`: its health check (`mysqladmin ping`) succeeds even when the password is wrong.
+
+**Cause.** MySQL stores `DB_PASSWORD` and `DB_ROOT_PASSWORD` in the `atglance_db-data` volume the first time the volume is created, and ignores later changes to them. The containers get the passwords from `.env` each time they are created. If the volume was created with other passwords, the app is locked out. The updater cannot fix this: it takes the passwords from `.env` or from the running containers, and both hold the wrong ones.
+
+A common way to get there is a development checkout on the same machine as the install. `docker-compose.dev.yml` is an overlay on `docker-compose.yml`, which sets `name: atglance`, so the dev stack and the install share the same project, containers and volumes. If the dev stack re-creates `atglance_db-data`, it uses the passwords from the checkout's `.env`, and the install's `.env` no longer matches.
+
+**Fix.** Put the passwords the volume was created with into the install's `.env`, then re-create the containers.
+
+1. Find out when the volume was created, and look for the `.env` that was used then: a development checkout, or a copy in `backups/update-*/` in the install folder.
+
+   ```
+   docker volume inspect atglance_db-data --format '{{.CreatedAt}}'
+   ```
+
+2. Test a candidate password against the database. Replace `<password>` with the value. `1` in the output means the password is right; `ERROR 1045` means it is not.
+
+   ```
+   docker exec -e P='<password>' ce-atglance-db sh -c 'MYSQL_PWD="$P" mysql -uatglance -P23306 -h127.0.0.1 -e "select 1"'
+   ```
+
+   Test `DB_ROOT_PASSWORD` the same way with `-uroot`.
+
+3. Back up the install's `.env`, then set `DB_PASSWORD` and `DB_ROOT_PASSWORD` in it to the working values. Change only these two lines. Do not change `REDIS_PASSWORD`: Redis reads it from the environment at every start.
+
+4. Re-create the containers and check the app log. The `Access denied` lines must be gone.
+
+   ```
+   docker compose up -d --force-recreate
+   docker logs --tail 20 ce-atglance-app
+   ```
+
+On Windows the install's `.env` (`C:\ProgramData\AtGlance\.env`) is readable only by Administrators, so run these steps in an elevated PowerShell. The following copies the two passwords from a development checkout's `.env` without printing them. Set `$repo` to that `.env` first.
+
+```powershell
+$repo = '<path to the checkout>\.env'
+$inst = 'C:\ProgramData\AtGlance\.env'
+Copy-Item $inst "$inst.bak-dbpw" -Force
+$src = @{}; Get-Content $repo | Where-Object { $_ -match '^(DB_PASSWORD|DB_ROOT_PASSWORD)=' } | ForEach-Object { $k,$v = $_ -split '=',2; $src[$k] = $v }
+$out = Get-Content $inst | ForEach-Object { if ($_ -match '^(DB_PASSWORD|DB_ROOT_PASSWORD)=') { $k = $Matches[1]; "$k=$($src[$k])" } else { $_ } }
+Set-Content $inst $out
+cd C:\ProgramData\AtGlance
+docker compose up -d --force-recreate
+```
+
+**Data.** After the fix the app shows the data in the volume as it is now. If the dev stack re-created the volume, that is the dev data. The data from before the volume was re-created is only in a backup: a `backups/update-*/` folder or a scheduled backup.
+
+**Prevention.** Do not run the dev stack under the install's project name on the same machine. Give it its own project name, so it gets its own containers and volumes:
+
+```
+docker compose -p atglance-dev -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+```
+
+The container names are fixed (`ce-atglance-*`), so the dev stack and the install still cannot run at the same time. Stop one before starting the other.
