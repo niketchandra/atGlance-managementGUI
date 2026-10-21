@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: atglance-app-config
+  namespace: {{ .Values.namespaceName }}
+data:
+  APP_ENV: production
+  APP_DEBUG: {{ .Values.app.env.APP_DEBUG | quote }}
+  LOG_CHANNEL: {{ .Values.app.env.LOG_CHANNEL | quote }}
+  DB_HOST: {{ .Values.mysql.name }}.{{ .Values.namespaceName }}.svc.cluster.local
+  DB_PORT: "3306"
+  DB_DATABASE: {{ .Values.mysql.database }}
+  DB_USERNAME: {{ .Values.mysql.username }}
+  REDIS_HOST: {{ .Values.redis.name }}.{{ .Values.namespaceName }}.svc.cluster.local
+  REDIS_PORT: "6379"
+  CACHE_STORE: redis
+  QUEUE_CONNECTION: redis
+  ATGLANCE_ROLE: app

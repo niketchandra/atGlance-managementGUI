@@ -1,0 +1,47 @@
+{{- if .Values.mcp.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.mcp.name }}
+  namespace: {{ .Values.namespaceName }}
+spec:
+  replicas: {{ .Values.mcp.replicas }}
+  selector:
+    matchLabels:
+      app: {{ .Values.mcp.name }}
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.mcp.name }}
+    spec:
+      serviceAccountName: atglance
+      containers:
+        - name: {{ .Values.mcp.name }}
+          image: {{ .Values.image.registry }}/{{ .Values.image.repository }}/ce-atglance-mcp:{{ .Values.image.tag }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8010
+              protocol: TCP
+          env:
+            - name: ATGLANCE_URL
+              value: "http://{{ .Values.app.name }}.{{ .Values.namespaceName }}.svc.cluster.local:8000"
+            - name: ATGLANCE_MCP_ALLOWED_HOSTS
+              value: "{{ .Values.mcp.name }}:8010"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8010
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8010
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          resources: {{ toYaml .Values.mcp.resources | nindent 12 }}
+      nodeSelector: {{ toYaml .Values.nodeSelector | nindent 8 }}
+      tolerations: {{ toYaml .Values.tolerations | nindent 8 }}
+      affinity: {{ toYaml .Values.affinity | nindent 8 }}
+{{- end }}

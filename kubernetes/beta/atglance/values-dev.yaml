@@ -1,0 +1,34 @@
+namespaceName: atglance-dev
+replicaCount: 1
+
+image:
+  tag: "latest"
+  pullPolicy: IfNotPresent
+
+app:
+  replicas: 1
+  env:
+    APP_DEBUG: "true"
+
+gateway:
+  replicas: 1
+
+mysql:
+  storageSize: 5Gi
+
+redis:
+  storageSize: 1Gi
+
+storage:
+  appStorageSize: 2Gi
+
+ingress:
+  enabled: true
+  hosts:
+    - host: atglance.local
+      paths:
+        - path: /
+          pathType: Prefix
+
+service:
+  gatewayLoadBalancer: false

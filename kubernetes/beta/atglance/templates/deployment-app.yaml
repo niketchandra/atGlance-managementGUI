@@ -1,0 +1,66 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.app.name }}
+  namespace: {{ .Values.namespaceName }}
+spec:
+  replicas: {{ .Values.app.replicas }}
+  selector:
+    matchLabels:
+      app: {{ .Values.app.name }}
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.app.name }}
+    spec:
+      serviceAccountName: atglance
+      containers:
+        - name: {{ .Values.app.name }}
+          image: {{ .Values.image.registry }}/{{ .Values.image.repository }}/ce-atglance-app:{{ .Values.image.tag }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: atglance-app-config
+          env:
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: atglance-secrets
+                  key: db-password
+            - name: DB_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: atglance-secrets
+                  key: db-root-password
+            - name: APP_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: atglance-secrets
+                  key: app-key
+          volumeMounts:
+            - name: storage
+              mountPath: {{ .Values.persistence.appStoragePath }}
+          livenessProbe:
+            httpGet:
+              path: /api/v1/meta
+              port: 8000
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /api/v1/meta
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          resources: {{ toYaml .Values.app.resources | nindent 12 }}
+      volumes:
+        - name: storage
+          persistentVolumeClaim:
+            claimName: atglance-app-storage
+      nodeSelector: {{ toYaml .Values.nodeSelector | nindent 8 }}
+      tolerations: {{ toYaml .Values.tolerations | nindent 8 }}
+      affinity: {{ toYaml .Values.affinity | nindent 8 }}

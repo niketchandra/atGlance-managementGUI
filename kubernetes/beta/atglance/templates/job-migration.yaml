@@ -1,0 +1,39 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: atglance-migration
+  namespace: {{ .Values.namespaceName }}
+spec:
+  backoffLimit: 3
+  template:
+    spec:
+      serviceAccountName: atglance
+      containers:
+        - name: migration
+          image: {{ .Values.image.registry }}/{{ .Values.image.repository }}/ce-atglance-app:{{ .Values.image.tag }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command:
+            - php
+            - artisan
+            - migrate
+            - --force
+          envFrom:
+            - configMapRef:
+                name: atglance-app-config
+          env:
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: atglance-secrets
+                  key: db-password
+            - name: DB_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: atglance-secrets
+                  key: db-root-password
+            - name: APP_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: atglance-secrets
+                  key: app-key
+      restartPolicy: Never
