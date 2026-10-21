@@ -78,12 +78,11 @@ sudo bash atGlance-managementGUI/scripts/atglance-installer.sh
 
 The installer:
 
-1. Checks the server: root, Linux, CPU architecture, free disk, memory and free ports.
+1. Checks the server: root, Linux, CPU architecture and memory.
 2. Installs Docker and the Docker Compose plugin if they are missing, and starts Docker.
-3. Creates `/opt/atglance` with `docker-compose.yml` and `.env`. The `.env` file gets random database passwords.
-4. Pulls the images, starts the containers and waits until the app is healthy.
-5. Prints the URL of the setup wizard.
-6. If you ran it from a `git clone` of this repository, removes the clone. Everything AtGlance needs is in the install directory and the Docker volumes. The clone is kept when it has uncommitted, untracked or unpushed work, when the install directory is inside it, or with `--keep-clone` (`ATGLANCE_KEEP_CLONE=1`). The updater (`atglance_update.sh`) does the same after a successful update.
+3. Runs the updater (`atglance_update.sh`, next to the installer or downloaded), which does the deploy. On a new server it checks free disk and ports, creates `/opt/atglance` with `docker-compose.yml` and `.env` (random database passwords), pulls the images, starts the containers and waits until every container is healthy. On a server that already runs AtGlance it does a full update with a backup (see [Updating](#updating)).
+4. Prints the URL of the setup wizard.
+5. If you ran it from a `git clone` of this repository, removes the clone. Everything AtGlance needs is in the install directory and the Docker volumes. The clone is kept when it has uncommitted, untracked or unpushed work, when the install directory is inside it, or with `--keep-clone` (`ATGLANCE_KEEP_CLONE=1`). The updater (`atglance_update.sh`) does the same after a successful update.
 
 To change the defaults, pass options after `bash -s --`:
 
@@ -158,7 +157,9 @@ sudo docker compose up -d --remove-orphans
 
 ### Updating
 
-`scripts/atglance_update.sh` updates an existing Linux install to the newest release (`latest`) with checks before and after. Your data, passwords and settings are kept.
+`scripts/atglance_update.sh` updates an existing Linux install to the newest release (`latest`) with checks before and after. Your data, passwords and settings are kept. When the server has no AtGlance install yet, it deploys a new console instead.
+
+The updater does not need a `.env` file. It reads each compose variable from, in order: the environment, the install's `.env` (when there is one), and the containers of the install (environment values, published ports, image names and bind mounts). Then it writes `.env` next to `docker-compose.yml`, so plain `docker compose` commands keep working. Without `--dir`, it uses the folder the containers were deployed from, else `/opt/atglance`.
 
 1. Run the updater as root. Pick one way:
 
@@ -184,19 +185,35 @@ What the updater does:
 | Step | What it does |
 |---|---|
 | 1. Database backup | `mysqldump` (consistent, no lock) to `<dir>/backups/update-<time>/atglance.sql.gz`, checked for corruption and completeness, plus exact row counts of every table, the app's `.env` (APP_KEY) and the compose files. The last 5 backups are kept (`--keep N`). |
-| 2. Current checksums | Image ID and registry digest of the running app, gateway and MCP containers. They are tagged `:rollback-<time>`. |
-| 3. New checksums | Pulls `latest` and compares. If nothing changed: "already up to date" and exit (redeploy anyway with `--force`). |
-| 4. Update | Refreshes `docker-compose.yml`, keeps a custom domain / HTTPS proxy, recreates all containers. Migrations run when the app starts. |
-| 5. Health checks | Every container running and healthy and on the new image; `GET /up` 200; gateway answering; MCP (if on); no pending migrations; queue worker process; scheduler config; no restart loop; new errors in the app log; disk space. |
-| 6. Database check | Live database against the backup: every table present, no rows lost (cache, queue, session and log tables may change on their own). The backup is restored into a scratch database (`atglance_update_verify`, dropped afterwards) to prove it is complete (`--skip-db-verify` skips this). |
+| 2. Current checksums | Image ID and registry digest of every running container. The AtGlance images (those tagged with `ATGLANCE_VERSION`) are tagged `:rollback-<time>`. |
+| 3. New checksums | Pulls every image of the newest `docker-compose.yml` and compares. If nothing changed and every container runs: "already up to date" and exit (redeploy anyway with `--force`). |
+| 4. Update | Refreshes `docker-compose.yml`, keeps the compose overlays the install was deployed with (custom domain / HTTPS proxy), recreates all containers. Migrations run when the app starts. |
+| 5. Health checks | Every service of `docker-compose.yml`: healthy (when it has a health check) or running, and on the new image; every published port answering; no pending migrations; no restart loop; new errors in the app log; disk space. Services labelled optional (MCP) may be stopped. |
+| 6. Database check | Live database against the backup: no rows lost (cache, queue, session and log tables may change on their own; a table dropped by a migration is a warning). The backup is restored into a scratch database (`atglance_update_verify`, dropped afterwards) to prove it is complete (`--skip-db-verify` skips this). |
 
-Exit code `0` = updated (or already up to date), `1` = stopped before changing anything, `2` = updated but a check failed.
+Exit code `0` = updated, installed or already up to date, `1` = stopped before changing anything, `2` = updated or installed but a check failed.
 Each backup folder has a `ROLLBACK.txt` with the exact commands: start the previous images again
 (`ATGLANCE_VERSION=rollback-<time>`), and only if data is wrong, restore the database dump.
 
 Options: `--dir DIR` (default `/opt/atglance`), `--force`, `--yes` (no confirmation prompt), `--skip-db-verify`, `--keep N`, `--keep-clone`.
 
 On Windows, use `atglance_update.ps1`: see [Update on Windows](#update-on-windows).
+
+#### Release contract
+
+The install and update scripts (`atglance-installer.sh`, `atglance-installer.ps1`, `atglance_update.sh`, `atglance_update.ps1`) name no service, image, port or setting of a release. They read everything from `docker-compose.yml`, so a release changes only that file and the images. Keep these rules in `docker-compose.yml` and the scripts need no change:
+
+| Rule | Why |
+|---|---|
+| Write a setting as `${NAME:-default}`. Write a secret as `${NAME}` (no default), or give it a name ending in `PASSWORD`, `SECRET`, `TOKEN` or `_KEY`. | A secret gets a random value on a new install, and when a release adds it. Every other setting falls back to its default. |
+| Tag the AtGlance images with `${ATGLANCE_VERSION:-latest}`. | The updater re-tags exactly these images for rollback. |
+| Give each long-running service a health check (in the image or in the compose file). | The updater waits until the service is healthy; without one it only checks the service is running. |
+| Label a service the console starts and stops with `com.atglance.optional: "true"`. | It may be stopped after an update (the MCP server). |
+| Keep the database on a `mysql` or `mariadb` image with `MYSQL_DATABASE` and `MYSQL_ROOT_PASSWORD`. | The backup, the restore check and the rollback use them. |
+| Keep `ATGLANCE_ROLE: app` on the web app service and the app settings in `/app/storage/.env`. | The backup of `APP_KEY`, the migration check and the log check use that container. |
+| Keep the compose project name (`name: atglance`). | The scripts find the install, its containers and its volumes by it. |
+
+A new service, a new setting or a new secret in `docker-compose.yml` is deployed, checked and kept by the existing scripts.
 
 ### Upgrade, manage, uninstall
 
@@ -255,12 +272,11 @@ powershell -ExecutionPolicy Bypass -File .\atGlance-managementGUI\scripts\atglan
 
 The installer:
 
-1. Checks the machine: administrator rights, CPU architecture, free disk, memory and free ports.
+1. Checks the machine: administrator rights, CPU architecture and memory.
 2. Checks that Docker Desktop is running in Linux containers mode and that Docker Compose is available.
-3. Creates `C:\ProgramData\AtGlance` with `docker-compose.yml` and `.env`. The `.env` file gets random database passwords and is limited to Administrators and SYSTEM.
-4. Pulls `atglance/ce-atglance-app`, `-gateway` and `-mcp` at `latest`, starts the containers and waits until the app and gateway are healthy.
-5. Prints the URL of the setup wizard.
-6. If you ran it from a `git clone` of this repository, removes the clone. Everything AtGlance needs is in the install directory and the Docker volumes. The clone is kept when it has uncommitted, untracked or unpushed work, when the install directory is inside it, or with `-KeepClone` (`ATGLANCE_KEEP_CLONE=1`). The updater (`atglance_update.ps1`) does the same after a successful update.
+3. Runs the updater (`atglance_update.ps1`, next to the installer or downloaded), which does the deploy. On a new machine it checks free disk and ports, creates `C:\ProgramData\AtGlance` with `docker-compose.yml` and `.env` (random database passwords, limited to Administrators and SYSTEM), pulls every image of `docker-compose.yml`, starts the containers and waits until every container is healthy. On a machine that already runs AtGlance it does a full update with a backup (see [Update on Windows](#update-on-windows)).
+4. Prints the URL of the setup wizard.
+5. If you ran it from a `git clone` of this repository, removes the clone. Everything AtGlance needs is in the install directory and the Docker volumes. The clone is kept when it has uncommitted, untracked or unpushed work, when the install directory is inside it, or with `-KeepClone` (`ATGLANCE_KEEP_CLONE=1`). The updater (`atglance_update.ps1`) does the same after a successful update.
 
 #### If PowerShell blocks the script
 
@@ -331,6 +347,8 @@ You see the same eight containers as on Linux. Allow inbound TCP 8000 and 8002 i
 
 `scripts/atglance_update.ps1` runs the same steps as the [Linux updater](#updating): database backup, image checksums, update of all containers, health checks and a database check against the backup. Your data, passwords and settings are kept.
 
+Like the Linux updater, it does not need a `.env` file (it reads the settings from the containers and writes `.env`), and it deploys a new console when the machine has no AtGlance install yet. See [Release contract](#release-contract).
+
 1. Open PowerShell as administrator.
 2. Download and run the updater. Pick one way:
 
@@ -344,7 +362,7 @@ You see the same eight containers as on Linux. Allow inbound TCP 8000 and 8002 i
    powershell -ExecutionPolicy Bypass -File .\atGlance-managementGUI\scripts\atglance_update.ps1
    ```
 
-   Add `-Dir DIR` (or `$env:ATGLANCE_DIR`) if AtGlance is not in `C:\ProgramData\AtGlance`.
+   Without `-Dir`, the updater uses the folder the running containers were deployed from, else `C:\ProgramData\AtGlance`. Add `-Dir DIR` (or `$env:ATGLANCE_DIR`) to choose another folder.
 3. Wait for the summary. "AtGlance is updated and healthy" (exit code `0`) means you are done.
 4. If it says a check failed (exit code `2`), follow `ROLLBACK.txt` in the backup folder it prints. It holds the PowerShell rollback commands.
 

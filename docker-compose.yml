@@ -18,7 +18,7 @@ x-app-env: &app-env
   DB_PORT: 3306
   DB_DATABASE: atglance
   DB_USERNAME: atglance
-  DB_PASSWORD: ${DB_PASSWORD}
+  DB_PASSWORD: ${DB_PASSWORD:-atglance}
   REDIS_HOST: redis
   REDIS_PORT: 6379
   CACHE_STORE: redis
@@ -80,8 +80,8 @@ services:
     environment:
       MYSQL_DATABASE: atglance
       MYSQL_USER: atglance
-      MYSQL_PASSWORD: ${DB_PASSWORD}
-      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-atglance}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-atglance-root}
     volumes:
       - db-data:/var/lib/mysql
     healthcheck:
@@ -127,6 +127,9 @@ services:
     image: ${ATGLANCE_REGISTRY:-atglance}/ce-atglance-mcp:${ATGLANCE_VERSION:-latest}
     container_name: ce-atglance-mcp
     restart: unless-stopped
+    labels:
+      # May be stopped: the install and update scripts do not require it to run.
+      com.atglance.optional: "true"
     environment:
       ATGLANCE_URL: http://app:8000
       # Reached only through Kong on the internal network; Kong sends Host "mcp:8010".
