@@ -120,6 +120,17 @@ function Get-ComposeVars([string[]]$Files) {
     return $seen
 }
 function Test-Secret($Name, $HasDefault) { return ((-not $HasDefault) -or ($Name -match $SecretRe)) }
+# NAME -> DEFAULT for every ${NAME:-DEFAULT} / ${NAME-DEFAULT} in the files.
+function Get-ComposeDefaults([string[]]$Files) {
+    $defaults = @{}
+    foreach ($f in $Files) {
+        foreach ($line in (Get-Content -LiteralPath $f)) {
+            $line = $line -replace '(^|\s)#.*$', ''
+            foreach ($m in [regex]::Matches($line, '(?<!\$)\$\{([A-Za-z_][A-Za-z0-9_]*):?-([^}]*)\}')) { $defaults[$m.Groups[1].Value] = $m.Groups[2].Value }
+        }
+    }
+    return $defaults
+}
 
 # The rendered compose files: project name and, per service, image, environment, published
 # ports and the optional label. $Overrides are set as environment variables for the render only.
@@ -246,7 +257,8 @@ function Get-RollbackText {
 Rollback (the previous images are tagged :$RollbackTag, the backup is in $BackupDir):
   1. Previous containers (elevated PowerShell):
        cd "$AtglanceDir"
-       Copy-Item -Force "$BackupDir\docker-compose*.yml", "$BackupDir\.env" .
+       Copy-Item -Force "$BackupDir\docker-compose*.yml" .
+       (keep the current .env: it holds the passwords the database uses now)
        `$e = @(Get-Content .env | Where-Object { `$_ -notmatch '^$VersionVar=' }) + '$VersionVar=$RollbackTag'; Set-Content .env `$e
        docker compose $compose up -d --remove-orphans
 "@
@@ -456,6 +468,18 @@ function Get-VarFromContainers($Uses) {
     return ''
 }
 
+# Variables of the compose files the install runs now ($null when it has none): a secret
+# missing from them is new in this release.
+$OldVars = $null
+if (-not $Fresh -and (Test-Path docker-compose.yml)) {
+    $oldFiles = @($Files | Where-Object { Test-Path $_ } | ForEach-Object { Join-Path $AtglanceDir $_ })
+    $OldVars = Get-ComposeVars $oldFiles
+    $OldDefaults = Get-ComposeDefaults $oldFiles
+}
+# Secrets that still hold the default of the old compose files (an install started without
+# .env): replaced after the update, see "Replacing default passwords".
+$RotateUses = @{}
+
 $missing = @(); $generated = 0; $recovered = 0
 $envExisted = Test-Path .env
 foreach ($n in ($Vars.Keys | Sort-Object)) {
@@ -469,14 +493,22 @@ foreach ($n in ($Vars.Keys | Sort-Object)) {
         if ($v) { $recovered++ }
     }
     if (-not $v -and (Test-Secret $n $Vars[$n])) {
-        $usedByContainer = @($uses | Where-Object { Get-SvcContainer $_.Svc }).Count -gt 0
-        # A new install, or a variable this release adds (no container uses it yet): a new value.
-        # With no containers at all (after "docker compose down") the old value cannot be told.
-        if ($Fresh -or ($any -and -not $usedByContainer)) { $v = New-RandomSecret; $generated++ }
+        # A new install, or a secret this release adds: a new value. A secret the install
+        # already uses but whose value is lost (no .env, no containers) cannot be replaced.
+        $newSecret = $false
+        if ($Fresh) { $newSecret = $true }
+        elseif ($null -ne $OldVars) { $newSecret = -not $OldVars.ContainsKey($n) }
+        else { $newSecret = ($any -and -not (@($uses | Where-Object { Get-SvcContainer $_.Svc }).Count -gt 0)) }
+        if ($newSecret) { $v = New-RandomSecret; $generated++ }
         else { $missing += $n }
     }
     # Not set anywhere and not a secret: the compose default applies.
     if (-not $v) { continue }
+    if ($null -ne $OldVars -and (Test-Secret $n $Vars[$n]) -and $OldDefaults.ContainsKey($n) -and $OldDefaults[$n] -eq $v) {
+        if ($uses.Count -eq 0) { $uses = Get-VarUses $n }
+        $RotateUses[$n] = $uses
+        Warn "$n is still the default of the old docker-compose.yml: it is replaced after the update"
+    }
     [Environment]::SetEnvironmentVariable($n, $v, 'Process')
     if ((Read-EnvValue $n '') -ne $v) { Set-EnvValue $n $v }
 }
@@ -640,6 +672,15 @@ foreach ($s in $Model.Services.Values) {
     $c = Get-SvcContainer $s.Name
     if (-not $s.Optional -and -not ($c -and (Test-Running $c))) { $updated = $true }
 }
+# Same images but changed settings (compose file or .env): the containers are recreated too.
+foreach ($line in @(docker compose @NewArgs config --hash=* 2>$null)) {
+    $parts = "$line".Trim() -split '\s+'
+    if ($parts.Count -lt 2) { continue }
+    $c = Get-SvcContainer $parts[0]
+    if (-not $c) { continue }
+    if ("$((Get-ContainerLabels $c).'com.docker.compose.config-hash')" -ne $parts[1]) { Ok "$($parts[0]): settings changed"; $updated = $true }
+}
+if ($RotateUses.Count -gt 0) { $updated = $true }
 if (-not $Fresh) {
     # A service without an older image rolls back to the new one.
     foreach ($repo in $RollbackRepos) {
@@ -730,6 +771,48 @@ if ($appC) {
 
 $freeMb = [int][math]::Floor((Get-PSDrive -Name (Resolve-Path $AtglanceDir).Drive.Name).Free / 1MB)
 if ($freeMb -ge 1024) { Ok "Disk: $freeMb MB free" } else { Warn "Disk: only $freeMb MB free" }
+
+# ---------------------------------------------------------------------------
+# A secret on the old compose default is known to everyone: replace it. Database accounts
+# get the new password with ALTER USER first; then .env and the containers.
+if ($RotateUses.Count -gt 0) {
+    Step "Replacing default passwords"
+    if ($script:Failures -gt 0) {
+        Warn "Skipped because a check failed. Re-run the updater once AtGlance is healthy."
+    } else {
+        $script:DbContainer = Get-SvcContainer $DbSvc
+        $sql = ''; $newSecrets = @{}
+        foreach ($n in $RotateUses.Keys) {
+            $nv = New-RandomSecret; $newSecrets[$n] = $nv
+            foreach ($u in $RotateUses[$n]) {
+                if ($u.Kind -ne 'E' -or -not $DbSvc -or $u.Svc -ne $DbSvc) { continue }
+                if ($u.A -in @('MYSQL_ROOT_PASSWORD', 'MARIADB_ROOT_PASSWORD')) {
+                    $sql += " ALTER USER IF EXISTS 'root'@'%' IDENTIFIED BY '$nv'; ALTER USER IF EXISTS 'root'@'localhost' IDENTIFIED BY '$nv';"
+                } elseif ($u.A -in @('MYSQL_PASSWORD', 'MARIADB_PASSWORD')) {
+                    $user = Get-ContainerEnv $script:DbContainer ($u.A -replace '_PASSWORD$', '_USER')
+                    if ($user) { $sql += " ALTER USER IF EXISTS '$user'@'%' IDENTIFIED BY '$nv';" }
+                }
+            }
+        }
+        $altered = $true
+        if ($sql) { Invoke-DbSql $sql | Out-Null; $altered = ($LASTEXITCODE -eq 0) }
+        if (-not $altered) {
+            Warn "Could not change the database passwords: they stay on the default."
+        } else {
+            foreach ($n in $newSecrets.Keys) {
+                [Environment]::SetEnvironmentVariable($n, $newSecrets[$n], 'Process'); Set-EnvValue $n $newSecrets[$n]
+                Ok "$n replaced (new value in $AtglanceDir\.env)"
+            }
+            docker compose @script:DirArgs up -d --remove-orphans *> $null
+            if ($LASTEXITCODE -ne 0) { Fail "docker compose up failed after replacing the passwords" }
+            foreach ($s in $Model.Services.Values) {
+                $c = Get-SvcContainer $s.Name
+                if (-not $c -or -not (Test-Running $c) -or (Get-Health $c) -eq 'none') { continue }
+                if (Wait-Healthy $c) { Ok "$c healthy" } else { Fail "$c did not become healthy after replacing the passwords" }
+            }
+        }
+    }
+}
 
 # ---------------------------------------------------------------------------
 function Compare-Counts($Reference, $Current, $Label) {

@@ -7,8 +7,8 @@ spec:
   type: ClusterIP
   clusterIP: None
   ports:
-    - port: 3306
-      targetPort: 3306
+    - port: {{ .Values.mysql.port }}
+      targetPort: {{ .Values.mysql.port }}
       protocol: TCP
       name: mysql
   selector:

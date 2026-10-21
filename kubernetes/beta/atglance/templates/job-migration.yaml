@@ -31,6 +31,11 @@ spec:
                 secretKeyRef:
                   name: atglance-secrets
                   key: db-root-password
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: atglance-secrets
+                  key: redis-password
             - name: APP_KEY
               valueFrom:
                 secretKeyRef:

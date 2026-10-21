@@ -106,6 +106,11 @@ compose_vars() {
              END { for (n in seen) print n, seen[n] }' | sort
 }
 is_secret() { [ "$2" = 0 ] || [[ "$1" =~ $SECRET_RE ]]; }
+# "NAME DEFAULT" for every ${NAME:-DEFAULT} / ${NAME-DEFAULT} in the files.
+compose_defaults() {
+    { sed -E 's/(^|[[:space:]])#.*$//' "$@" | grep -oE '(^|[^$])\$\{[A-Za-z_][A-Za-z0-9_]*:?-[^}]*\}' || true; } |
+        sed -E 's/^[^$]?\$\{//; s/\}$//; s/:?-/ /' | sort -u
+}
 
 # One fact per line from "docker compose config" output:
 #   S service image | P service published-port | O service (optional)
@@ -192,7 +197,8 @@ print_rollback() {
     echo
     echo "${C_B}Rollback${C_0} (the previous images are tagged :$ROLLBACK_TAG, the database backup is in $BACKUP_DIR):"
     echo "  1. Previous containers:"
-    echo "       cd $ATGLANCE_DIR && cp $BACKUP_DIR/docker-compose*.yml $BACKUP_DIR/.env ."
+    echo "       cd $ATGLANCE_DIR && cp $BACKUP_DIR/docker-compose*.yml ."
+    echo "       (keep the current .env: it holds the passwords the database uses now)"
     echo "       grep '^$VERSION_VAR=' .env >/dev/null && sed -i 's/^$VERSION_VAR=.*/$VERSION_VAR=$ROLLBACK_TAG/' .env || echo '$VERSION_VAR=$ROLLBACK_TAG' >> .env"
     echo "       docker compose ${DIR_ARGS[*]} up -d --remove-orphans"
     if [ -n "$DB_CONTAINER" ]; then
@@ -374,10 +380,22 @@ used_by_container() {
     return 1
 }
 
+# Variables of the compose files the install runs now ("-" when it has none): a secret
+# missing from them is new in this release.
+OLD_VARS="-"
+if [ "$FRESH" = 0 ] && [ -f docker-compose.yml ]; then
+    old_files=(); for f in "${FILES[@]}"; do [ -f "$f" ] && old_files+=("$f"); done
+    OLD_VARS=" $(compose_vars "${old_files[@]}" | awk '{ print $1 }' | tr '\n' ' ') "
+    OLD_DEFAULTS=$(compose_defaults "${old_files[@]}")
+fi
+# Secrets that still hold the default of the old compose files (an install started without
+# .env): replaced after the update, see "Replacing default passwords".
+declare -A ROTATE_USES=()
+
 missing=""; generated=0; recovered=0
 while read -r name has_default; do
     [ -n "$name" ] && [ "$name" != "$VERSION_VAR" ] || continue
-    v="${!name:-}"
+    v="${!name:-}"; uses=""
     [ -n "$v" ] || v=$(env_file_get "$name")
     if [ -z "$v" ] && [ "$FRESH" = 0 ]; then
         uses=$(var_uses "$name")
@@ -385,14 +403,24 @@ while read -r name has_default; do
         [ -n "$v" ] && recovered=$((recovered + 1))
     fi
     if [ -z "$v" ] && is_secret "$name" "$has_default"; then
-        # A new install, or a variable this release adds (no container uses it yet): a new value.
-        # With no containers at all (after "docker compose down") the old value cannot be told.
-        if [ "$FRESH" = 1 ] || { [ -n "$any" ] && ! used_by_container "$uses"; }; then v=$(random_secret); generated=$((generated + 1))
+        # A new install, or a secret this release adds: a new value. A secret the install
+        # already uses but whose value is lost (no .env, no containers) cannot be replaced.
+        new_secret=0
+        if [ "$FRESH" = 1 ]; then new_secret=1
+        elif [ "$OLD_VARS" != "-" ]; then in_list "$name" "$OLD_VARS" || new_secret=1
+        elif [ -n "$any" ] && ! used_by_container "$uses"; then new_secret=1
+        fi
+        if [ "$new_secret" = 1 ]; then v=$(random_secret); generated=$((generated + 1))
         else missing="$missing $name"
         fi
     fi
     # Not set anywhere and not a secret: the compose default applies.
     [ -n "$v" ] || continue
+    if [ "$OLD_VARS" != "-" ] && is_secret "$name" "$has_default" &&
+        printf '%s\n' "${OLD_DEFAULTS:-}" | awk -v n="$name" -v v="$v" '$1 == n && substr($0, length(n) + 2) == v { f = 1 } END { exit !f }'; then
+        ROTATE_USES[$name]="${uses:-$(var_uses "$name")}"
+        warn "$name is still the default of the old docker-compose.yml: it is replaced after the update"
+    fi
     export "$name=$v"
     [ "$(env_file_get "$name")" = "$v" ] || env_file_set "$name" "$v"
 done <<< "$VARS"
@@ -543,6 +571,14 @@ for svc in $SERVICES; do
     # Missing or stopped containers (for example after "docker compose down") are deployed too.
     in_list "$svc" "$OPTIONAL" || { [ -n "$c" ] && container_running "$c"; } || updated=1
 done
+# Same images but changed settings (compose file or .env): the containers are recreated too.
+while read -r svc hash; do
+    c=$(svc_container "$svc"); [ -n "$c" ] && [ -n "$hash" ] || continue
+    if [ "$(docker inspect -f '{{index .Config.Labels "com.docker.compose.config-hash"}}' "$c" 2>/dev/null || true)" != "$hash" ]; then
+        ok "$svc: settings changed"; updated=1
+    fi
+done < <(docker compose "${NEW_ARGS[@]}" config --hash='*' 2>/dev/null || true)
+[ "${#ROTATE_USES[@]}" -eq 0 ] || updated=1
 if [ "$FRESH" = 0 ]; then
     # A service without an older image rolls back to the new one.
     while read -r svc repo; do
@@ -632,6 +668,46 @@ fi
 
 free_mb=$(df -Pm "$ATGLANCE_DIR" | awk 'NR==2 {print $4}')
 [ "$free_mb" -ge 1024 ] && ok "Disk: ${free_mb} MB free" || warn "Disk: only ${free_mb} MB free"
+
+# ---------------------------------------------------------------------------
+# A secret on the old compose default is known to everyone: replace it. Database accounts
+# get the new password with ALTER USER first; then .env and the containers.
+if [ "${#ROTATE_USES[@]}" -gt 0 ]; then
+    step "Replacing default passwords"
+    if [ "$FAILURES" -gt 0 ]; then
+        warn "Skipped because a check failed. Re-run the updater once AtGlance is healthy."
+    else
+        DB_CONTAINER=$(svc_container "$DB_SVC")
+        sql=""; declare -A NEW_SECRET=()
+        for name in "${!ROTATE_USES[@]}"; do
+            NEW_SECRET[$name]=$(random_secret)
+            while read -r kind svc key _; do
+                [ "$kind" = E ] && [ -n "$DB_SVC" ] && [ "$svc" = "$DB_SVC" ] || continue
+                case "$key" in
+                    MYSQL_ROOT_PASSWORD|MARIADB_ROOT_PASSWORD)
+                        sql="$sql ALTER USER IF EXISTS 'root'@'%' IDENTIFIED BY '${NEW_SECRET[$name]}'; ALTER USER IF EXISTS 'root'@'localhost' IDENTIFIED BY '${NEW_SECRET[$name]}';" ;;
+                    MYSQL_PASSWORD|MARIADB_PASSWORD)
+                        u=$(container_env "$DB_CONTAINER" "${key%_PASSWORD}_USER")
+                        [ -n "$u" ] && sql="$sql ALTER USER IF EXISTS '$u'@'%' IDENTIFIED BY '${NEW_SECRET[$name]}';" ;;
+                esac
+            done <<< "${ROTATE_USES[$name]}"
+        done
+        if [ -n "$sql" ] && ! db_sql -e "$sql"; then
+            warn "Could not change the database passwords: they stay on the default."
+        else
+            for name in "${!NEW_SECRET[@]}"; do
+                export "$name=${NEW_SECRET[$name]}"; env_file_set "$name" "${NEW_SECRET[$name]}"
+                ok "$name replaced (new value in $ATGLANCE_DIR/.env)"
+            done
+            docker compose "${DIR_ARGS[@]}" up -d --remove-orphans >/dev/null 2>&1 || fail "docker compose up failed after replacing the passwords"
+            for svc in $SERVICES; do
+                c=$(svc_container "$svc"); [ -n "$c" ] && container_running "$c" || continue
+                [ "$(container_health "$c")" = none ] && continue
+                if wait_healthy "$c"; then ok "$c healthy"; else fail "$c did not become healthy after replacing the passwords"; fi
+            done
+        fi
+    fi
+fi
 
 # ---------------------------------------------------------------------------
 if [ "$FRESH" = 0 ] && [ -n "$DB_CONTAINER" ]; then

@@ -50,7 +50,8 @@ mcp:
 
 mysql:
   name: ce-atglance-db
-  port: 3306
+  # Not the MySQL default; reachable only inside the cluster.
+  port: 23306
   version: "8.0"
   replicas: 1
   storageSize: 10Gi
@@ -67,7 +68,8 @@ mysql:
 
 redis:
   name: ce-atglance-redis
-  port: 6379
+  # Not the Redis default; reachable only inside the cluster.
+  port: 26379
   version: "7-alpine"
   replicas: 1
   storageSize: 2Gi
@@ -111,6 +113,7 @@ persistence:
   dbPath: /var/lib/mysql
   redisPath: /data
 
+# Required, no defaults: helm install fails when one is empty. Use long random values.
 secrets:
   dbPassword: ""
   dbRootPassword: ""

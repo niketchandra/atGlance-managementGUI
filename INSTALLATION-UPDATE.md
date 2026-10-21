@@ -118,7 +118,7 @@ ce-atglance-mcp        ce-atglance-controller
 ### Step 3: Open the firewall and add HTTPS
 
 - Allow inbound TCP 8000 and 8002 in the security group or firewall. The `atglance` CLI on your servers needs both.
-- Do not open 3306 or 6379. MySQL and Redis are reachable only inside the Docker network.
+- MySQL (port 23306) and Redis (port 26379) are reachable only inside the Docker network and are never published. Both need a password: `DB_PASSWORD`, `DB_ROOT_PASSWORD` and `REDIS_PASSWORD` in `.env` have no defaults, and MySQL does not start without them.
 - For a custom domain and HTTPS, use the built-in proxy after install: see [Custom domain and HTTPS](docs/custom-domain.md). The install folder also gets `docker-compose.domain.yml`, an opt-in override that the install itself does not use. Any other reverse proxy (nginx, Traefik, a cloud load balancer) in front of port 8000 works too.
 
 Continue with [After the install](#after-the-install).
@@ -132,9 +132,9 @@ Use this when you cannot run the installer. You need Docker Engine with the Comp
 sudo git clone https://github.com/niketchandra/atGlance-managementGUI.git /opt/atglance
 cd /opt/atglance
 
-# 2. Create the settings file and set two long random passwords
+# 2. Create the settings file and set three long random passwords
 sudo cp .env.example .env
-sudo nano .env        # set DB_PASSWORD and DB_ROOT_PASSWORD
+sudo nano .env        # set DB_PASSWORD, DB_ROOT_PASSWORD and REDIS_PASSWORD
 
 # 3. Pull the images and start everything
 sudo docker compose pull
@@ -186,8 +186,9 @@ What the updater does:
 |---|---|
 | 1. Database backup | `mysqldump` (consistent, no lock) to `<dir>/backups/update-<time>/atglance.sql.gz`, checked for corruption and completeness, plus exact row counts of every table, the app's `.env` (APP_KEY) and the compose files. The last 5 backups are kept (`--keep N`). |
 | 2. Current checksums | Image ID and registry digest of every running container. The AtGlance images (those tagged with `ATGLANCE_VERSION`) are tagged `:rollback-<time>`. |
-| 3. New checksums | Pulls every image of the newest `docker-compose.yml` and compares. If nothing changed and every container runs: "already up to date" and exit (redeploy anyway with `--force`). |
+| 3. New checksums | Pulls every image of the newest `docker-compose.yml` and compares, and compares each container's compose settings (`docker compose config --hash`). If nothing changed and every container runs: "already up to date" and exit (redeploy anyway with `--force`). |
 | 4. Update | Refreshes `docker-compose.yml`, keeps the compose overlays the install was deployed with (custom domain / HTTPS proxy), recreates all containers. Migrations run when the app starts. |
+| Default passwords | A secret that still holds the default of the old `docker-compose.yml` (an install started without `.env`) is replaced after the health checks: database accounts with `ALTER USER`, then `.env` and the containers. |
 | 5. Health checks | Every service of `docker-compose.yml`: healthy (when it has a health check) or running, and on the new image; every published port answering; no pending migrations; no restart loop; new errors in the app log; disk space. Services labelled optional (MCP) may be stopped. |
 | 6. Database check | Live database against the backup: no rows lost (cache, queue, session and log tables may change on their own; a table dropped by a migration is a warning). The backup is restored into a scratch database (`atglance_update_verify`, dropped afterwards) to prove it is complete (`--skip-db-verify` skips this). |
 
@@ -320,7 +321,7 @@ Use this when you cannot run the installer. Needs Docker Desktop (Linux containe
 git clone https://github.com/niketchandra/atGlance-managementGUI.git C:\ProgramData\AtGlance
 cd C:\ProgramData\AtGlance
 
-# 2. Create the settings file and set DB_PASSWORD and DB_ROOT_PASSWORD
+# 2. Create the settings file and set DB_PASSWORD, DB_ROOT_PASSWORD and REDIS_PASSWORD
 Copy-Item .env.example .env
 notepad .env
 

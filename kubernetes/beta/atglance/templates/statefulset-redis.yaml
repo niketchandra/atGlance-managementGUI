@@ -17,28 +17,37 @@ spec:
       containers:
         - name: redis
           image: redis:{{ .Values.redis.version }}
+          # The password comes from the environment, not the command line.
           command:
-            - redis-server
-            - --appendonly
-            - "yes"
+            - sh
+            - -c
+            - exec redis-server --appendonly yes --port {{ .Values.redis.port }} --requirepass "$REDIS_PASSWORD"
+          env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: atglance-secrets
+                  key: redis-password
           ports:
             - name: redis
-              containerPort: 6379
+              containerPort: {{ .Values.redis.port }}
           volumeMounts:
             - name: data
               mountPath: {{ .Values.persistence.redisPath }}
           livenessProbe:
             exec:
               command:
-                - redis-cli
-                - ping
+                - sh
+                - -c
+                - REDISCLI_AUTH="$REDIS_PASSWORD" redis-cli -p {{ .Values.redis.port }} ping | grep -q PONG
             initialDelaySeconds: 30
             periodSeconds: 10
           readinessProbe:
             exec:
               command:
-                - redis-cli
-                - ping
+                - sh
+                - -c
+                - REDISCLI_AUTH="$REDIS_PASSWORD" redis-cli -p {{ .Values.redis.port }} ping | grep -q PONG
             initialDelaySeconds: 10
             periodSeconds: 5
           resources: {{ toYaml .Values.redis.resources | nindent 12 }}

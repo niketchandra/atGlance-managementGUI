@@ -17,9 +17,11 @@ spec:
       containers:
         - name: mysql
           image: mysql:{{ .Values.mysql.version }}
+          args:
+            - --port={{ .Values.mysql.port }}
           ports:
             - name: mysql
-              containerPort: 3306
+              containerPort: {{ .Values.mysql.port }}
           env:
             - name: MYSQL_ROOT_PASSWORD
               valueFrom:
@@ -45,6 +47,8 @@ spec:
                 - ping
                 - -h
                 - "127.0.0.1"
+                - -P
+                - {{ .Values.mysql.port | quote }}
             initialDelaySeconds: 30
             periodSeconds: 10
           readinessProbe:
@@ -54,6 +58,8 @@ spec:
                 - ping
                 - -h
                 - "127.0.0.1"
+                - -P
+                - {{ .Values.mysql.port | quote }}
             initialDelaySeconds: 10
             periodSeconds: 5
           resources: {{ toYaml .Values.mysql.resources | nindent 12 }}

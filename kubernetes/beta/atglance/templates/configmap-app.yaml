@@ -8,11 +8,11 @@ data:
   APP_DEBUG: {{ .Values.app.env.APP_DEBUG | quote }}
   LOG_CHANNEL: {{ .Values.app.env.LOG_CHANNEL | quote }}
   DB_HOST: {{ .Values.mysql.name }}.{{ .Values.namespaceName }}.svc.cluster.local
-  DB_PORT: "3306"
+  DB_PORT: {{ .Values.mysql.port | quote }}
   DB_DATABASE: {{ .Values.mysql.database }}
   DB_USERNAME: {{ .Values.mysql.username }}
   REDIS_HOST: {{ .Values.redis.name }}.{{ .Values.namespaceName }}.svc.cluster.local
-  REDIS_PORT: "6379"
+  REDIS_PORT: {{ .Values.redis.port | quote }}
   CACHE_STORE: redis
   QUEUE_CONNECTION: redis
   ATGLANCE_ROLE: app
