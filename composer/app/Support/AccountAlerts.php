@@ -4,6 +4,8 @@ namespace App\Support;
 
 use App\Jobs\SendAccountAlert;
 use App\Models\ActivityLog;
+use App\Models\PatToken;
+use App\Models\ServiceAccount;
 use App\Models\User;
 use Illuminate\Http\Request;
 
@@ -67,6 +69,35 @@ class AccountAlerts
         if (UserPreferences::wantsAlert($user, 'system_deregistered')) {
             self::send($user, 'System deregistered: ' . $systemName, 'Your system "' . $systemName . '" was deregistered and no longer sends backups.');
         }
+    }
+
+    public static function apiKeyExpiring(User $user, PatToken $key): void
+    {
+        if (UserPreferences::wantsAlert($user, 'api_keys')) {
+            self::send($user, 'API key expires soon', 'Your API key "' . $key->name . '" expires on ' . $key->expires_at?->toDateString() . '. Create a new key and replace it before then.');
+        }
+    }
+
+    public static function serviceAccountKeyExpiring(User $owner, ServiceAccount $account, PatToken $key): void
+    {
+        if (UserPreferences::wantsAlert($owner, 'api_keys')) {
+            self::send($owner, 'Service account key expires soon: ' . $account->name, 'The key "' . $key->name . '" (…' . $key->last_four . ') of service account "' . $account->name . '", which you own, expires on ' . $key->expires_at?->toDateString() . '. Create a second key, move the servers to it, then revoke the old one.');
+        }
+    }
+
+    public static function serviceAccountOwnerAssigned(User $owner, ServiceAccount $account): void
+    {
+        if (UserPreferences::wantsAlert($owner, 'api_keys')) {
+            self::send($owner, 'You now own service account ' . $account->name, 'You are now the accountable owner of service account "' . $account->name . '". You will get its key expiry notices.');
+        }
+    }
+
+    /**
+     * Always sent: a security notice, like password changes.
+     */
+    public static function keysRevoked(User $user, int $count): void
+    {
+        self::send($user, 'Your API keys were revoked', "{$count} API key(s) on your account were revoked because your account was deactivated or moved. They will not work again; create new keys if your access is restored.");
     }
 
     private static function send(User $user, string $subject, string $message, array $details = []): void

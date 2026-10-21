@@ -8,19 +8,25 @@
 # Local development:       see docker-compose.dev.yml (builds from source)
 #
 # Settings come from .env next to this file (see .env.example). atglance-installer.sh
-# creates it with random passwords.
+# and atglance_update.sh create it with random passwords. The passwords have no
+# default on purpose: without .env, MySQL refuses to start instead of running with a
+# known password.
+#
+# MySQL and Redis listen on non-default ports (23306, 26379) and only inside the
+# Docker network; they are never published to the host.
 
 name: atglance
 
 x-app-env: &app-env
   DB_CONNECTION: mysql
   DB_HOST: db
-  DB_PORT: 3306
+  DB_PORT: 23306
   DB_DATABASE: atglance
   DB_USERNAME: atglance
-  DB_PASSWORD: ${DB_PASSWORD:-atglance}
+  DB_PASSWORD: ${DB_PASSWORD}
   REDIS_HOST: redis
-  REDIS_PORT: 6379
+  REDIS_PORT: 26379
+  REDIS_PASSWORD: ${REDIS_PASSWORD}
   CACHE_STORE: redis
   QUEUE_CONNECTION: redis
 
@@ -77,15 +83,16 @@ services:
     image: mysql:8.0
     container_name: ce-atglance-db
     restart: unless-stopped
+    command: ["--port=23306"]
     environment:
       MYSQL_DATABASE: atglance
       MYSQL_USER: atglance
-      MYSQL_PASSWORD: ${DB_PASSWORD:-atglance}
-      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-atglance-root}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
     volumes:
       - db-data:/var/lib/mysql
     healthcheck:
-      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p\"$$MYSQL_ROOT_PASSWORD\" --silent"]
+      test: ["CMD-SHELL", "MYSQL_PWD=\"$$MYSQL_ROOT_PASSWORD\" mysqladmin ping -h 127.0.0.1 -P 23306 -uroot --silent"]
       interval: 5s
       timeout: 5s
       retries: 20
@@ -94,11 +101,14 @@ services:
     image: redis:7-alpine
     container_name: ce-atglance-redis
     restart: unless-stopped
-    command: redis-server --appendonly yes
+    # The password comes from the environment, not the command line.
+    command: ["sh", "-c", "exec redis-server --appendonly yes --port 26379 --requirepass \"$$REDIS_PASSWORD\""]
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
     volumes:
       - redis-data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$$REDIS_PASSWORD\" redis-cli -p 26379 ping | grep -q PONG"]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -127,6 +137,9 @@ services:
     image: ${ATGLANCE_REGISTRY:-atglance}/ce-atglance-mcp:${ATGLANCE_VERSION:-latest}
     container_name: ce-atglance-mcp
     restart: unless-stopped
+    labels:
+      # May be stopped: the install and update scripts do not require it to run.
+      com.atglance.optional: "true"
     environment:
       ATGLANCE_URL: http://app:8000
       # Reached only through Kong on the internal network; Kong sends Host "mcp:8010".
@@ -157,7 +170,7 @@ services:
   #   restart: unless-stopped
   #   environment:
   #     PMA_HOST: db
-  #     PMA_PORT: 3306
+  #     PMA_PORT: 23306
   #   ports:
   #     - "127.0.0.1:${DBADMIN_PORT:-8080}:80"
   #   depends_on:

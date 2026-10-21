@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: atglance-redis-data
+  namespace: {{ .Values.namespaceName }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: {{ .Values.redis.storageClass }}
+  resources:
+    requests:
+      storage: {{ .Values.redis.storageSize }}

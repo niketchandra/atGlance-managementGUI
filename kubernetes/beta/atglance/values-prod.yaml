@@ -1,0 +1,97 @@
+namespaceName: atglance-prod
+replicaCount: 3
+
+image:
+  tag: "2.2.0"
+  pullPolicy: IfNotPresent
+
+app:
+  replicas: 3
+  env:
+    APP_DEBUG: "false"
+  resources:
+    requests:
+      memory: "1Gi"
+      cpu: "500m"
+    limits:
+      memory: "2Gi"
+      cpu: "1000m"
+
+gateway:
+  replicas: 2
+  resources:
+    requests:
+      memory: "512Mi"
+      cpu: "250m"
+    limits:
+      memory: "1Gi"
+      cpu: "500m"
+
+mcp:
+  replicas: 1
+  resources:
+    requests:
+      memory: "512Mi"
+      cpu: "250m"
+    limits:
+      memory: "1Gi"
+      cpu: "500m"
+
+mysql:
+  replicas: 1
+  storageSize: 50Gi
+  storageClass: fast-ssd
+  resources:
+    requests:
+      memory: "1Gi"
+      cpu: "500m"
+    limits:
+      memory: "2Gi"
+      cpu: "1000m"
+
+redis:
+  replicas: 1
+  storageSize: 10Gi
+  storageClass: fast-ssd
+  resources:
+    requests:
+      memory: "512Mi"
+      cpu: "250m"
+    limits:
+      memory: "1Gi"
+      cpu: "500m"
+
+storage:
+  appStorageSize: 20Gi
+  storageClass: standard
+
+ingress:
+  enabled: true
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/rate-limit: "100"
+  hosts:
+    - host: atglance.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: atglance-prod-tls
+      hosts:
+        - atglance.example.com
+
+service:
+  gatewayLoadBalancer: true
+
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+              - key: app
+                operator: In
+                values:
+                  - ce-atglance-app
+          topologyKey: kubernetes.io/hostname

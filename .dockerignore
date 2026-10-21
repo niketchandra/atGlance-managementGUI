@@ -19,6 +19,7 @@ composer/storage/app/*
 composer/storage/framework/cache/*
 composer/storage/framework/sessions/*
 composer/storage/framework/views/*
+composer/storage/framework/testing/*
 composer/storage/logs/*
 composer/storage/caddy/*
 composer/storage/*.key

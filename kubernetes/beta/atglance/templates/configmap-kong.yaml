@@ -1,0 +1,48 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: atglance-kong-config
+  namespace: {{ .Values.namespaceName }}
+data:
+  kong.yml: |
+    _format_version: "3.0"
+    services:
+      - name: auth-service
+        url: http://{{ .Values.app.name }}.{{ .Values.namespaceName }}.svc.cluster.local:8000/api
+        routes:
+          - name: auth-register-route
+            paths:
+              - /auth/register
+            methods:
+              - POST
+          - name: auth-login-route
+            paths:
+              - /auth/login
+            methods:
+              - POST
+          - name: auth-logout-route
+            paths:
+              - /auth/logout
+            methods:
+              - POST
+      - name: mcp-server-service
+        url: http://{{ .Values.mcp.name }}.{{ .Values.namespaceName }}.svc.cluster.local:8010
+        read_timeout: 300000
+        write_timeout: 60000
+        routes:
+          - name: mcp-server-route
+            paths:
+              - /mcp
+            methods:
+              - GET
+              - POST
+              - DELETE
+      - name: cli-v1-service
+        url: http://{{ .Values.app.name }}.{{ .Values.namespaceName }}.svc.cluster.local:8000
+        routes:
+          - name: cli-v1-route
+            paths:
+              - /api/v1/
+            methods:
+              - GET
+              - POST

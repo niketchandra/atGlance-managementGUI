@@ -1,0 +1,62 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ .Values.redis.name }}
+  namespace: {{ .Values.namespaceName }}
+spec:
+  serviceName: {{ .Values.redis.name }}
+  replicas: {{ .Values.redis.replicas }}
+  selector:
+    matchLabels:
+      app: {{ .Values.redis.name }}
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.redis.name }}
+    spec:
+      containers:
+        - name: redis
+          image: redis:{{ .Values.redis.version }}
+          # The password comes from the environment, not the command line.
+          command:
+            - sh
+            - -c
+            - exec redis-server --appendonly yes --port {{ .Values.redis.port }} --requirepass "$REDIS_PASSWORD"
+          env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: atglance-secrets
+                  key: redis-password
+          ports:
+            - name: redis
+              containerPort: {{ .Values.redis.port }}
+          volumeMounts:
+            - name: data
+              mountPath: {{ .Values.persistence.redisPath }}
+          livenessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - REDISCLI_AUTH="$REDIS_PASSWORD" redis-cli -p {{ .Values.redis.port }} ping | grep -q PONG
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - REDISCLI_AUTH="$REDIS_PASSWORD" redis-cli -p {{ .Values.redis.port }} ping | grep -q PONG
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          resources: {{ toYaml .Values.redis.resources | nindent 12 }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ "ReadWriteOnce" ]
+        storageClassName: {{ .Values.redis.storageClass }}
+        resources:
+          requests:
+            storage: {{ .Values.redis.storageSize }}

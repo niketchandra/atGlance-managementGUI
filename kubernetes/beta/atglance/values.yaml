@@ -1,0 +1,125 @@
+namespaceName: atglance
+replicaCount: 1
+
+image:
+  registry: docker.io
+  repository: atglance
+  tag: "latest"
+  pullPolicy: IfNotPresent
+
+app:
+  name: ce-atglance-app
+  port: 8000
+  replicas: 1
+  resources:
+    requests:
+      memory: "512Mi"
+      cpu: "250m"
+    limits:
+      memory: "1Gi"
+      cpu: "500m"
+  env:
+    LOG_CHANNEL: stderr
+    APP_DEBUG: "false"
+
+gateway:
+  name: ce-atglance-gateway
+  port: 8002
+  httpsPort: 8443
+  replicas: 1
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "100m"
+    limits:
+      memory: "512Mi"
+      cpu: "300m"
+
+mcp:
+  name: ce-atglance-mcp
+  port: 8010
+  replicas: 1
+  enabled: true
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "100m"
+    limits:
+      memory: "512Mi"
+      cpu: "300m"
+
+mysql:
+  name: ce-atglance-db
+  # Not the MySQL default; reachable only inside the cluster.
+  port: 23306
+  version: "8.0"
+  replicas: 1
+  storageSize: 10Gi
+  storageClass: standard
+  resources:
+    requests:
+      memory: "512Mi"
+      cpu: "250m"
+    limits:
+      memory: "1Gi"
+      cpu: "500m"
+  database: atglance
+  username: atglance
+
+redis:
+  name: ce-atglance-redis
+  # Not the Redis default; reachable only inside the cluster.
+  port: 26379
+  version: "7-alpine"
+  replicas: 1
+  storageSize: 2Gi
+  storageClass: standard
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "100m"
+    limits:
+      memory: "512Mi"
+      cpu: "200m"
+
+storage:
+  appStorageSize: 5Gi
+  storageClass: standard
+
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+  hosts:
+    - host: atglance.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: atglance-tls
+      hosts:
+        - atglance.local
+
+service:
+  type: ClusterIP
+  appPort: 8000
+  gatewayPort: 8002
+  gatewayLoadBalancer: false
+
+persistence:
+  enabled: true
+  appStoragePath: /app/storage
+  dbPath: /var/lib/mysql
+  redisPath: /data
+
+# Required, no defaults: helm install fails when one is empty. Use long random values.
+secrets:
+  dbPassword: ""
+  dbRootPassword: ""
+  appKey: ""
+  redisPassword: ""
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

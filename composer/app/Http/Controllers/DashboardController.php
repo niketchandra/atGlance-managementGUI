@@ -6,6 +6,8 @@ use App\Models\ConfigAiValidation;
 use App\Models\SystemRegister;
 use App\Models\Workspace;
 use App\Services\ConfigAiReviewer;
+use App\Services\ServiceAccountException;
+use App\Services\UserKeys;
 use App\Support\AccountAlerts;
 use App\Support\AiSettings;
 use App\Support\ActivityRecorder;
@@ -23,7 +25,6 @@ use Illuminate\Support\Facades\Auth;
 use App\Models\User;
 use App\Models\PatToken;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -229,7 +230,7 @@ class DashboardController extends Controller
         }
 
         if ($request->filled('hash')) {
-            $this->filterByExactKey($query, 'cf.validation_hash', (string) $request->hash);
+            $this->filterBySystemKey($query, 'sr', (string) $request->hash, 'cf.validation_hash');
         }
 
         $items = $query->orderByDesc('cf.created_at')
@@ -243,19 +244,33 @@ class DashboardController extends Controller
 
     /**
      * System keys are shown masked, so the search must not reveal them piece by piece:
-     * only the full key matches, and an input under 12 characters matches nothing.
+     * 4 characters match the shown last four (system_key_last_four); 12 or more match the
+     * full key by its hash (or, for a system not hashed yet, its plaintext; for backups,
+     * also the key the file was uploaded with). Anything else matches nothing.
      */
-    private function filterByExactKey($query, string $column, string $value): void
+    private function filterBySystemKey($query, string $systemAlias, string $value, ?string $fileKeyColumn = null): void
     {
         $value = trim($value);
+        $length = mb_strlen($value);
 
-        if (mb_strlen($value) < 12) {
+        if ($length === 4) {
+            $query->where($systemAlias . '.system_key_last_four', '=', $value);
+
+            return;
+        }
+
+        if ($length < 12) {
             $query->whereRaw('1 = 0');
 
             return;
         }
 
-        $query->where($column, '=', $value);
+        $query->where(function ($match) use ($systemAlias, $value, $fileKeyColumn) {
+            SystemRegister::whereKeyMatches($match, $value, $systemAlias);
+            if ($fileKeyColumn !== null) {
+                $match->orWhere($fileKeyColumn, '=', $value);
+            }
+        });
     }
 
     public function systemsRegistered(Request $request)
@@ -295,7 +310,7 @@ class DashboardController extends Controller
         }
 
         if ($request->filled('hash')) {
-            $this->filterByExactKey($query, 'sr.validation_hash', (string) $request->hash);
+            $this->filterBySystemKey($query, 'sr', (string) $request->hash);
         }
 
         $items = $query->orderByDesc('sr.created_at')
@@ -315,7 +330,13 @@ class DashboardController extends Controller
             ->values()
             ->all();
 
-        return view('systems-registered', compact('items', 'systemStats', 'tagCatalogue'));
+        $serviceAccountNames = \App\Models\ServiceAccount::query()
+            ->whereIn('id', $items->getCollection()->pluck('service_account_id')->filter()->unique()->all())
+            ->pluck('name', 'id')
+            ->all();
+        $assignableAccounts = ServiceAccountController::assignableByWorkspace(Auth::user());
+
+        return view('systems-registered', compact('items', 'systemStats', 'tagCatalogue', 'serviceAccountNames', 'assignableAccounts'));
     }
 
     public function editRegisteredSystem(int $systemId)
@@ -691,7 +712,9 @@ class DashboardController extends Controller
                 'cf.created_at',
                 'cf.updated_at',
                 'sr.system_name',
-                'sr.status as system_status'
+                'sr.status as system_status',
+                'sr.system_key_hash',
+                'sr.system_key_last_four'
             )
             ->orderByDesc('cf.created_at')
             ->get();
@@ -753,7 +776,9 @@ class DashboardController extends Controller
                 'cf.updated_at',
                 'sr.system_name',
                 'sr.status as system_status',
-                'cf.system_register_id'
+                'cf.system_register_id',
+                'sr.system_key_hash',
+                'sr.system_key_last_four'
             )
             ->orderByDesc('cf.created_at')
             ->get();
@@ -781,7 +806,7 @@ class DashboardController extends Controller
             ->leftJoin('raw_data', 'configuration_files.id', '=', 'raw_data.file_id')
             ->leftJoin('system_register as sr', 'configuration_files.system_register_id', '=', 'sr.id')
             ->where('configuration_files.id', $id)
-            ->select('configuration_files.*', 'raw_data.file_data as data', 'sr.workspace_id as system_workspace_id', 'sr.user_id as system_user_id')
+            ->select('configuration_files.*', 'raw_data.file_data as data', 'sr.workspace_id as system_workspace_id', 'sr.user_id as system_user_id', 'sr.system_key_hash', 'sr.system_key_last_four')
             ->first();
 
         if (!$config) {
@@ -1117,22 +1142,14 @@ class DashboardController extends Controller
 
         /** @var User $user */
         $user = Auth::user();
-        $plainToken = PatToken::generateCustomToken();
-        $expiresAt = $validated['expiration_date'] 
-            ? Carbon::parse($validated['expiration_date'])->endOfDay()
-            : Carbon::create(2099, 12, 31, 23, 59, 59);
+        $requestedExpiry = !empty($validated['expiration_date']) ? Carbon::parse($validated['expiration_date'])->endOfDay() : null;
 
-        $token = PatToken::create([
-            'user_id' => $user->id,
-            'tokenable_type' => User::class,
-            'tokenable_id' => $user->id,
-            'name' => $validated['name'],
-            'token' => hash('sha256', $plainToken),
-            'token_encrypted' => Crypt::encryptString($plainToken),
-            'abilities' => ['*'],
-            'expires_at' => $expiresAt,
-            'status' => 'active',
-        ]);
+        try {
+            ['token' => $token, 'plain' => $plainToken] = app(UserKeys::class)->issue($user, $validated['name'], $requestedExpiry);
+        } catch (ServiceAccountException $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], $e->getCode() ?: 422);
+        }
+        $expiresAt = $token->expires_at;
 
         ActivityRecorder::record($user->id, 'apikey.created', 'Created API key "' . $token->name . '"', ActivityRecorder::SUCCESS, $request);
         AccountAlerts::apiKey($user, 'created', (string) $token->name);
@@ -1147,88 +1164,11 @@ class DashboardController extends Controller
     }
 
     /**
-     * View a specific API key (requires password confirmation)
+     * Keys are stored as a hash only (2.1.2), so they cannot be shown again.
      */
     public function viewApiKey(Request $request)
     {
-        $validated = $request->validate([
-            'password' => 'nullable|string',
-            'pin' => 'nullable|string',
-            'key_id' => 'required|integer',
-        ]);
-
-        // Require at least one authentication method
-        if (empty($validated['password']) && empty($validated['pin'])) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Password or PIN is required',
-            ], 400);
-        }
-
-        /** @var User $user */
-        $user = Auth::user();
-
-        $authenticated = false;
-
-        // Verify password if provided
-        if (!empty($validated['password'])) {
-            $userPasswordHash = $user->password_hash ?? $user->password;
-            if ($userPasswordHash && Hash::check($validated['password'], $userPasswordHash)) {
-                $authenticated = true;
-            }
-        }
-
-        // Verify PIN if provided and password didn't authenticate
-        if (!$authenticated && !empty($validated['pin'])) {
-            $userPinHash = $user->pin;
-            if ($userPinHash && Hash::check($validated['pin'], $userPinHash)) {
-                $authenticated = true;
-            }
-        }
-
-        if (!$authenticated) {
-            ActivityRecorder::record($user->id, $request->routeIs('settings.api-keys.revoke') ? 'apikey.revoked' : 'apikey.viewed', 'Wrong password or PIN while confirming an API key action', ActivityRecorder::FAILURE, $request);
-
-            return response()->json([
-                'success' => false,
-                'message' => 'Invalid password or PIN',
-            ], 401);
-        }
-
-        $token = PatToken::where('id', $validated['key_id'])
-            ->where('user_id', $user->id)
-            ->first();
-
-        if (!$token) {
-            return response()->json([
-                'success' => false,
-                'message' => 'API key not found',
-            ], 404);
-        }
-
-        $plainToken = null;
-        if (!empty($token->token_encrypted)) {
-            try {
-                $plainToken = Crypt::decryptString($token->token_encrypted);
-            } catch (\Throwable $e) {
-                $plainToken = null;
-            }
-        }
-
-        if ($plainToken === null) {
-            return response()->json([
-                'success' => false,
-                'message' => 'This key was created before secure display was enabled. Please create a new key to view full token value.',
-            ], 422);
-        }
-
-        ActivityRecorder::record($user->id, 'apikey.viewed', 'Viewed API key "' . $token->name . '"', ActivityRecorder::SUCCESS, $request);
-
-        return response()->json([
-            'success' => true,
-            'token' => $plainToken,
-            'name' => $token->name,
-        ]);
+        return response()->json(['success' => false, 'message' => 'API keys are shown only when created'], 410);
     }
 
     /**
@@ -1272,7 +1212,7 @@ class DashboardController extends Controller
         }
 
         if (!$authenticated) {
-            ActivityRecorder::record($user->id, $request->routeIs('settings.api-keys.revoke') ? 'apikey.revoked' : 'apikey.viewed', 'Wrong password or PIN while confirming an API key action', ActivityRecorder::FAILURE, $request);
+            ActivityRecorder::record($user->id, 'apikey.revoked', 'Wrong password or PIN while confirming an API key action', ActivityRecorder::FAILURE, $request);
 
             return response()->json([
                 'success' => false,
@@ -1291,7 +1231,7 @@ class DashboardController extends Controller
             ], 404);
         }
 
-        $token->update(['status' => 'revoked']);
+        app(UserKeys::class)->revoke($token, $user, 'revoked_by_user');
         ActivityRecorder::record($user->id, 'apikey.revoked', 'Revoked API key "' . $token->name . '"', ActivityRecorder::SUCCESS, $request);
         AccountAlerts::apiKey($user, 'revoked', (string) $token->name);
 

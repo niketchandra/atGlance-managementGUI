@@ -26,9 +26,20 @@ class AppServiceProvider extends ServiceProvider
     {
         RateLimiter::for('v1-meta', fn (Request $request) => Limit::perMinute(60)->by('v1-meta|' . $request->ip()));
 
+        // Per key, not per IP: many servers behind one NAT each have their own key. Keyed on
+        // the key's hash because throttle can run before auth.pat (middleware priority).
+        RateLimiter::for('v1-expiry-notice', fn (Request $request) => Limit::perMinute(6)->by(
+            'v1-expiry-notice|' . ($request->bearerToken() ? hash('sha256', $request->bearerToken()) : $request->ip())
+        ));
+
         RateLimiter::for('v1-force', fn (Request $request) => [
             Limit::perMinute(10)->by('v1-force|' . $request->ip() . '|' . strtolower(trim((string) $request->input('email', '')))),
             Limit::perMinute(30)->by('v1-force-ip|' . $request->ip()),
+        ]);
+
+        RateLimiter::for('login', fn (Request $request) => [
+            Limit::perMinute(5)->by('login|' . $request->ip() . '|' . strtolower(trim((string) $request->input('email', '')))),
+            Limit::perMinute(20)->by('login-ip|' . $request->ip()),
         ]);
     }
 

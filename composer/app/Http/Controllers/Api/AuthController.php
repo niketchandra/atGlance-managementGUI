@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\AdminSetting;
 use App\Models\Session;
 use App\Models\User;
 use App\Support\License;
@@ -19,6 +20,10 @@ class AuthController extends Controller
     {
         if (!License::isActive()) {
             return response()->json(['message' => License::REQUIRED_MESSAGE], 403);
+        }
+
+        if ($this->isEmailRegistrationDisabled()) {
+            return response()->json(['message' => 'Email registration is disabled'], 403);
         }
 
         $validator = Validator::make($request->all(), [
@@ -125,5 +130,11 @@ class AuthController extends Controller
         }
 
         return response()->noContent();
+    }
+
+    private function isEmailRegistrationDisabled(): bool
+    {
+        $value = (string) AdminSetting::getValue('disable_email_registration', 'false');
+        return filter_var($value, FILTER_VALIDATE_BOOL);
     }
 }

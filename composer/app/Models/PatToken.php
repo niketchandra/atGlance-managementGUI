@@ -3,12 +3,14 @@
 namespace App\Models;
 
 use App\Models\User;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Support\Str;
 use Laravel\Sanctum\PersonalAccessToken;
 
 class PatToken extends PersonalAccessToken
 {
+	use HasFactory;
 	protected $table = 'personal_access_tokens';
 
 	protected $fillable = [
@@ -22,6 +24,20 @@ class PatToken extends PersonalAccessToken
 		'status',
 		'last_used_at',
 		'expires_at',
+		'last_four',
+		'revoked_at',
+		'revoked_by_user_id',
+		'revoke_reason',
+		'expiry_notified_stage',
+		'expired_notified_at',
+	];
+
+	protected $casts = [
+		'abilities' => 'json',
+		'last_used_at' => 'datetime',
+		'expires_at' => 'datetime',
+		'revoked_at' => 'datetime',
+		'expired_notified_at' => 'datetime',
 	];
 
 	protected static function booted(): void
@@ -36,6 +52,11 @@ class PatToken extends PersonalAccessToken
 	public function tokenable(): MorphTo
 	{
 		return $this->morphTo();
+	}
+
+	public function isServiceAccountKey(): bool
+	{
+		return $this->tokenable_type === ServiceAccount::class;
 	}
 
 	public function user()

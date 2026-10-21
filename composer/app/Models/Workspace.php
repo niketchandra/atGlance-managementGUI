@@ -102,6 +102,7 @@ class Workspace extends Model
         'vulnerability_checks' => ['label' => 'Change Vulnerability Checks', 'default' => false],
         'backups' => ['label' => 'Change Backups', 'default' => false],
         'notifications' => ['label' => 'Change Notifications', 'default' => false],
+        'service_accounts' => ['label' => 'Manage service accounts of this workspace', 'default' => false],
     ];
 
     /**

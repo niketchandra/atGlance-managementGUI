@@ -1,0 +1,17 @@
+apiVersion: v2
+name: atglance
+description: AtGlance Community Edition Helm Chart
+type: application
+version: 2.2.0
+appVersion: "2.2.0"
+maintainers:
+  - name: AtGlance Team
+    email: team@atglance.io
+keywords:
+  - management
+  - configuration
+  - api
+home: https://github.com/niketchandra/atGlance-managementGUI
+sources:
+  - https://github.com/niketchandra/atGlance-managementGUI
+dependencies: []

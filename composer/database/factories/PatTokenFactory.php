@@ -1,0 +1,96 @@
+<?php
+
+namespace Database\Factories;
+
+use App\Models\PatToken;
+use App\Models\User;
+use Illuminate\Database\Eloquent\Factories\Factory;
+
+/**
+ * @extends \Illuminate\Database\Eloquent\Factories\Factory<\App\Models\PatToken>
+ */
+class PatTokenFactory extends Factory
+{
+    /**
+     * Define the model's default state.
+     *
+     * @return array<string, mixed>
+     */
+    public function definition(): array
+    {
+        // Generate a plain token in the format expected by the system
+        $characters = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+        $randomPart = '';
+        $randomLength = 25 - strlen('atgla-');
+
+        for ($i = 0; $i < $randomLength; $i++) {
+            $randomPart .= $characters[random_int(0, strlen($characters) - 1)];
+        }
+
+        $plainToken = 'atgla-' . $randomPart;
+
+        return [
+            'tokenable_type' => User::class,
+            'tokenable_id' => User::factory(),
+            'user_id' => User::factory(),
+            'name' => fake()->words(2, true),
+            // For testing purposes, store the hashed token in the database
+            'token' => hash('sha256', $plainToken),
+            'token_encrypted' => $plainToken, // Store plaintext in token_encrypted for testing
+            'last_four' => substr($plainToken, -4),
+            'status' => 'active',
+            'expires_at' => now()->addDays(90),
+        ];
+    }
+
+    /**
+     * Configure the factory to ensure user_id matches tokenable_id for user tokens,
+     * and generate correct token prefix for service accounts.
+     */
+    public function configure()
+    {
+        return $this->afterMaking(function (PatToken $token) {
+            // If this is a user token, ensure user_id matches tokenable_id
+            if ($token->tokenable_type === User::class && $token->user_id !== $token->tokenable_id) {
+                $token->user_id = $token->tokenable_id;
+            }
+
+            // If this is a service account token, regenerate with atgsa- prefix
+            if ($token->tokenable_type === \App\Models\ServiceAccount::class) {
+                $characters = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+                $randomPart = '';
+                $randomLength = 25 - strlen('atgsa-');
+
+                for ($i = 0; $i < $randomLength; $i++) {
+                    $randomPart .= $characters[random_int(0, strlen($characters) - 1)];
+                }
+
+                $plainToken = 'atgsa-' . $randomPart;
+                $token->token = hash('sha256', $plainToken);
+                $token->token_encrypted = $plainToken;
+                $token->last_four = substr($plainToken, -4);
+                $token->user_id = null;
+            }
+        });
+    }
+
+    /**
+     * Indicate that the token should be expired.
+     */
+    public function expired(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'expires_at' => now()->subDay(),
+        ]);
+    }
+
+    /**
+     * Indicate that the token should expire soon (5 days).
+     */
+    public function expiringSoon(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'expires_at' => now()->addDays(5),
+        ]);
+    }
+}
