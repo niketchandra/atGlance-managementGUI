@@ -4,7 +4,6 @@ use App\Services\BackupService;
 use App\Services\WorkspaceAiSweep;
 use App\Support\InstallationState;
 use App\Support\License;
-use App\Support\Licensing\Entitlements;
 use App\Support\Licensing\LicenseException;
 use App\Support\WorkspaceSettings;
 use Illuminate\Foundation\Inspiring;
@@ -19,11 +18,6 @@ Artisan::command('inspire', function () {
 
 $runBackup = function (string $type) {
     return function (BackupService $backups) use ($type) {
-        if (!Entitlements::isFeatureEnabled('backup_restore')) {
-            $this->warn(Entitlements::notLicensedMessage('backup_restore'));
-
-            return 0;
-        }
         $run = $backups->run($type);
 
         match ($run['status']) {
@@ -85,6 +79,8 @@ Artisan::command('license:verify', function () {
     return $summary['active'] ? 0 : 1;
 })->purpose('Verify the stored licence file (offline) and show its status');
 
+// No online re-check: a licence key is activated with atglance.live once (Admin Settings >
+// Licence or the installer), which returns the licence file; license:verify checks it offline.
 
 if (InstallationState::isInstalled()) {
     Schedule::command('activity:prune')->dailyAt('03:30')->withoutOverlapping();
@@ -103,8 +99,7 @@ if (InstallationState::isInstalled()) {
             $expression = $backups->scheduleExpression($type);
 
             if ($expression !== null) {
-                Schedule::command($command)->cron($expression)->withoutOverlapping(120)
-                    ->when(fn () => Entitlements::isFeatureEnabled('backup_restore'));
+                Schedule::command($command)->cron($expression)->withoutOverlapping(120);
             }
         }
     } catch (Throwable $e) {
@@ -113,11 +108,6 @@ if (InstallationState::isInstalled()) {
 }
 
 Artisan::command('ai:validate-workspace {workspace : Workspace id}', function (WorkspaceAiSweep $sweep) {
-    if (!Entitlements::isFeatureEnabled('ai_connect')) {
-        $this->warn(Entitlements::notLicensedMessage('ai_connect'));
-
-        return 0;
-    }
     $run = $sweep->run((int) $this->argument('workspace'));
     $this->info($run['message']);
 
@@ -138,11 +128,6 @@ if (InstallationState::isInstalled()) {
 }
 
 Artisan::command('backup:workspace {workspace : Workspace id}', function (BackupService $backups) {
-    if (!Entitlements::isFeatureEnabled('backup_restore')) {
-        $this->warn(Entitlements::notLicensedMessage('backup_restore'));
-
-        return 0;
-    }
     $run = $backups->runWorkspace((int) $this->argument('workspace'));
     $run->status === BackupService::STATUS_SUCCESS ? $this->info($run->message) : $this->error($run->message);
 
@@ -161,8 +146,7 @@ if (InstallationState::isInstalled()) {
             $expression = WorkspaceSettings::expression($settings, 'ai_sweep');
 
             if ($expression !== null) {
-                Schedule::command('ai:validate-workspace ' . $workspaceId)->cron($expression)->withoutOverlapping(120)
-                    ->when(fn () => Entitlements::isFeatureEnabled('ai_connect'));
+                Schedule::command('ai:validate-workspace ' . $workspaceId)->cron($expression)->withoutOverlapping(120);
             }
         }
 
@@ -170,8 +154,7 @@ if (InstallationState::isInstalled()) {
             $expression = WorkspaceSettings::expression($settings, 'backup');
 
             if ($expression !== null) {
-                Schedule::command('backup:workspace ' . $workspaceId)->cron($expression)->withoutOverlapping(120)
-                    ->when(fn () => Entitlements::isFeatureEnabled('backup_restore'));
+                Schedule::command('backup:workspace ' . $workspaceId)->cron($expression)->withoutOverlapping(120);
             }
         }
     } catch (Throwable $e) {

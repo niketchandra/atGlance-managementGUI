@@ -9,9 +9,13 @@ use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
- * Read-only mode without an active licence (none, expired or invalid): every write is
- * refused except signing in and out and uploading a licence file. Reads keep working.
- * Before installation the installer has its own licence step, so nothing is blocked.
+ * Without an active licence (none, expired or invalid):
+ * - every write is refused except signing in and out and adding a licence;
+ * - signed-in web pages are locked: the super admin is sent to Admin Settings > Licence, other
+ *   users see a "licence required" page. API reads (agents, CLI) keep working. A user who has
+ *   not completed the profile (date of birth and PIN) does that first: EnsureProfileSetupComplete
+ *   sends them to the profile page, which stays open here.
+ * Before installation nothing is blocked; the licence step of the installer is optional.
  */
 class EnforceLicense
 {
@@ -21,8 +25,11 @@ class EnforceLicense
         'logout',
         'password.email',
         'admin.settings.licence',
+        // First sign-in: the profile (date of birth and PIN) is completed before the licence.
+        'profile.update',
         'install.run',
         'install.license.preview',
+        'install.license.verify',
     ];
 
     /** Unnamed API paths that stay writable without a licence. */
@@ -31,8 +38,30 @@ class EnforceLicense
         'api/auth/logout',
     ];
 
+    /** Web pages a signed-in user can still open without a licence. */
+    private const ALLOWED_PAGES = [
+        'admin.settings',
+        'login',
+        'install.*',
+    ];
+
     public function handle(Request $request, Closure $next): Response
     {
+        if ($request->isMethodSafe()
+            && !$request->is('api/*')
+            && !$request->expectsJson()
+            && $request->user() !== null
+            && InstallationState::isInstalled()
+            && !$request->routeIs(...self::ALLOWED_PAGES)
+            && self::profileComplete($request->user())
+            && !License::isActive()) {
+            if ((int) $request->user()->rbac_id === 100) {
+                return redirect()->route('admin.settings', ['tab' => 'licence']);
+            }
+
+            return response()->view('errors.licence-required', [], 403);
+        }
+
         if ($request->isMethodSafe()
             || !InstallationState::isInstalled()
             || $request->routeIs(...self::ALLOWED_ROUTES)
@@ -55,5 +84,11 @@ class EnforceLicense
         }
 
         return redirect()->back()->withErrors(['licence' => $message]);
+    }
+
+    /** Date of birth and PIN set (the same check as EnsureProfileSetupComplete). */
+    private static function profileComplete($user): bool
+    {
+        return !empty($user->dob) && !empty($user->pin);
     }
 }

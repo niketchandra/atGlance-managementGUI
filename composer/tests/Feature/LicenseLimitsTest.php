@@ -15,7 +15,8 @@ use Tests\Support\TestLicense;
 use Tests\TestCase;
 
 /**
- * Licence payload v2: node and user limits, the over-limit state, and feature entitlements.
+ * Licence payload v2: node and user limits, the over-limit state, and the Premium Features flag.
+ * Console modules are core: the licence does not gate them (Plugins turn them on and off).
  */
 class LicenseLimitsTest extends TestCase
 {
@@ -176,58 +177,56 @@ class LicenseLimitsTest extends TestCase
 
         $this->assertSame(0, License::maxNodes());
         $this->assertSame(3, License::maxUsers());
-        $this->assertSame(TestLicense::allFeatures(), array_values(array_intersect(TestLicense::allFeatures(), License::status()['license']->features)));
+        $this->assertSame([], License::status()['license']->features);
     }
 
     public function test_settings_shows_usage_policy_and_features(): void
     {
         $admin = $this->user('super@acme.test', 100);
-        TestLicense::install(['max_nodes' => 5, 'max_users' => 0, 'policy_type' => 'custom', 'policy_id' => 'custom:7', 'features' => ['sso']]);
+        TestLicense::install(['max_nodes' => 5, 'max_users' => 0, 'policy_type' => 'custom', 'policy_id' => 'custom:7', 'features' => []]);
 
         $this->actingAs($admin)->get(route('admin.settings', ['tab' => 'licence']))
             ->assertOk()
             ->assertSee('Custom')
             ->assertSee('0 / 5')
             ->assertSee('1 / unlimited')
-            ->assertSee('data-feature="sso"', false)
-            ->assertSee('Not licensed');
+            ->assertSee('data-feature="premium"', false)
+            ->assertSee('Premium Features')
+            ->assertSee('Not included')
+            ->assertSee("This console's Installation ID", false)
+            ->assertSee(License::instanceId());
     }
 
-    public function test_unlicensed_feature_routes_return_feature_not_licensed(): void
+    public function test_modules_work_without_premium_features(): void
     {
         $admin = $this->user('super@acme.test', 100);
-        TestLicense::install(['features' => ['sso']]);
+        TestLicense::install(['features' => []]);
 
-        $this->actingAs($admin)->postJson(route('admin.notifications.store'), [])
-            ->assertStatus(403)
-            ->assertJson(['code' => 'FEATURE_NOT_LICENSED', 'message' => "'Notifications' is not included in your license."]);
-
-        $this->actingAs($admin)->get(route('admin.notifications'))
-            ->assertStatus(403)
-            ->assertSee('Notifications is not included in your license');
-
-        $this->assertTrue(Entitlements::isFeatureEnabled('sso'));
-        $this->assertFalse(Entitlements::isFeatureEnabled('ai_connect'));
+        $this->actingAs($admin)->get(route('admin.notifications'))->assertOk();
+        $this->actingAs($admin)->get(route('admin.settings', ['tab' => 'plugins']))
+            ->assertOk()
+            ->assertDontSee('Not included in your license');
     }
 
-    public function test_service_account_keys_need_the_feature(): void
+    public function test_service_account_keys_are_not_gated_by_the_licence(): void
     {
         TestLicense::install(['features' => []]);
 
         $this->getJson('/api/v1/whoami', ['Authorization' => 'Bearer atgsa-' . str_repeat('x', 40)])
-            ->assertStatus(403)
-            ->assertJson(['code' => 'FEATURE_NOT_LICENSED']);
+            ->assertStatus(401)
+            ->assertJsonMissing(['code' => 'FEATURE_NOT_LICENSED']);
     }
 
-    public function test_feature_overview_lists_every_catalog_feature(): void
+    public function test_premium_features_flag(): void
     {
-        TestLicense::install(['features' => ['sso', 'workspaces', 'unknown_future_feature']]);
+        TestLicense::install(['features' => ['premium', 'unknown_future_feature']]);
 
         $overview = collect(Entitlements::overview())->pluck('enabled', 'key');
-        $this->assertSame(TestLicense::allFeatures(), $overview->keys()->all());
-        $this->assertTrue($overview['sso']);
-        $this->assertTrue($overview['workspaces']);
-        $this->assertFalse($overview['notifications']);
+        $this->assertSame(['premium'], $overview->keys()->all());
+        $this->assertTrue($overview['premium']);
+
+        TestLicense::install(['features' => []]);
+        $this->assertFalse(Entitlements::isFeatureEnabled('premium'));
     }
 
     /** The shared enforcement cases (tests/Fixtures/licensing/limit-cases.json). */

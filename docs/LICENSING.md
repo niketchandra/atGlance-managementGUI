@@ -89,7 +89,7 @@ issues version 2 since 2.3.0.
 | `validity_months` | v2 | 1 to 120, informational; `expires_at` is authoritative |
 
 **Version 1 licences** keep working. They are read as: `max_users` = `seats`, `max_nodes` = 0
-(unlimited), every feature in the catalog (consoles before feature gating had everything),
+(unlimited), the catalog features marked `v1_default` (none today),
 policy `v1` / `default`.
 
 Verification order (the first failure wins): magic and version, key ID, decryption, signature,
@@ -118,29 +118,17 @@ higher limits is uploaded.
 
 ## Features
 
-`features` enables modules from the catalog (workspace `contracts/FEATURES.md`, shipped as
-`composer/resources/licensing/features.json`). Keys the console does not know are ignored.
-`App\Support\Licensing\Entitlements::isFeatureEnabled($key)` is the only check; without an active
-licence nothing is enabled.
+All console modules (SSO, AI Connect, MCP Server, Custom Domain, S3 backup, Backup & Restore,
+Notifications, Service Accounts, Workspaces) are core. The licence does not gate them: the super
+admin turns them on and off in Admin Settings > Plugins.
 
-| Key | Gated in the console |
-|---|---|
-| `sso` | `/auth/sso/*`, Admin Settings SSO tab and plugin toggle, SSO PIN reset; SSO buttons on the sign-in page are hidden |
-| `ai_connect` | Admin Settings AI routes, AI review of config versions, workspace AI settings, sweeps and progress; schedule `ai:validate-workspace` and the queued `ValidateConfigWithAi` job |
-| `mcp_server` | `/connect-ai`, Admin Settings MCP, the read-only MCP API (`/api/mcp/*`); `mcp:manage` stops the MCP container |
-| `custom_domain` | Admin Settings domain routes and plugin toggle, `/api/internal/domain/*` (certificates for the built-in proxy) |
-| `s3_backup` | Admin Settings S3 routes and plugin toggle |
-| `backup_restore` | Backup & Restore settings, backup list, run, restore, workspace backups; schedules `backup:config`, `backup:database`, `backup:workspace` |
-| `notifications` | Notifications pages and groups, notification settings and preferences; `Notifier` sends nothing |
-| `service_accounts` | Service Accounts pages; service account keys (`atgsa-...`) are refused by the API |
-| `workspaces` | Enterprise Console, creating workspaces and organisations. Existing workspaces stay readable |
-
-A refused request returns 403 `{"code": "FEATURE_NOT_LICENSED", "message": "'Notifications' is not
-included in your license."}`; a page shows an "upgrade" page instead. Menu entries and plugin cards
-show a lock and "Not included in your license". When a renewal removes a feature, its data and
-settings are kept and come back when a licence includes it again. Core functions are never gated:
-node registration and the CLI API, configuration backups of nodes, users, the activity log and
-Admin Settings.
+`features` carries keys from the catalog (workspace `contracts/FEATURES.md`, shipped as
+`composer/resources/licensing/features.json`). Keys the console does not know are ignored. Today
+the catalog has one key, `premium` ("Premium Features"), which marks a premium (e.g. Enterprise)
+licence. Admin Settings > Licence shows it as Enabled or Not included; it changes no console
+behaviour yet. `App\Support\Licensing\Entitlements::isFeatureEnabled($key)` and the
+`feature:<key>` route middleware (`RequireFeature`, 403 `FEATURE_NOT_LICENSED`) are kept for a
+future premium module; no route uses them.
 
 ## Keys
 
@@ -190,19 +178,25 @@ ask customers to generate new files.
 
 ## Customer install flow
 
-1. Sign in on atglance.live, open **Licences**, and click **Generate licence file**. Depending on
-   the licence policy, enter the console's **Installation ID** (shown in the installer and on the
-   Licence tab; required or optional) and the 5-digit code emailed to the account.
-2. Upload the `.atgl` file in the console installer (step 1) within the window shown (5 to 180
-   minutes). The installer previews customer, plan, policy, limits, features and dates, and
-   refuses to install without a valid file.
+1. Sign in on atglance.live, open **Licences**, create a licence and confirm it with the emailed
+   5-digit code (flagged accounts also need admin approval). One licence works on one console.
+2. In the console installer (step 1) or **Admin Settings > Licence**, choose one way:
+   - **Licence key** (console with internet access): paste the key. The console calls
+     `POST <ATGLANCE_LICENSE_API_URL>/activate` once with its Installation ID; atglance.live
+     answers with the licence file for this console, which is stored like an upload. There is no
+     later online check.
+   - **Licence file** (console without internet access): on atglance.live click **Licence file**
+     on the licence, enter the console's **Installation ID** (shown in the installer and on the
+     Licence tab), download the `.atgl` and upload it within the window shown (5 to 180 minutes).
+     The installer previews customer, plan, policy, limits, features and dates.
+   The installer refuses to install without a valid licence.
 3. Afterwards, the file is re-verified on every request and by `php artisan license:verify` (at
    container start and hourly). The 3-hour rule no longer applies; `expires_at` does.
 4. Banners appear 30, 7 and 1 days before expiry. After expiry the console is **read-only**: every
    write is refused, except sign-in, sign-out and the licence upload in **Admin Settings > Licence**.
-5. To renew, generate a new file and upload it in **Admin Settings > Licence** (your password is
+5. To renew, use a new licence key or file in **Admin Settings > Licence** (your password is
    required). Renewal files are also subject to their activation window. The current licence stays
-   in place if the new file is refused.
+   in place if the new one is refused.
 
 Stored files (on the `app-storage` volume, `storage/app/license/`):
 
@@ -214,10 +208,10 @@ Stored files (on the `app-storage` volume, `storage/app/license/`):
 
 ### Upgrading from licence keys (2.2 and earlier)
 
-Consoles up to 2.2 used online licence keys (`atg_...`). Licence keys are no longer supported:
-after the update the console is read-only until an admin uploads a licence file in
-**Admin Settings > Licence**. Generate the file just before uploading it, because of its activation
-window.
+Consoles up to 2.2 kept the licence key and checked it online. From this version on, the console
+needs the licence file: after the update it is read-only until an admin enters the licence key again
+in **Admin Settings > Licence** (with internet access; the key is activated once and the file is
+stored) or uploads a licence file.
 
 ## Troubleshooting
 
@@ -239,9 +233,10 @@ window.
 | `E_CLOCK` | This server's clock is more than 24 hours behind the latest time the console recorded | Correct the clock. Activation stays refused until the clock has caught up |
 | `E_RECORD` | `activation.json` was edited, is missing, or does not match `license.atgl` | Upload the licence file again in Admin Settings > Licence |
 | `E_NO_LICENSE` | (API responses) no licence file is installed | Upload one in Admin Settings > Licence |
+| Licence key: "Could not reach atglance.live" | The console has no internet access, or a proxy blocks `ATGLANCE_LICENSE_API_URL` | Use a licence file instead |
+| Licence key: "already in use by another Management Console" | One licence = one console. A licence in use cannot be revoked until it expires | Create a new licence on atglance.live for this console |
 | `NODE_LIMIT_REACHED` | The active nodes reached `max_nodes` | Deregister nodes you no longer use, or upload a licence with a higher node limit |
 | `USER_LIMIT_REACHED` | The users reached `max_users` | Delete users you no longer need, or upload a licence with a higher user limit |
-| `FEATURE_NOT_LICENSED` | The licence does not include the feature | Ask your atglance.live admin for a licence that includes it, then upload the new file |
 
 **Offline revocation.** A licence file is checked offline, so atglance.live cannot revoke a file
 that was already downloaded: it works until its `expires_at`. Revoking a custom license on
@@ -261,9 +256,9 @@ you may need to take back.
 - `tests/Feature/LicenseTest.php` (settings, lock, banners, clock, record tampering, user limit),
   `tests/Feature/LicenseInstallerTest.php` (installer step) and `tests/Feature/LicenseLimitsTest.php`
   (node limit through the API, user limit, unlimited, over limit after a downgrade, 80 % / 100 %,
-  feature gating, service account keys, `limit-cases.json`).
+  modules not gated, Premium Features flag, `limit-cases.json`).
 - `tests/Support/TestLicense.php` issues files with the test key (payload v2, unlimited, every
-  feature, unless the test says otherwise). The base `TestCase` installs one per test in a
+  catalog feature, unless the test says otherwise). The base `TestCase` installs one per test in a
   temporary folder; set `protected bool $withLicense = false;` to start without one.
 - Cross-repo end-to-end: `php contracts/tools/e2e.php <site-repo> <console-composer-dir>` in the
   workspace runs the site issuer code and this verifier: the 3-hour rule at +3h01m, and a custom

@@ -91,9 +91,8 @@ class VerifierContractTest extends TestCase
         $this->assertSame($expected['license_id'], $license->licenseId);
         $this->assertSame($expected['customer'], $license->customer);
         $this->assertSame($expected['seats'], $license->maxUsers);
-        // v1: the payload's features are ignored; every v1_default catalog feature applies.
-        $this->assertNotSame($expected['features'], $license->features);
-        $this->assertContains('mcp_server', $license->features);
+        // v1: the payload's features are ignored; only v1_default catalog features apply (none today).
+        $this->assertSame([], $license->features);
         $this->assertSame($expected['expires_at'], Verifier::formatDate($license->expiresAt));
     }
 

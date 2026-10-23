@@ -200,6 +200,49 @@ class LicenseTest extends TestCase
         $this->assertTrue(License::isActive());
     }
 
+    public function test_licence_tab_offers_key_and_file(): void
+    {
+        $this->actingAsRole(100);
+
+        $this->get(route('admin.settings', ['tab' => 'licence']))
+            ->assertOk()
+            ->assertSee('This server can reach atglance.live')
+            ->assertSee('No internet access')
+            ->assertSee('Licence key (internet access)')
+            ->assertSee('Licence file (no internet access)')
+            ->assertSee('name="license_key"', false)
+            ->assertSee('name="license_file"', false);
+    }
+
+    public function test_licence_key_is_activated_online_and_stored_as_the_licence_file(): void
+    {
+        $this->actingAsRole(100);
+        $file = TestLicense::issue(['customer' => 'Key Org', 'install_id' => License::instanceId()]);
+        Http::fake(['*/api/licenses/activate' => Http::response(['valid' => true, 'status' => 'in_use', 'license_file' => base64_encode($file)], 201)]);
+
+        $this->post(route('admin.settings.licence'), ['license_mode' => 'key', 'license_key' => 'atg_key_abc'])
+            ->assertSessionHasNoErrors()
+            ->assertSessionHas('success');
+
+        License::reset();
+        $this->assertTrue(License::isActive());
+        $this->assertSame('Key Org', License::summary()['customer']);
+    }
+
+    public function test_licence_key_errors_are_shown_on_the_key_option(): void
+    {
+        $this->actingAsRole(100);
+        Http::fake(['*/api/licenses/activate' => Http::response(['valid' => false, 'status' => 'unverified'], 403)]);
+
+        $this->followingRedirects()
+            ->post(route('admin.settings.licence'), ['license_mode' => 'key', 'license_key' => 'atg_key_abc'])
+            ->assertOk()
+            ->assertSee('Licence not accepted')
+            ->assertSee('This licence is not confirmed yet.');
+
+        $this->assertFalse(License::isActive());
+    }
+
     public function test_install_id_error_explains_how_to_fix_it(): void
     {
         $this->actingAsRole(100);
@@ -277,7 +320,31 @@ class LicenseTest extends TestCase
         $this->postJson(route('settings.api-keys.create'), ['name' => 'prod'])
             ->assertStatus(403)
             ->assertJson(['code' => 'E_EXPIRED']);
-        $this->get(route('profile'))->assertOk()->assertSee('The AtGlance licence has expired.');
+        $this->get(route('profile'))->assertRedirect(route('admin.settings', ['tab' => 'licence']));
+    }
+
+    public function test_without_licence_signed_in_pages_are_locked(): void
+    {
+        $this->actingAsRole(100);
+        $this->get(route('profile'))->assertRedirect(route('admin.settings', ['tab' => 'licence']));
+        $this->get(route('admin.settings', ['tab' => 'licence']))->assertOk();
+
+        $this->actingAsRole(102);
+        $this->get(route('profile'))->assertStatus(403)->assertSee('A licence is required');
+    }
+
+    public function test_first_sign_in_completes_the_profile_before_the_licence(): void
+    {
+        $user = $this->actingAsRole(100);
+        $user->forceFill(['dob' => null, 'pin' => null])->save();
+
+        $this->get(route('dashboard'))->assertRedirect(route('profile'));
+        $this->get(route('profile'))->assertOk();
+
+        $this->post(route('profile.update'), ['dob' => '1990-01-01', 'pin' => '12345', 'pin_confirmation' => '12345'])
+            ->assertSessionHasNoErrors()
+            ->assertRedirect(route('dashboard'));
+        $this->get(route('dashboard'))->assertRedirect(route('admin.settings', ['tab' => 'licence']));
     }
 
     public function test_api_key_creation_blocked_without_licence(): void
@@ -341,7 +408,7 @@ class LicenseTest extends TestCase
     public function test_sidebar_licence_card_asks_the_super_admin_to_add_a_missing_licence(): void
     {
         $this->actingAsRole(100);
-        $this->get(route('profile'))
+        $this->get(route('admin.settings', ['tab' => 'licence']))
             ->assertOk()
             ->assertSee('Not licensed')
             ->assertSee('Add licence')

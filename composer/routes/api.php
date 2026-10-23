@@ -72,11 +72,11 @@ Route::post('/system-deregister-force', [SystemRegisterController::class, 'dereg
 Route::post('/system-reactivate-force', [SystemRegisterController::class, 'reactiveForce'])->middleware(['throttle:v1-force', LegacyApiSunset::class]);
 
 // Built-in proxy (Caddy) only; see DomainTlsController::isLocal().
-Route::get('/internal/domain/tls-allowed', [DomainTlsController::class, 'allowed'])->middleware('feature:custom_domain');
-Route::get('/internal/domain/certificate', [DomainTlsController::class, 'certificate'])->middleware('feature:custom_domain');
+Route::get('/internal/domain/tls-allowed', [DomainTlsController::class, 'allowed']);
+Route::get('/internal/domain/certificate', [DomainTlsController::class, 'certificate']);
 
 // Read-only API for the AtGlance MCP server (mcp/, docs/mcp.md). Answers as the PAT's user.
-Route::prefix('mcp')->middleware(['feature:mcp_server', 'auth.pat', 'throttle:120,1'])->group(function () {
+Route::prefix('mcp')->middleware(['auth.pat', 'throttle:120,1'])->group(function () {
     Route::get('/me', [McpController::class, 'me']);
     Route::get('/workspaces', [McpController::class, 'workspaces']);
     Route::get('/workspaces/{workspaceId}/ai-progress', [McpController::class, 'aiProgress'])->whereNumber('workspaceId');

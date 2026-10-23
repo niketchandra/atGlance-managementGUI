@@ -14,17 +14,7 @@
             "policy_id": "v1",
             "policy_type": "default",
             "validity_months": null,
-            "features": [
-                "ai_connect",
-                "backup_restore",
-                "custom_domain",
-                "mcp_server",
-                "notifications",
-                "s3_backup",
-                "service_accounts",
-                "sso",
-                "workspaces"
-            ]
+            "features": []
         }
     },
     {
@@ -178,15 +168,7 @@
             "policy_type": "default",
             "validity_months": 12,
             "features": [
-                "ai_connect",
-                "backup_restore",
-                "custom_domain",
-                "mcp_server",
-                "notifications",
-                "s3_backup",
-                "service_accounts",
-                "sso",
-                "workspaces"
+                "premium"
             ]
         }
     },
@@ -206,8 +188,7 @@
             "policy_type": "custom",
             "validity_months": 24,
             "features": [
-                "notifications",
-                "sso"
+                "premium"
             ]
         }
     },
@@ -245,15 +226,7 @@
             "policy_type": "default",
             "validity_months": 12,
             "features": [
-                "ai_connect",
-                "backup_restore",
-                "custom_domain",
-                "mcp_server",
-                "notifications",
-                "s3_backup",
-                "service_accounts",
-                "sso",
-                "workspaces"
+                "premium"
             ]
         }
     },
@@ -273,15 +246,7 @@
             "policy_type": "default",
             "validity_months": 12,
             "features": [
-                "ai_connect",
-                "backup_restore",
-                "custom_domain",
-                "mcp_server",
-                "notifications",
-                "s3_backup",
-                "service_accounts",
-                "sso",
-                "workspaces"
+                "premium"
             ]
         }
     },
@@ -319,7 +284,7 @@
             "policy_type": "default",
             "validity_months": 12,
             "features": [
-                "sso"
+                "premium"
             ]
         }
     },

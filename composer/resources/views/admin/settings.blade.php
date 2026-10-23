@@ -601,11 +601,7 @@
                             <div class="ag-plugin-summary" title="{{ $plugin['summary'] }}">{{ $plugin['summary'] }}</div>
                         </div>
                         <div class="ag-plugin-actions">
-                            @if(!($plugin['licensed'] ?? true))
-                                <span class="ag-badge" title="Not included in your license"><i class="fas fa-lock"></i> Not included in your license</span>
-                            @else
-                                <span class="ag-badge {{ $plugin['enabled'] ? 'ag-badge--success' : '' }}">{{ $plugin['enabled'] ? 'Enabled' : 'Disabled' }}</span>
-                            @endif
+                            <span class="ag-badge {{ $plugin['enabled'] ? 'ag-badge--success' : '' }}">{{ $plugin['enabled'] ? 'Enabled' : 'Disabled' }}</span>
                             @if($plugin['action'])
                                 <a class="ag-btn ag-btn--sm" href="{{ $plugin['action']['url'] }}">{{ $plugin['action']['label'] }}</a>
                             @endif
@@ -827,21 +823,20 @@
                 <div><div style="font-size: 12px; color: var(--ag-muted);">Licence ID</div><div style="font-family: monospace; font-size: 12px; word-break: break-all;">{{ $licence['license_id'] }}</div></div>
             </div>
             <div style="margin-bottom: 16px; font-size: 13px;">
-                <div style="font-size: 12px; color: var(--ag-muted); margin-bottom: 6px;">Features</div>
                 <table class="ag-table" style="width: 100%;">
                     @foreach(\App\Support\Licensing\Entitlements::overview() as $feature)
                         <tr data-feature="{{ $feature['key'] }}">
                             <td style="padding: 4px 12px 4px 0;">{{ $feature['name'] }}</td>
                             <td style="padding: 4px 0; text-align: right;">
-                                @if($feature['enabled'])
-                                    <span class="ag-badge ag-badge--success">Enabled</span>
-                                @else
-                                    <span class="ag-badge"><i class="fas fa-lock"></i> Not licensed</span>
-                                @endif
+                                <span class="ag-badge {{ $feature['enabled'] ? 'ag-badge--success' : '' }}">{{ $feature['enabled'] ? 'Enabled' : 'Not included' }}</span>
                             </td>
                         </tr>
                     @endforeach
                 </table>
+                <p style="font-size: 12px; color: var(--ag-muted); margin-top: 6px;">
+                    All console modules (SSO, AI Connect, MCP Server, Custom Domain, S3, Backup &amp; Restore, Notifications, Service Accounts, Workspaces) are included.
+                    Turn them on and off in the <a href="{{ route('admin.settings', ['tab' => 'plugins']) }}" style="color: var(--ag-teal); text-decoration: underline;">Plugins tab</a>.
+                </p>
             </div>
         @else
             <div style="margin-bottom: 14px; padding: 12px; border-radius: 12px; background: var(--ag-warning-soft); border: 1px solid #fcd34d; color: var(--ag-warning); font-size: 13px;">
@@ -856,26 +851,69 @@
             @endif
         @endif
 
-        @php $licenceReplacing = \App\Support\License::hasStoredKey(); @endphp
+        @php
+            $licenceMode = old('license_mode', request('licence_mode', $errors->has('license_key') ? 'key' : 'file')) === 'key' ? 'key' : 'file';
+            $licenceReplacing = \App\Support\License::hasStoredKey();
+        @endphp
         <div style="border-radius: 12px; padding: 12px; background: var(--ag-surface); margin-bottom: 14px; font-size: 13px; line-height: 1.6;" data-licence-help>
             <strong>{{ $licenceReplacing ? 'Renew or replace the licence' : 'Add a licence' }}</strong>
-            <ol style="margin: 6px 0 0 18px; padding: 0; color: var(--ag-subtle);">
-                <li>Log in to <a href="{{ \App\Support\License::portalUrl() }}" target="_blank" rel="noopener" style="color: var(--ag-teal); text-decoration: underline;">atglance.live</a> and open Licences.</li>
-                <li>Enter this console's Installation ID if asked, then click Generate licence file.</li>
-                <li>Upload the .atgl file below within the time shown on atglance.live.</li>
-            </ol>
+            <div style="color: var(--ag-subtle);">
+                Create a licence on <a href="{{ \App\Support\License::portalUrl() }}" target="_blank" rel="noopener" style="color: var(--ag-teal); text-decoration: underline;">atglance.live</a> &rsaquo; Licences and confirm it with the code we email you. Then:
+                <ul style="margin: 4px 0 0 18px; list-style: disc;">
+                    <li><strong style="color: var(--ag-text);">This server can reach atglance.live</strong>: use the <strong style="color: var(--ag-text);">licence key</strong>. Nothing else to enter.</li>
+                    <li><strong style="color: var(--ag-text);">No internet access</strong> (air-gapped, or outbound traffic blocked): use a <strong style="color: var(--ag-text);">licence file</strong> (.atgl) generated from the same licence.</li>
+                </ul>
+            </div>
         </div>
 
-        {{-- Always shown: a licence file made for this Installation ID works only on this console. --}}
-        <p style="font-size: 12px; color: var(--ag-muted); margin-bottom: 10px;">
-            This console's Installation ID: <span style="font-family: monospace;">{{ \App\Support\License::instanceId() }}</span>
-        </p>
+        {{-- Always shown: identifies this console to atglance.live. --}}
+        <div style="border: 2px solid var(--ag-teal, #0f766e); border-radius: 12px; padding: 14px; margin-bottom: 14px; font-size: 13px; background: var(--ag-surface);" data-install-id>
+            <div style="font-size: 14px; font-weight: 700;"><i class="fas fa-fingerprint"></i> This console's Installation ID</div>
+            <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 6px;">
+                <code id="install-id-value" style="font-family: monospace; font-size: 16px; font-weight: 700; word-break: break-all; padding: 4px 8px; border-radius: 8px; background: var(--ag-card, #fff);">{{ \App\Support\License::instanceId() }}</code>
+                <button type="button" id="install-id-copy" class="ag-btn ag-btn--ghost ag-btn--sm"><i class="fas fa-copy"></i> Copy</button>
+            </div>
+            <div style="font-size: 12px; color: var(--ag-subtle); margin-top: 8px; line-height: 1.6;">
+                <strong style="color: var(--ag-text);">Purpose:</strong> a unique ID of this Management Console. atglance.live uses it to tie a licence to one console, so the same licence cannot run on another console.
+                <ul style="margin: 4px 0 0 18px; list-style: disc;">
+                    <li><strong style="color: var(--ag-text);">Licence key:</strong> nothing to do. The console sends it when it activates the key, and atglance.live records it.</li>
+                    <li><strong style="color: var(--ag-text);">Licence file:</strong> copy it and enter it on atglance.live when you generate the file (required or optional, as your licence policy says). With it, the file works on this console only.</li>
+                </ul>
+            </div>
+        </div>
 
-        <form method="POST" action="{{ route('admin.settings.licence') }}" enctype="multipart/form-data">
+        <form method="POST" action="{{ route('admin.settings.licence') }}" enctype="multipart/form-data" id="licence-form">
             @csrf
-            <label class="ag-label" for="license-file">{{ $licenceReplacing ? 'Upload new licence file' : 'Licence file (.atgl)' }}</label>
-            <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-end;">
-                <input class="ag-input" id="license-file" type="file" name="license_file" accept=".atgl" required style="flex: 1; min-width: 240px;">
+            <input type="hidden" name="license_mode" id="licence-mode" value="{{ $licenceMode }}">
+            <div role="tablist" aria-label="How to add the licence" style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px;">
+                <button type="button" role="tab" class="ag-btn ag-btn--sm licence-mode-tab {{ $licenceMode === 'key' ? '' : 'ag-btn--ghost' }}" data-mode="key" aria-selected="{{ $licenceMode === 'key' ? 'true' : 'false' }}">
+                    <i class="fas fa-key"></i> Licence key (internet access)
+                </button>
+                <button type="button" role="tab" class="ag-btn ag-btn--sm licence-mode-tab {{ $licenceMode === 'file' ? '' : 'ag-btn--ghost' }}" data-mode="file" aria-selected="{{ $licenceMode === 'file' ? 'true' : 'false' }}">
+                    <i class="fas fa-file-arrow-up"></i> Licence file (no internet access)
+                </button>
+            </div>
+
+            <div data-licence-panel="key" style="display: {{ $licenceMode === 'key' ? 'block' : 'none' }};">
+                <label class="ag-label" for="license-key">Licence key</label>
+                <input class="ag-input" id="license-key" type="text" name="license_key" autocomplete="off" spellcheck="false" value="{{ old('license_key') }}"
+                       placeholder="Paste your licence key (atg_...)" style="width: 100%; max-width: 520px;">
+                <p style="font-size: 12px; color: var(--ag-muted); margin-top: 4px;">The console activates the key on atglance.live once and stores the licence; after that it works offline.</p>
+                @error('license_key')
+                    @include('admin.partials.licence-error', ['licenceError' => $message])
+                @enderror
+            </div>
+
+            <div data-licence-panel="file" style="display: {{ $licenceMode === 'file' ? 'block' : 'none' }};">
+                <label class="ag-label" for="license-file">Licence file (.atgl)</label>
+                <input class="ag-input" id="license-file" type="file" name="license_file" accept=".atgl" style="width: 100%; max-width: 520px;">
+                <p style="font-size: 12px; color: var(--ag-muted); margin-top: 4px;">On a computer with internet access, open atglance.live &rsaquo; Licences, click "Licence file" on your licence, enter the Installation ID above, and upload the file here within the time shown there.</p>
+                @error('license_file')
+                    @include('admin.partials.licence-error', ['licenceError' => $message])
+                @enderror
+            </div>
+
+            <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-end; margin-top: 12px;">
                 @if($licenceReplacing)
                     <div style="flex: 0 1 240px; min-width: 200px;">
                         <label class="ag-label" for="license-password">Your password</label>
@@ -885,15 +923,48 @@
                 <button class="ag-btn" type="submit">{{ $licenceReplacing ? 'Verify & Replace' : 'Verify & Save' }}</button>
             </div>
             @if($licenceReplacing)
-                <p style="font-size: 12px; color: var(--ag-muted); margin-top: 6px;">Enter your password to replace the licence. The current licence stays in place if the new file is not accepted.</p>
+                <p style="font-size: 12px; color: var(--ag-muted); margin-top: 6px;">Enter your password to replace the licence. The current licence stays in place if the new one is not accepted.</p>
             @endif
-            @error('license_file')
-                @include('admin.partials.licence-error', ['licenceError' => $message])
-            @enderror
             @error('password')
                 <div style="font-size: 12px; color: var(--ag-danger); margin-top: 6px;">{{ $message }}</div>
             @enderror
         </form>
+        <script>
+            (function () {
+                var form = document.getElementById('licence-form');
+                if (!form) { return; }
+                var modeInput = document.getElementById('licence-mode');
+                function setMode(mode) {
+                    modeInput.value = mode;
+                    form.querySelectorAll('[data-licence-panel]').forEach(function (panel) {
+                        panel.style.display = panel.getAttribute('data-licence-panel') === mode ? 'block' : 'none';
+                    });
+                    form.querySelectorAll('.licence-mode-tab').forEach(function (tab) {
+                        var active = tab.getAttribute('data-mode') === mode;
+                        tab.classList.toggle('ag-btn--ghost', !active);
+                        tab.setAttribute('aria-selected', active ? 'true' : 'false');
+                    });
+                    document.getElementById('license-key').required = mode === 'key';
+                    document.getElementById('license-file').required = mode === 'file';
+                }
+                form.querySelectorAll('.licence-mode-tab').forEach(function (tab) {
+                    tab.addEventListener('click', function () { setMode(tab.getAttribute('data-mode')); });
+                });
+                setMode(modeInput.value);
+
+                var copy = document.getElementById('install-id-copy');
+                if (copy && navigator.clipboard) {
+                    copy.addEventListener('click', function () {
+                        navigator.clipboard.writeText(document.getElementById('install-id-value').textContent.trim()).then(function () {
+                            copy.innerHTML = '<i class="fas fa-check"></i> Copied';
+                            setTimeout(function () { copy.innerHTML = '<i class="fas fa-copy"></i> Copy'; }, 1500);
+                        });
+                    });
+                } else if (copy) {
+                    copy.remove();
+                }
+            })();
+        </script>
     </div>
 
     @if($aiPluginEnabled)

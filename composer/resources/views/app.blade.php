@@ -44,12 +44,12 @@
                     if (!$agIsSuperAdmin) {
                         $agNavItems[] = ['label' => 'Workspace', 'icon' => 'fa-sitemap', 'url' => route('admin.workspaces'), 'active' => ['admin.workspaces*', 'workspace.*']];
                     }
-                    $agNavItems[] = ['label' => 'Notifications', 'icon' => 'fa-bell', 'url' => route('admin.notifications'), 'active' => ['admin.notifications*'], 'feature' => 'notifications'];
-                    $agNavItems[] = ['label' => 'Service Accounts', 'icon' => 'fa-robot', 'url' => route('service-accounts.index'), 'active' => ['service-accounts.*'], 'feature' => 'service_accounts'];
+                    $agNavItems[] = ['label' => 'Notifications', 'icon' => 'fa-bell', 'url' => route('admin.notifications'), 'active' => ['admin.notifications*']];
+                    $agNavItems[] = ['label' => 'Service Accounts', 'icon' => 'fa-robot', 'url' => route('service-accounts.index'), 'active' => ['service-accounts.*']];
                 }
                 if ($agIsSuperAdmin) {
                     $agNavItems[] = ['label' => 'Site Settings', 'icon' => 'fa-sliders-h', 'url' => route('admin.settings'), 'active' => ['admin.settings*']];
-                    $agNavItems[] = ['label' => 'Enterprise Console', 'icon' => 'fa-building', 'url' => route('enterprise.console'), 'active' => ['enterprise.*', 'admin.workspaces*', 'workspace.*'], 'feature' => 'workspaces'];
+                    $agNavItems[] = ['label' => 'Enterprise Console', 'icon' => 'fa-building', 'url' => route('enterprise.console'), 'active' => ['enterprise.*', 'admin.workspaces*', 'workspace.*']];
                 }
                 // A user-role account can still be workspace admin of some workspaces.
                 if (!$agIsAdmin && \Illuminate\Support\Facades\DB::table('workspace_user')->where('user_id', $agUser->id)->where('is_admin', true)->exists()) {
@@ -130,11 +130,9 @@
                     @foreach($agNavItems as $agItem)
                         @php
                             $agActive = request()->routeIs(...$agItem['active']);
-                            $agLocked = isset($agItem['feature']) && !\App\Support\Licensing\Entitlements::isFeatureEnabled($agItem['feature']);
                         @endphp
-                        <a href="{{ $agItem['url'] }}" class="ag-side-link {{ $agActive ? 'is-active' : '' }} {{ $agLocked ? 'is-locked' : '' }}" @if($agActive) aria-current="page" @endif @if($agLocked) title="Not included in your license" @endif>
+                        <a href="{{ $agItem['url'] }}" class="ag-side-link {{ $agActive ? 'is-active' : '' }}" @if($agActive) aria-current="page" @endif>
                             <i class="fas {{ $agItem['icon'] }}"></i> <span>{{ $agItem['label'] }}</span>
-                            @if($agLocked)<i class="fas fa-lock" style="margin-left: auto; font-size: 11px; opacity: .6;" aria-label="Not included in your license"></i>@endif
                         </a>
                     @endforeach
                 </nav>

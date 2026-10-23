@@ -6,7 +6,6 @@ use App\Models\PatToken;
 use App\Models\ServiceAccount;
 use App\Models\User;
 use App\Support\ApiIdentity;
-use App\Support\Licensing\Entitlements;
 use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -38,12 +37,6 @@ class AuthenticatePatToken
             return response()->json(['message' => 'Service account keys work only with the atglance CLI API (/api/v1)'], 401);
         }
 
-        if ($isService && !Entitlements::isFeatureEnabled('service_accounts')) {
-            return response()->json([
-                'code' => Entitlements::ERROR_CODE,
-                'message' => Entitlements::notLicensedMessage('service_accounts'),
-            ], 403);
-        }
 
         $patToken = PatToken::where('token', hash('sha256', $token))->first();
         $expectedType = $isService ? ServiceAccount::class : User::class;

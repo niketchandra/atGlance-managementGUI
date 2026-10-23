@@ -14,7 +14,6 @@ use App\Notifications\Channels\TelegramChannel;
 use App\Notifications\Channels\WebhookChannel;
 use App\Notifications\Message;
 use App\Notifications\NotificationEvents;
-use App\Support\Licensing\Entitlements;
 use App\Support\NotificationSettings;
 use App\Support\SiteProfile;
 use App\Support\WorkspaceSettings;
@@ -48,8 +47,7 @@ class Notifier
     {
         try {
             $scope = NotificationEvents::scope($event);
-            // Notification groups need the notifications feature in the licence.
-            if ($scope === null || !Entitlements::isFeatureEnabled('notifications') || !Schema::hasTable('notification_groups')) {
+            if ($scope === null || !Schema::hasTable('notification_groups')) {
                 return;
             }
 

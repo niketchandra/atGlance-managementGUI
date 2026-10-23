@@ -2,7 +2,6 @@
 
 namespace App\Console\Commands;
 
-use App\Support\Licensing\Entitlements;
 use App\Support\McpControl;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
@@ -16,7 +15,7 @@ class ManageMcpCommand extends Command
     public function handle(): int
     {
         // Without the mcp_server feature in the licence the container is stopped.
-        $enabled = McpControl::enabled() && Entitlements::isFeatureEnabled('mcp_server');
+        $enabled = McpControl::enabled();
         $status = McpControl::status();
 
         if ($status === McpControl::UNKNOWN) {
