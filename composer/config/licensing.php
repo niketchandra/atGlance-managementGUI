@@ -20,9 +20,9 @@ return [
     // Licence file, activation record and clock record (on the app-storage volume).
     'path' => storage_path('app/license'),
 
-    // Optional binding: show this console's Installation ID in the installer and Settings so
-    // it can be entered on atglance.live. A file that contains an install_id is always
-    // checked against it, whatever this setting.
+    // Optional binding: show this console's Installation ID in the installer so it can be
+    // entered on atglance.live. Admin Settings > Licence always shows it. A file that contains
+    // an install_id is always checked against it, whatever this setting.
     'show_install_id' => (bool) env('ATGLANCE_LICENSE_SHOW_INSTALL_ID', false),
 
     // Expiry banners appear from these many days before expiry.

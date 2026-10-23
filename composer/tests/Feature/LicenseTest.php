@@ -200,6 +200,23 @@ class LicenseTest extends TestCase
         $this->assertTrue(License::isActive());
     }
 
+    public function test_install_id_error_explains_how_to_fix_it(): void
+    {
+        $this->actingAsRole(100);
+        $bytes = TestLicense::issue(['install_id' => '11111111-2222-4333-8444-555555555555']);
+
+        $this->followingRedirects()
+            ->post(route('admin.settings.licence'), ['license_file' => $this->upload($bytes)])
+            ->assertOk()
+            ->assertSee('data-licence-error="E_INSTALL_ID"', false)
+            ->assertSee('Licence file not accepted (E_INSTALL_ID)')
+            ->assertSee('This licence file was generated for another installation.')
+            ->assertSee(License::instanceId())
+            ->assertSee('Enter the Installation ID above');
+
+        $this->assertFalse(License::isActive());
+    }
+
     public function test_install_bound_licence_is_checked_against_this_console(): void
     {
         $this->expectExceptionObject(new LicenseException(LicenseException::INSTALL_ID));

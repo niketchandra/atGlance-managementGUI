@@ -851,6 +851,9 @@
                     <strong>Licence not valid ({{ $licence['error'] }}).</strong> {{ $licence['error_message'] }} The console is read-only until a new licence file is uploaded.
                 @endif
             </div>
+            @if($licence['error'] === 'E_INSTALL_ID')
+                @include('admin.partials.licence-error', ['licenceError' => $licence['error'] . ': ' . $licence['error_message']])
+            @endif
         @endif
 
         <div style="border-radius: 12px; padding: 12px; background: var(--ag-surface); margin-bottom: 14px;">
@@ -862,11 +865,10 @@
             </ol>
         </div>
 
-        @if(config('licensing.show_install_id'))
-            <p style="font-size: 12px; color: var(--ag-muted); margin-bottom: 10px;">
-                Installation ID (optional on atglance.live, binds the file to this console): <span style="font-family: monospace;">{{ \App\Support\License::instanceId() }}</span>
-            </p>
-        @endif
+        {{-- Always shown here: a file bound to an Installation ID works only on that console. --}}
+        <p style="font-size: 12px; color: var(--ag-muted); margin-bottom: 10px;">
+            This console's Installation ID (optional on atglance.live, binds the file to this console): <span style="font-family: monospace;">{{ \App\Support\License::instanceId() }}</span>
+        </p>
 
         @php $licenceReplacing = \App\Support\License::hasStoredKey(); @endphp
         <form method="POST" action="{{ route('admin.settings.licence') }}" enctype="multipart/form-data">
@@ -886,7 +888,7 @@
                 <p style="font-size: 12px; color: var(--ag-muted); margin-top: 6px;">Enter your password to replace the licence. The current licence stays in place if the new file is not accepted.</p>
             @endif
             @error('license_file')
-                <div style="font-size: 12px; color: var(--ag-danger); margin-top: 6px;">{{ $message }}</div>
+                @include('admin.partials.licence-error', ['licenceError' => $message])
             @enderror
             @error('password')
                 <div style="font-size: 12px; color: var(--ag-danger); margin-top: 6px;">{{ $message }}</div>
