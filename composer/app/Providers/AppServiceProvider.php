@@ -133,7 +133,8 @@ class AppServiceProvider extends ServiceProvider
                 $sharedSettings['siteFeatures'] = is_array($decodedFeatures) ? $decodedFeatures : [];
 
                 $disableEmailRegistration = filter_var((string) AdminSetting::getValue('disable_email_registration', 'false'), FILTER_VALIDATE_BOOL);
-                $ssoEnabledFlag = \App\Support\SsoSettings::enabled();
+                // No SSO buttons when the licence does not include SSO Login.
+                $ssoEnabledFlag = \App\Support\SsoSettings::enabled() && \App\Support\Licensing\Entitlements::isFeatureEnabled('sso');
 
                 $sharedSettings['ssoEnabled'] = $ssoEnabledFlag;
                 $sharedSettings['disableEmailRegistration'] = $disableEmailRegistration;

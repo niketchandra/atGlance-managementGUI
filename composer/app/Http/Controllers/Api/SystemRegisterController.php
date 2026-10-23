@@ -11,7 +11,9 @@ use App\Models\User;
 use App\Models\Workspace;
 use App\Support\ActivityRecorder;
 use App\Support\ForceLockout;
+use App\Support\License;
 use App\Support\ServiceAccountSettings;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -315,8 +317,32 @@ class SystemRegisterController extends Controller
      * Creates a system for the PAT's user from validated $data. Shared by the legacy
      * and the /api/v1 register endpoints. Returns the 401 response without a PAT.
      */
-    public function createSystem(Request $request, array $data, ?ServiceAccount $account = null)
+    /**
+     * 403 when one more active node would exceed the licence's max_nodes (or there is no
+     * active licence); null when the node may be added. Existing nodes are never touched.
+     */
+    public static function nodeLimitResponse(): ?JsonResponse
     {
+        if (License::canAddNode()) {
+            return null;
+        }
+
+        return response()->json([
+            'message' => License::nodeLimitMessage(),
+            'code' => License::isActive() ? 'NODE_LIMIT_REACHED' : 'E_NO_LICENSE',
+        ], 403);
+    }
+
+    /**
+     * @param bool $replacesActiveNode the new node replaces an active one (deactivated in the same
+     *                                 transaction), so the number of active nodes does not grow
+     */
+    public function createSystem(Request $request, array $data, ?ServiceAccount $account = null, bool $replacesActiveNode = false)
+    {
+        if (!$replacesActiveNode && ($limit = self::nodeLimitResponse())) {
+            return $limit;
+        }
+
         $user = $request->user();
         $patToken = $request->attributes->get('patToken');
 
@@ -474,6 +500,10 @@ class SystemRegisterController extends Controller
                 'system_id' => $system->id,
                 'status' => $system->status,
             ], 200);
+        }
+
+        if ($limit = self::nodeLimitResponse()) {
+            return $limit;
         }
 
         $system->status = 'active';
@@ -693,6 +723,10 @@ class SystemRegisterController extends Controller
                 'system_user_id' => $system->user_id,
                 'status' => $system->status,
             ], 200);
+        }
+
+        if ($limit = self::nodeLimitResponse()) {
+            return $limit;
         }
 
         $system->status = 'active';

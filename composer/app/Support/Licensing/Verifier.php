@@ -20,6 +20,7 @@ final class Verifier
     public const MODE_STARTUP = 'startup';
 
     public const PRODUCT = 'atglance-console';
+    /** File layout version (header byte). The payload has its own format_version, 1 or 2. */
     public const FORMAT_VERSION = 1;
     public const ISSUED_TOLERANCE_SECONDS = 600;
     public const ACTIVATION_WINDOW_SECONDS = 10800;
@@ -31,11 +32,37 @@ final class Verifier
     private const DATE_PATTERN = '/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/';
     private const UUID_PATTERN = '/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/';
 
+    /** Payload versions this verifier reads. */
+    public const PAYLOAD_VERSIONS = [1, 2];
+
+    /** v2: allowed activation window (activate_before - issued_at), in seconds. */
+    public const MIN_WINDOW_SECONDS = 300;
+    public const MAX_WINDOW_SECONDS = 10800;
+
+    private const FEATURE_PATTERN = '/^[a-z][a-z0-9_]{0,63}$/';
+    private const POLICY_ID_PATTERN = '/^[A-Za-z0-9:._-]{1,64}$/';
+
     /**
      * @param array<string, array{public_key: string, enc_key: string}> $keyring key_id => raw 32-byte keys
+     * @param list<array{key: string, v1_default?: bool}> $catalog the feature catalog (FEATURES.md)
      */
-    public function __construct(private readonly array $keyring)
+    public function __construct(private readonly array $keyring, private readonly array $catalog = [])
     {
+    }
+
+    /**
+     * The feature catalog from a features.json file (contracts/fixtures/features.json).
+     *
+     * @return list<array{key: string, name: string, description: string, v1_default: bool}>
+     */
+    public static function catalogFromFile(string $path): array
+    {
+        $data = is_file($path) ? json_decode((string) file_get_contents($path), true) : null;
+
+        return array_values(array_filter(
+            is_array($data['features'] ?? null) ? $data['features'] : [],
+            fn ($f) => is_array($f) && is_string($f['key'] ?? null),
+        ));
     }
 
     /**
@@ -175,17 +202,30 @@ final class Verifier
             throw new LicenseException(LicenseException::PAYLOAD);
         }
 
+        $version = is_array($p) ? ($p['format_version'] ?? null) : null;
+        if (is_int($version) && $version > max(self::PAYLOAD_VERSIONS)) {
+            throw new LicenseException(LicenseException::VERSION);
+        }
+        $v2 = $version === 2;
+
         $ok = is_array($p)
-            && ($p['format_version'] ?? null) === self::FORMAT_VERSION
+            && in_array($version, self::PAYLOAD_VERSIONS, true)
             && is_string($p['license_id'] ?? null) && preg_match('/^LIC-[0-9a-f-]{36}$/', $p['license_id']) === 1
             && is_string($p['product'] ?? null)
             && is_string($p['key_id'] ?? null) && hash_equals($headerKeyId, $p['key_id'])
             && is_string($p['customer'] ?? null) && $p['customer'] !== '' && mb_strlen($p['customer']) <= 255
             && is_string($p['email'] ?? null)
             && is_string($p['plan'] ?? null) && $p['plan'] !== ''
-            && is_int($p['seats'] ?? null) && $p['seats'] >= 1
             && is_array($p['features'] ?? null) && array_is_list($p['features'])
             && count(array_filter($p['features'], 'is_string')) === count($p['features'])
+            && ($v2
+                ? is_int($p['max_nodes'] ?? null) && $p['max_nodes'] >= 0
+                    && is_int($p['max_users'] ?? null) && $p['max_users'] >= 0
+                    && is_string($p['policy_id'] ?? null) && preg_match(self::POLICY_ID_PATTERN, $p['policy_id']) === 1
+                    && in_array($p['policy_type'] ?? null, ['default', 'custom'], true)
+                    && is_int($p['validity_months'] ?? null) && $p['validity_months'] >= 1 && $p['validity_months'] <= 120
+                    && count(array_filter($p['features'], fn ($f) => preg_match(self::FEATURE_PATTERN, $f) === 1)) === count($p['features'])
+                : is_int($p['seats'] ?? null) && $p['seats'] >= 1)
             && is_string($p['min_version'] ?? null) && preg_match('/^\d+\.\d+\.\d+$/', $p['min_version']) === 1
             && array_key_exists('install_id', $p)
             && ($p['install_id'] === null || (is_string($p['install_id']) && preg_match(self::UUID_PATTERN, strtolower($p['install_id'])) === 1));
@@ -196,8 +236,11 @@ final class Verifier
         $issued = self::parseDate($p['issued_at'] ?? null);
         $activateBefore = self::parseDate($p['activate_before'] ?? null);
         $expires = self::parseDate($p['expires_at'] ?? null);
-        if ($activateBefore->getTimestamp() !== $issued->getTimestamp() + self::ACTIVATION_WINDOW_SECONDS
-            || $expires->getTimestamp() <= $issued->getTimestamp()) {
+        $window = $activateBefore->getTimestamp() - $issued->getTimestamp();
+        $windowOk = $v2
+            ? $window >= self::MIN_WINDOW_SECONDS && $window <= self::MAX_WINDOW_SECONDS
+            : $window === self::ACTIVATION_WINDOW_SECONDS;
+        if (!$windowOk || $expires->getTimestamp() <= $issued->getTimestamp()) {
             throw new LicenseException(LicenseException::PAYLOAD);
         }
 
@@ -208,14 +251,44 @@ final class Verifier
             customer: $p['customer'],
             email: $p['email'],
             plan: $p['plan'],
-            seats: $p['seats'],
-            features: $p['features'],
+            features: $v2 ? $this->knownFeatures($p['features']) : $this->v1Features(),
             issuedAt: $issued,
             activateBefore: $activateBefore,
             expiresAt: $expires,
             minVersion: $p['min_version'],
             installId: $p['install_id'] === null ? null : strtolower($p['install_id']),
+            formatVersion: $version,
+            // v1 defaults: LICENSE_FORMAT.md, "Limits and features of a version 1 payload".
+            maxNodes: $v2 ? $p['max_nodes'] : 0,
+            maxUsers: $v2 ? $p['max_users'] : $p['seats'],
+            policyId: $v2 ? $p['policy_id'] : 'v1',
+            policyType: $v2 ? $p['policy_type'] : 'default',
+            validityMonths: $v2 ? $p['validity_months'] : null,
         );
+    }
+
+    /**
+     * The listed keys this console knows, sorted, without duplicates. Unknown keys are ignored.
+     *
+     * @param list<string> $features
+     * @return list<string>
+     */
+    private function knownFeatures(array $features): array
+    {
+        $known = array_column($this->catalog, 'key');
+        $keys = array_values(array_unique(array_intersect($features, $known)));
+        sort($keys);
+
+        return $keys;
+    }
+
+    /** @return list<string> catalog keys marked v1_default, sorted */
+    private function v1Features(): array
+    {
+        $keys = array_column(array_filter($this->catalog, fn ($f) => (bool) ($f['v1_default'] ?? false)), 'key');
+        sort($keys);
+
+        return array_values($keys);
     }
 
     private static function parseDate(mixed $value): DateTimeImmutable

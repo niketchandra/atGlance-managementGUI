@@ -601,7 +601,11 @@
                             <div class="ag-plugin-summary" title="{{ $plugin['summary'] }}">{{ $plugin['summary'] }}</div>
                         </div>
                         <div class="ag-plugin-actions">
-                            <span class="ag-badge {{ $plugin['enabled'] ? 'ag-badge--success' : '' }}">{{ $plugin['enabled'] ? 'Enabled' : 'Disabled' }}</span>
+                            @if(!($plugin['licensed'] ?? true))
+                                <span class="ag-badge" title="Not included in your license"><i class="fas fa-lock"></i> Not included in your license</span>
+                            @else
+                                <span class="ag-badge {{ $plugin['enabled'] ? 'ag-badge--success' : '' }}">{{ $plugin['enabled'] ? 'Enabled' : 'Disabled' }}</span>
+                            @endif
                             @if($plugin['action'])
                                 <a class="ag-btn ag-btn--sm" href="{{ $plugin['action']['url'] }}">{{ $plugin['action']['label'] }}</a>
                             @endif
@@ -802,7 +806,20 @@
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-bottom: 16px; font-size: 14px;">
                 <div><div style="font-size: 12px; color: var(--ag-muted);">Customer</div><div>{{ $licence['customer'] }}</div></div>
                 <div><div style="font-size: 12px; color: var(--ag-muted);">Plan</div><div>{{ ucfirst($licence['plan']) }}</div></div>
-                <div><div style="font-size: 12px; color: var(--ag-muted);">Seats (users, all roles)</div><div @if($licence['seats_used'] >= $licence['seats']) style="color: var(--ag-warning);" @endif>{{ $licence['seats_used'] }} of {{ $licence['seats'] }} used</div></div>
+                <div><div style="font-size: 12px; color: var(--ag-muted);">Policy</div><div>{{ $licence['policy_type'] === 'custom' ? 'Custom' : 'Standard' }}</div></div>
+                @foreach(['nodes' => 'Nodes (active systems)', 'users' => 'Users (all roles)'] as $usageKey => $usageLabel)
+                    @php
+                        $u = $licence['usage'][$usageKey];
+                        $usageColor = ['warning' => 'var(--ag-warning)', 'full' => 'var(--ag-warning)', 'over' => 'var(--ag-danger)'][$u['level']] ?? null;
+                    @endphp
+                    <div data-usage="{{ $usageKey }}">
+                        <div style="font-size: 12px; color: var(--ag-muted);">{{ $usageLabel }}</div>
+                        <div @if($usageColor) style="color: {{ $usageColor }}; font-weight: 600;" @endif>
+                            {{ $u['used'] }} / {{ $u['max'] === 0 ? 'unlimited' : $u['max'] }}
+                            @if($u['level'] === 'over') (over limit) @elseif($u['level'] === 'full') (limit reached) @elseif($u['level'] === 'warning') (80% used) @endif
+                        </div>
+                    </div>
+                @endforeach
                 <div><div style="font-size: 12px; color: var(--ag-muted);">Issued</div><div>{{ \App\Support\License::date($licence['issued_at']) }}</div></div>
                 <div><div style="font-size: 12px; color: var(--ag-muted);">Expires</div><div>{{ \App\Support\License::date($licence['expires_at']) }}</div></div>
                 <div><div style="font-size: 12px; color: var(--ag-muted);">Days remaining</div><div>{{ max(0, (int) $licence['days_left']) }}</div></div>
@@ -810,8 +827,21 @@
                 <div><div style="font-size: 12px; color: var(--ag-muted);">Licence ID</div><div style="font-family: monospace; font-size: 12px; word-break: break-all;">{{ $licence['license_id'] }}</div></div>
             </div>
             <div style="margin-bottom: 16px; font-size: 13px;">
-                <div style="font-size: 12px; color: var(--ag-muted);">Features</div>
-                <div>{{ $licence['features'] ? implode(', ', $licence['features']) : 'Standard' }}</div>
+                <div style="font-size: 12px; color: var(--ag-muted); margin-bottom: 6px;">Features</div>
+                <table class="ag-table" style="width: 100%;">
+                    @foreach(\App\Support\Licensing\Entitlements::overview() as $feature)
+                        <tr data-feature="{{ $feature['key'] }}">
+                            <td style="padding: 4px 12px 4px 0;">{{ $feature['name'] }}</td>
+                            <td style="padding: 4px 0; text-align: right;">
+                                @if($feature['enabled'])
+                                    <span class="ag-badge ag-badge--success">Enabled</span>
+                                @else
+                                    <span class="ag-badge"><i class="fas fa-lock"></i> Not licensed</span>
+                                @endif
+                            </td>
+                        </tr>
+                    @endforeach
+                </table>
             </div>
         @else
             <div style="margin-bottom: 14px; padding: 12px; border-radius: 12px; background: var(--ag-warning-soft); border: 1px solid #fcd34d; color: var(--ag-warning); font-size: 13px;">

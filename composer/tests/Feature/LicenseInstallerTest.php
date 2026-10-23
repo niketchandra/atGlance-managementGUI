@@ -89,11 +89,11 @@ class LicenseInstallerTest extends TestCase
 
     public function test_preview_shows_the_decoded_details(): void
     {
-        $bytes = TestLicense::issue(['customer' => 'Acme Corp', 'plan' => 'enterprise', 'seats' => 25]);
+        $bytes = TestLicense::issue(['customer' => 'Acme Corp', 'plan' => 'enterprise', 'max_nodes' => 25, 'max_users' => 0, 'features' => ['sso']]);
 
         $this->post(route('install.license.preview'), ['license_file' => $this->upload($bytes)], ['Accept' => 'application/json'])
             ->assertOk()
-            ->assertJson(['ok' => true, 'license' => ['customer' => 'Acme Corp', 'plan' => 'Enterprise', 'seats' => '25']])
+            ->assertJson(['ok' => true, 'license' => ['customer' => 'Acme Corp', 'plan' => 'Enterprise', 'nodes' => '25', 'users' => 'Unlimited', 'policy' => 'Standard', 'features' => 'SSO Login']])
             ->assertJsonStructure(['license' => ['issued_at', 'expires_at']]);
 
         $this->assertFalse(License::hasStoredKey(), 'Preview must not save the file');

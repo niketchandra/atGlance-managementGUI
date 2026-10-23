@@ -27,7 +27,7 @@ class VerifierContractTest extends TestCase
 
         return new Verifier(Verifier::keyring([
             $test['key_id'] => ['public_key' => $test['ed25519_public_b64'], 'enc_key' => $test['aes_key_hex']],
-        ]));
+        ]), Verifier::catalogFromFile(self::dir() . '/features.json'));
     }
 
     /**
@@ -43,8 +43,9 @@ class VerifierContractTest extends TestCase
     #[DataProvider('cases')]
     public function test_contract_case(array $case): void
     {
+        $license = null;
         try {
-            self::verifier()->verify(
+            $license = self::verifier()->verify(
                 (string) file_get_contents(self::dir() . '/' . $case['file']),
                 $case['mode'],
                 new DateTimeImmutable($case['now']),
@@ -57,6 +58,23 @@ class VerifierContractTest extends TestCase
         }
 
         $this->assertSame($case['expect'], $result);
+
+        if (isset($case['decoded'])) {
+            $this->assertSame($case['decoded'], [
+                'format_version' => $license->formatVersion,
+                'max_nodes' => $license->maxNodes,
+                'max_users' => $license->maxUsers,
+                'policy_id' => $license->policyId,
+                'policy_type' => $license->policyType,
+                'validity_months' => $license->validityMonths,
+                'features' => $license->features,
+            ]);
+        }
+    }
+
+    public function test_runtime_catalog_matches_the_contract_copy(): void
+    {
+        $this->assertFileEquals(self::dir() . '/features.json', dirname(__DIR__, 3) . '/resources/licensing/features.json');
     }
 
     public function test_valid_file_decodes_to_the_expected_payload(): void
@@ -72,8 +90,10 @@ class VerifierContractTest extends TestCase
 
         $this->assertSame($expected['license_id'], $license->licenseId);
         $this->assertSame($expected['customer'], $license->customer);
-        $this->assertSame($expected['seats'], $license->seats);
-        $this->assertSame($expected['features'], $license->features);
+        $this->assertSame($expected['seats'], $license->maxUsers);
+        // v1: the payload's features are ignored; every v1_default catalog feature applies.
+        $this->assertNotSame($expected['features'], $license->features);
+        $this->assertContains('mcp_server', $license->features);
         $this->assertSame($expected['expires_at'], Verifier::formatDate($license->expiresAt));
     }
 

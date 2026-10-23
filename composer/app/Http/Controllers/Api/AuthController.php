@@ -18,8 +18,8 @@ class AuthController extends Controller
 {
     public function register(Request $request)
     {
-        if (!License::hasFreeSeat()) {
-            return response()->json(['message' => License::seatMessage()], 403);
+        if (!License::canAddUser()) {
+            return response()->json(['message' => License::userLimitMessage(), 'code' => License::isActive() ? 'USER_LIMIT_REACHED' : 'E_NO_LICENSE'], 403);
         }
 
         if ($this->isEmailRegistrationDisabled()) {

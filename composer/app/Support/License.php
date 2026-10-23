@@ -2,7 +2,9 @@
 
 namespace App\Support;
 
+use App\Models\SystemRegister;
 use App\Models\User;
+use App\Support\Licensing\Entitlements;
 use App\Support\Licensing\LicenseData;
 use App\Support\Licensing\LicenseException;
 use App\Support\Licensing\LicenseStore;
@@ -90,10 +92,10 @@ class License
     }
 
     /**
-     * Seats = user accounts of any role (service accounts are separate and do not count).
-     * Users created by the installer count too.
+     * Users that count toward max_users: every user account, all roles, including the two the
+     * installer creates. Service accounts live in their own table and do not count.
      */
-    public static function seatsUsed(): int
+    public static function usersUsed(): int
     {
         try {
             return User::query()->count();
@@ -102,32 +104,95 @@ class License
         }
     }
 
-    /** Seats in the active licence; null without an active licence. */
-    public static function seatsTotal(): ?int
+    /** Nodes that count toward max_nodes: registered systems with status "active". */
+    public static function nodesUsed(): int
+    {
+        try {
+            return SystemRegister::query()->where('status', 'active')->count();
+        } catch (\Throwable) {
+            return 0;
+        }
+    }
+
+    /** max_users of the active licence (0 = unlimited); null without an active licence. */
+    public static function maxUsers(): ?int
     {
         $status = self::status();
 
-        return $status['state'] === self::ACTIVE ? $status['license']->seats : null;
+        return $status['state'] === self::ACTIVE ? $status['license']->maxUsers : null;
     }
 
-    /** Another user may be created: the licence is active and not every seat is taken. */
-    public static function hasFreeSeat(): bool
+    /** max_nodes of the active licence (0 = unlimited); null without an active licence. */
+    public static function maxNodes(): ?int
     {
-        $total = self::seatsTotal();
+        $status = self::status();
 
-        return $total !== null && self::seatsUsed() < $total;
+        return $status['state'] === self::ACTIVE ? $status['license']->maxNodes : null;
     }
 
-    /** Message when user creation is refused: no licence, or every seat taken. */
-    public static function seatMessage(): string
+    /** Another user may be created: the licence is active and the user limit is not reached. */
+    public static function canAddUser(): bool
     {
-        $total = self::seatsTotal();
-        if ($total === null) {
-            return self::REQUIRED_MESSAGE;
+        $max = self::maxUsers();
+
+        return $max !== null && ($max === 0 || self::usersUsed() < $max);
+    }
+
+    /** Another node may be registered or reactivated: the licence is active and the node limit is not reached. */
+    public static function canAddNode(): bool
+    {
+        $max = self::maxNodes();
+
+        return $max !== null && ($max === 0 || self::nodesUsed() < $max);
+    }
+
+    /** Message when user creation is refused: no licence, or the user limit is reached. */
+    public static function userLimitMessage(): string
+    {
+        $max = self::maxUsers();
+
+        return $max === null
+            ? self::REQUIRED_MESSAGE
+            : 'User limit reached (' . self::usersUsed() . '/' . $max . '). Upload a license with a higher user limit.';
+    }
+
+    /** Message when node registration is refused: no licence, or the node limit is reached. */
+    public static function nodeLimitMessage(): string
+    {
+        $max = self::maxNodes();
+
+        return $max === null
+            ? self::REQUIRED_MESSAGE
+            : 'Node limit reached (' . self::nodesUsed() . '/' . $max . '). Upload a license with a higher node limit.';
+    }
+
+    /**
+     * Usage against the limits of the active licence, for Settings > Licence and the banners.
+     * level: ok, warning (80 % or more), full (at the limit), over (above it, after a downgrade).
+     *
+     * @return array<string, array{used: int, max: int, level: string}>|null null without an active licence
+     */
+    public static function usage(): ?array
+    {
+        if (self::maxUsers() === null) {
+            return null;
+        }
+        $level = static function (int $used, int $max): string {
+            return match (true) {
+                $max === 0 => 'ok',
+                $used > $max => 'over',
+                $used === $max => 'full',
+                $used * 10 >= $max * 8 => 'warning',
+                default => 'ok',
+            };
+        };
+
+        $usage = [];
+        foreach (['nodes' => [self::nodesUsed(), self::maxNodes()], 'users' => [self::usersUsed(), self::maxUsers()]] as $name => [$used, $max]) {
+            $usage[$name] = ['used' => $used, 'max' => (int) $max, 'level' => $level($used, (int) $max)];
         }
 
-        return 'All ' . $total . ' ' . ($total === 1 ? 'seat' : 'seats') . ' of the AtGlance licence are in use. '
-            . 'Delete a user, or get a licence with more seats at atglance.live.';
+        return $usage;
     }
 
     /** A licence file is stored (active or not); uploading another one is then a replacement. */
@@ -184,6 +249,17 @@ class License
             return null;
         }
 
+        // Above a limit after a licence with lower limits was uploaded: nothing is removed.
+        $over = [];
+        foreach (self::usage() ?? [] as $name => $u) {
+            if ($u['level'] === 'over') {
+                $over[] = $u['used'] . '/' . $u['max'] . ' ' . $name;
+            }
+        }
+        if ($over !== []) {
+            return ['level' => 'warning', 'text' => 'Over the licence limit (' . implode(', ', $over) . '). Nothing was removed, but no more can be added until usage is within the limit or a licence with higher limits is uploaded.'];
+        }
+
         $days = $status['license']->daysLeft(self::now());
         $warn = config('licensing.warn_days', [30, 7, 1]);
         sort($warn);
@@ -200,7 +276,7 @@ class License
     }
 
     /**
-     * @return array{active: bool, state: string, error: ?string, error_message: string, clock_warning: bool, name: string, customer: string, email: string, plan: string, seats: ?int, seats_used: int, features: list<string>, license_id: string, issued_at: string, expires_at: string, activated_at: string, days_left: ?int, install_id: ?string}
+     * @return array{active: bool, state: string, error: ?string, error_message: string, clock_warning: bool, name: string, customer: string, email: string, plan: string, format_version: ?int, max_nodes: ?int, max_users: ?int, policy_id: string, policy_type: string, validity_months: ?int, usage: ?array, features: list<string>, license_id: string, issued_at: string, expires_at: string, activated_at: string, days_left: ?int, install_id: ?string}
      */
     public static function summary(): array
     {
@@ -217,8 +293,13 @@ class License
             'customer' => $license?->customer ?? '',
             'email' => $license?->email ?? '',
             'plan' => $license?->plan ?? '',
-            'seats' => $license?->seats,
-            'seats_used' => self::seatsUsed(),
+            'format_version' => $license?->formatVersion,
+            'max_nodes' => $license?->maxNodes,
+            'max_users' => $license?->maxUsers,
+            'policy_id' => $license?->policyId ?? '',
+            'policy_type' => $license?->policyType ?? '',
+            'validity_months' => $license?->validityMonths,
+            'usage' => self::usage(),
             'features' => $license?->features ?? [],
             'license_id' => $license?->licenseId ?? '',
             'issued_at' => $license ? $license->issuedAt->format('Y-m-d H:i:s') : '',
@@ -300,7 +381,7 @@ class License
 
     private static function verifier(): Verifier
     {
-        return new Verifier(Verifier::keyring((array) config('licensing.keyring', [])));
+        return new Verifier(Verifier::keyring((array) config('licensing.keyring', [])), Entitlements::catalog());
     }
 
     private static function now(): DateTimeImmutable

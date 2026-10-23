@@ -51,6 +51,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'app.installed' => \App\Http\Middleware\EnsureApplicationInstalled::class,
             'atglance.system' => \App\Http\Middleware\AuthenticateSystemKey::class,
             'sa.permission' => \App\Http\Middleware\RequireServiceAccountPermission::class,
+            'feature' => \App\Http\Middleware\RequireFeature::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

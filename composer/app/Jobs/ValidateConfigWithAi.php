@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Models\WorkspaceAiRun;
 use App\Services\ConfigAiReviewer;
 use App\Support\AiSettings;
+use App\Support\Licensing\Entitlements;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -46,6 +47,11 @@ class ValidateConfigWithAi implements ShouldQueue
     {
         // "Reset queue" cancelled this run: end without calling the AI or counting.
         if ($this->runId !== null && WorkspaceAiRun::isCancelled($this->runId)) {
+            return;
+        }
+
+        // Queued before the licence dropped AI Connect: end without calling the AI.
+        if (!Entitlements::isFeatureEnabled('ai_connect')) {
             return;
         }
 

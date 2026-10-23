@@ -104,7 +104,10 @@
                         <dl id="licenseDetails" class="mt-3 hidden grid grid-cols-2 gap-x-4 gap-y-1 rounded-xl border border-green-200 bg-green-50 p-3 text-xs text-slate-800">
                             <dt class="text-slate-500">Customer</dt><dd data-field="customer"></dd>
                             <dt class="text-slate-500">Plan</dt><dd data-field="plan"></dd>
-                            <dt class="text-slate-500">Seats</dt><dd data-field="seats"></dd>
+                            <dt class="text-slate-500">Policy</dt><dd data-field="policy"></dd>
+                            <dt class="text-slate-500">Node limit</dt><dd data-field="nodes"></dd>
+                            <dt class="text-slate-500">User limit</dt><dd data-field="users"></dd>
+                            <dt class="text-slate-500">Features</dt><dd data-field="features"></dd>
                             <dt class="text-slate-500">Issued</dt><dd data-field="issued_at"></dd>
                             <dt class="text-slate-500">Expires</dt><dd data-field="expires_at"></dd>
                         </dl>

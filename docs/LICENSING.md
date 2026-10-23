@@ -42,7 +42,7 @@ Console code:
 | `composer/config/licensing.php` | Keyring, storage path, banner days, Installation ID flag |
 | `composer/config/license-keyring.json` | Keyring embedded at build time |
 
-## File format (version 1)
+## File format
 
 All integers are big-endian.
 
@@ -64,26 +64,83 @@ authenticated data. The plaintext is:
 [2 bytes signature length = 64][64 bytes Ed25519 signature of the payload][payload bytes]
 ```
 
-The payload is UTF-8 JSON. Dates are UTC, `YYYY-MM-DDTHH:MM:SSZ`.
+The payload is UTF-8 JSON. Dates are UTC, `YYYY-MM-DDTHH:MM:SSZ`. The payload has its own
+`format_version`: 1 or 2. Both use the file layout above (layout byte `0x01`); atglance.live
+issues version 2 since 2.3.0.
 
-| Field | Rule |
-|---|---|
-| `format_version` | `1` |
-| `license_id` | `LIC-<uuid>` |
-| `product` | `atglance-console` |
-| `key_id` | equal to the header key_id |
-| `customer`, `email`, `plan` | from the atglance.live account |
-| `seats` | integer >= 1: the most user accounts the console may hold, all roles together. Service accounts do not count; the two accounts the installer creates do. Creating, registering or SSO-provisioning a user past the limit is refused |
-| `features` | array of strings |
-| `issued_at` | generation time |
-| `activate_before` | exactly `issued_at` + 3 hours |
-| `expires_at` | later than `issued_at` |
-| `min_version` | lowest console version, `MAJOR.MINOR.PATCH` |
-| `install_id` | console Installation ID the file is bound to, or `null` |
+| Field | Payload | Rule |
+|---|---|---|
+| `format_version` | both | `1` or `2` |
+| `license_id` | both | `LIC-<uuid>` |
+| `product` | both | `atglance-console` |
+| `key_id` | both | equal to the header key_id |
+| `customer`, `email`, `plan` | both | from the atglance.live account |
+| `features` | both | v2: enabled feature keys (see "Features"); v1: ignored |
+| `issued_at` | both | generation time |
+| `activate_before` | both | v1: exactly `issued_at` + 3 hours; v2: `issued_at` + the policy's window, 5 to 180 minutes |
+| `expires_at` | both | later than `issued_at` |
+| `min_version` | both | lowest console version, `MAJOR.MINOR.PATCH` |
+| `install_id` | both | console Installation ID the file is bound to, or `null` |
+| `seats` | v1 | integer >= 1, read as `max_users` |
+| `max_nodes` | v2 | integer >= 0, `0` = unlimited |
+| `max_users` | v2 | integer >= 0, `0` = unlimited |
+| `policy_id` | v2 | the policy that produced the file: `global`, `plan:<code>` or `custom:<id>` |
+| `policy_type` | v2 | `default` or `custom` |
+| `validity_months` | v2 | 1 to 120, informational; `expires_at` is authoritative |
+
+**Version 1 licences** keep working. They are read as: `max_users` = `seats`, `max_nodes` = 0
+(unlimited), every feature in the catalog (consoles before feature gating had everything),
+policy `v1` / `default`.
 
 Verification order (the first failure wins): magic and version, key ID, decryption, signature,
-payload fields, product, `issued_at` not more than 10 minutes in the future, `activate_before`
+payload fields (a payload version above 2 gives `E_VERSION`; a malformed v2 field gives
+`E_PAYLOAD`), product, `issued_at` not more than 10 minutes in the future, `activate_before`
 (activation only), `expires_at`, `min_version`, `install_id`.
+
+## Limits
+
+The console enforces the limits of the active licence on the server (web and API), never only in
+the UI. The values come only from the verified file; there is no database or config value that
+can change them.
+
+| Limit | What counts | Refused | Code |
+|---|---|---|---|
+| `max_nodes` | registered systems with status `active`. Deregistered (inactive) systems do not count | registering a node (`POST /api/v1/systems`, legacy `/api/system-register`), reactivating one (`/api/v1/systems/self/reactivate`, `/api/system-reactive`, and the force variants). Replacing a node (`replaces_system_id`) does not add one | `NODE_LIMIT_REACHED`: "Node limit reached (X/Y). Upload a license with a higher node limit." |
+| `max_users` | every user account, all roles, including the two accounts the installer creates. Service accounts do not count | creating a user (Users page, `POST /api/users`), registering (`/register`, `/api/auth/register`), first SSO sign-in, queued user creation | `USER_LIMIT_REACHED`: "User limit reached (X/Y). Upload a license with a higher user limit." |
+
+`0` means unlimited. Admin Settings > Licence shows nodes and users as used / limit, in warning
+colour from 80 % and at 100 %.
+
+**Lower limits after a renewal.** If a new licence allows fewer nodes or users than exist, nothing
+is deleted or disabled. The console shows an "over the licence limit" banner and refuses new nodes
+or users until usage is within the limit (deregister nodes or delete users) or a licence with
+higher limits is uploaded.
+
+## Features
+
+`features` enables modules from the catalog (workspace `contracts/FEATURES.md`, shipped as
+`composer/resources/licensing/features.json`). Keys the console does not know are ignored.
+`App\Support\Licensing\Entitlements::isFeatureEnabled($key)` is the only check; without an active
+licence nothing is enabled.
+
+| Key | Gated in the console |
+|---|---|
+| `sso` | `/auth/sso/*`, Admin Settings SSO tab and plugin toggle, SSO PIN reset; SSO buttons on the sign-in page are hidden |
+| `ai_connect` | Admin Settings AI routes, AI review of config versions, workspace AI settings, sweeps and progress; schedule `ai:validate-workspace` and the queued `ValidateConfigWithAi` job |
+| `mcp_server` | `/connect-ai`, Admin Settings MCP, the read-only MCP API (`/api/mcp/*`); `mcp:manage` stops the MCP container |
+| `custom_domain` | Admin Settings domain routes and plugin toggle, `/api/internal/domain/*` (certificates for the built-in proxy) |
+| `s3_backup` | Admin Settings S3 routes and plugin toggle |
+| `backup_restore` | Backup & Restore settings, backup list, run, restore, workspace backups; schedules `backup:config`, `backup:database`, `backup:workspace` |
+| `notifications` | Notifications pages and groups, notification settings and preferences; `Notifier` sends nothing |
+| `service_accounts` | Service Accounts pages; service account keys (`atgsa-...`) are refused by the API |
+| `workspaces` | Enterprise Console, creating workspaces and organisations. Existing workspaces stay readable |
+
+A refused request returns 403 `{"code": "FEATURE_NOT_LICENSED", "message": "'Notifications' is not
+included in your license."}`; a page shows an "upgrade" page instead. Menu entries and plugin cards
+show a lock and "Not included in your license". When a renewal removes a feature, its data and
+settings are kept and come back when a licence includes it again. Core functions are never gated:
+node registration and the CLI API, configuration backups of nodes, users, the activity log and
+Admin Settings.
 
 ## Keys
 
@@ -137,7 +194,8 @@ ask customers to generate new files.
    file to one console, first enter that console's **Installation ID**. It is shown when
    `ATGLANCE_LICENSE_SHOW_INSTALL_ID=true` (off by default).
 2. Within **3 hours**, upload the `.atgl` file in the console installer (step 1). The installer shows
-   customer, plan, seats, issue date and expiry, and refuses to install without a valid file.
+   customer, plan, policy, node and user limits, features, issue date and expiry, and refuses
+   to install without a valid file.
 3. Afterwards, the file is re-verified on every request and by `php artisan license:verify` (at
    container start and hourly). The 3-hour rule no longer applies; `expires_at` does.
 4. Banners appear 30, 7 and 1 days before expiry. After expiry the console is **read-only**: every
@@ -181,6 +239,14 @@ window.
 | `E_CLOCK` | This server's clock is more than 24 hours behind the latest time the console recorded | Correct the clock. Activation stays refused until the clock has caught up |
 | `E_RECORD` | `activation.json` was edited, is missing, or does not match `license.atgl` | Upload the licence file again in Admin Settings > Licence |
 | `E_NO_LICENSE` | (API responses) no licence file is installed | Upload one in Admin Settings > Licence |
+| `NODE_LIMIT_REACHED` | The active nodes reached `max_nodes` | Deregister nodes you no longer use, or upload a licence with a higher node limit |
+| `USER_LIMIT_REACHED` | The users reached `max_users` | Delete users you no longer need, or upload a licence with a higher user limit |
+| `FEATURE_NOT_LICENSED` | The licence does not include the feature | Ask your atglance.live admin for a licence that includes it, then upload the new file |
+
+**Offline revocation.** A licence file is checked offline, so atglance.live cannot revoke a file
+that was already downloaded: it works until its `expires_at`. Revoking a custom license on
+atglance.live only changes the files generated afterwards. Keep `expires_at` short for licences
+you may need to take back.
 
 `php artisan license:verify` prints the current state and code. API clients get
 `403 {"code": "E_...", "message": "..."}` for writes while the console is read-only.
@@ -191,12 +257,17 @@ window.
   `contracts/fixtures/` (test keys only). `tests/Unit/Licensing/VerifierContractTest.php` runs every
   case in `cases.json`. With `ATGLANCE_CONTRACTS_DIR` set to the workspace `contracts/` folder it also
   fails when the copy is out of date.
-- `tests/Feature/LicenseTest.php` (settings, lock, banners, clock, record tampering) and
-  `tests/Feature/LicenseInstallerTest.php` (installer step).
-- `tests/Support/TestLicense.php` issues files with the test key. The base `TestCase` installs one
-  per test in a temporary folder; set `protected bool $withLicense = false;` to start without one.
+  `decoded` values (limits, policy, features) of v1 and v2 samples are compared too.
+- `tests/Feature/LicenseTest.php` (settings, lock, banners, clock, record tampering, user limit),
+  `tests/Feature/LicenseInstallerTest.php` (installer step) and `tests/Feature/LicenseLimitsTest.php`
+  (node limit through the API, user limit, unlimited, over limit after a downgrade, 80 % / 100 %,
+  feature gating, service account keys, `limit-cases.json`).
+- `tests/Support/TestLicense.php` issues files with the test key (payload v2, unlimited, every
+  feature, unless the test says otherwise). The base `TestCase` installs one per test in a
+  temporary folder; set `protected bool $withLicense = false;` to start without one.
 - Cross-repo end-to-end: `php contracts/tools/e2e.php <site-repo> <console-composer-dir>` in the
-  workspace runs the site issuer code and this verifier, then checks the 3-hour rule at +3h01m.
+  workspace runs the site issuer code and this verifier: the 3-hour rule at +3h01m, and a custom
+  policy whose node N+1 is refused.
 
 Run the console tests in Docker:
 

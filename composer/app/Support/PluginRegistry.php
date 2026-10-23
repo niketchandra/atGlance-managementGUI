@@ -3,6 +3,7 @@
 namespace App\Support;
 
 use App\Models\User;
+use App\Support\Licensing\Entitlements;
 
 /**
  * The optional features listed on the Plugins tab of /admin/settings.
@@ -19,6 +20,15 @@ class PluginRegistry
      *     action: array{label: string, url: string}|null, attention: bool
      * }>
      */
+    /** Plugin key => licence feature key (contracts FEATURES.md). */
+    public const FEATURES = [
+        'custom-domain' => 'custom_domain',
+        'sso' => 'sso',
+        'ai' => 'ai_connect',
+        's3' => 's3_backup',
+        'mcp' => 'mcp_server',
+    ];
+
     public static function all(?User $user): array
     {
         $isSuperAdmin = (int) ($user?->rbac_id ?? 0) === 100;
@@ -26,7 +36,7 @@ class PluginRegistry
         $domain = DomainSettings::viewData(request()->getHost());
         $domainCertificate = $domain['certificate'] ?? null;
 
-        return [
+        $plugins = [
             [
                 'key' => 'custom-domain',
                 'name' => 'Custom Domain & HTTPS',
@@ -112,5 +122,17 @@ class PluginRegistry
                 'attention' => request('tab') === 'plugins' && McpControl::enabled() && McpControl::status() !== McpControl::RUNNING,
             ],
         ];
+
+        // A plugin the licence does not include can be neither turned on nor used.
+        return array_map(function (array $plugin) {
+            $plugin['licensed'] = Entitlements::isFeatureEnabled(self::FEATURES[$plugin['key']] ?? $plugin['key']);
+            if (!$plugin['licensed']) {
+                $plugin['can_toggle'] = false;
+                $plugin['action'] = null;
+                $plugin['attention'] = false;
+            }
+
+            return $plugin;
+        }, $plugins);
     }
 }

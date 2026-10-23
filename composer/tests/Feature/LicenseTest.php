@@ -125,15 +125,16 @@ class LicenseTest extends TestCase
     public function test_licence_tab_shows_details(): void
     {
         $this->actingAsRole(100);
-        TestLicense::install(['customer' => 'Acme Corp', 'plan' => 'enterprise', 'seats' => 25, 'features' => ['sso', 'mcp']]);
+        TestLicense::install(['customer' => 'Acme Corp', 'plan' => 'enterprise', 'max_users' => 25, 'features' => ['sso', 'mcp_server']]);
 
         $this->get(route('admin.settings', ['tab' => 'licence']))
             ->assertOk()
             ->assertSee('Licence active')
             ->assertSee('Acme Corp')
             ->assertSee('Enterprise')
-            ->assertSee('1 of 25 used')
-            ->assertSee('sso, mcp')
+            ->assertSee('1 / 25')
+            ->assertSee('SSO Login')
+            ->assertSee('MCP Server')
             ->assertSee('Days remaining');
     }
 
@@ -358,26 +359,26 @@ class LicenseTest extends TestCase
         $this->artisan('license:verify')->expectsOutputToContain('Licence active: Acme Corp')->assertExitCode(0);
     }
 
-    public function test_seats_limit_the_number_of_users_of_any_role(): void
+    public function test_user_limit_counts_users_of_any_role(): void
     {
         $this->actingAsRole(100);
-        TestLicense::install(['seats' => 2]);
+        TestLicense::install(['max_users' => 2]);
 
         $this->post(route('admin.users.store'), $this->newUserPayload())->assertSessionDoesntHaveErrors('licence');
         $this->assertSame(2, User::query()->count());
 
         $payload = array_merge($this->newUserPayload(), ['username' => 'third', 'email' => 'third@example.test']);
         $this->post(route('admin.users.store'), $payload)
-            ->assertSessionHasErrors(['licence' => 'All 2 seats of the AtGlance licence are in use. Delete a user, or get a licence with more seats at atglance.live.']);
+            ->assertSessionHasErrors(['licence' => 'User limit reached (2/2). Upload a license with a higher user limit.']);
         $this->assertDatabaseMissing('users', ['email' => 'third@example.test']);
 
-        $this->get(route('admin.settings', ['tab' => 'licence']))->assertOk()->assertSee('2 of 2 used');
+        $this->get(route('admin.settings', ['tab' => 'licence']))->assertOk()->assertSee('2 / 2');
     }
 
-    public function test_registration_is_closed_when_every_seat_is_taken(): void
+    public function test_registration_is_closed_at_the_user_limit(): void
     {
         $this->actingAsRole(102);
-        TestLicense::install(['seats' => 1]);
+        TestLicense::install(['max_users' => 1]);
         auth()->logout();
 
         $this->postJson('/api/auth/register', [
@@ -385,7 +386,7 @@ class LicenseTest extends TestCase
             'email' => 'someone@example.test',
             'password' => 'password123',
             'password_confirmation' => 'password123',
-        ])->assertStatus(403)->assertJsonFragment(['message' => License::seatMessage()]);
+        ])->assertStatus(403)->assertJsonFragment(['message' => License::userLimitMessage()]);
 
         $this->post(route('register'), [
             'name' => 'Someone',

@@ -1,0 +1,76 @@
+{
+    "features": [
+        {
+            "key": "sso",
+            "name": "SSO Login",
+            "description": "Sign in with Google, Microsoft, GitHub, GitLab or another OIDC identity provider.",
+            "default": true,
+            "v1_default": true,
+            "min_console_version": "2.3.0"
+        },
+        {
+            "key": "ai_connect",
+            "name": "AI Connect",
+            "description": "Connect an AI provider to review configuration files for vulnerabilities, on demand and on a schedule.",
+            "default": true,
+            "v1_default": true,
+            "min_console_version": "2.3.0"
+        },
+        {
+            "key": "mcp_server",
+            "name": "MCP Server",
+            "description": "Read-only MCP server for AI clients (Claude Desktop, Claude Code and others), through the gateway at /mcp.",
+            "default": true,
+            "v1_default": true,
+            "min_console_version": "2.3.0"
+        },
+        {
+            "key": "custom_domain",
+            "name": "Custom Domain & HTTPS",
+            "description": "Serve the console on your own domain with HTTPS through the built-in proxy or a load balancer.",
+            "default": true,
+            "v1_default": true,
+            "min_console_version": "2.3.0"
+        },
+        {
+            "key": "s3_backup",
+            "name": "S3 Backup Storage",
+            "description": "Store backups in an S3-compatible bucket.",
+            "default": true,
+            "v1_default": true,
+            "min_console_version": "2.3.0"
+        },
+        {
+            "key": "backup_restore",
+            "name": "Backup & Restore",
+            "description": "Scheduled and on-demand backups of configurations and the database, and restore.",
+            "default": true,
+            "v1_default": true,
+            "min_console_version": "2.3.0"
+        },
+        {
+            "key": "notifications",
+            "name": "Notifications",
+            "description": "Notification channels and groups: email, Teams, Slack, n8n, Telegram, webhooks, SMS.",
+            "default": true,
+            "v1_default": true,
+            "min_console_version": "2.3.0"
+        },
+        {
+            "key": "service_accounts",
+            "name": "Service Accounts",
+            "description": "Non-personal accounts with their own API keys for automation and nodes.",
+            "default": true,
+            "v1_default": true,
+            "min_console_version": "2.3.0"
+        },
+        {
+            "key": "workspaces",
+            "name": "Multiple Workspaces",
+            "description": "More than one workspace (Enterprise Console). The default workspace works without it.",
+            "default": true,
+            "v1_default": true,
+            "min_console_version": "2.3.0"
+        }
+    ]
+}

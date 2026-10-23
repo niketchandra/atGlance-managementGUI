@@ -9,6 +9,7 @@ use App\Rules\IpAddressWithOptionalPort;
 use App\Support\EnvFile;
 use App\Support\InstallationState;
 use App\Support\License;
+use App\Support\Licensing\Entitlements;
 use App\Support\Licensing\LicenseException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -70,7 +71,10 @@ class InstallerController extends Controller
             'license' => [
                 'customer' => $license->customer,
                 'plan' => ucfirst($license->plan),
-                'seats' => (string) $license->seats,
+                'nodes' => $license->maxNodes === 0 ? 'Unlimited' : (string) $license->maxNodes,
+                'users' => $license->maxUsers === 0 ? 'Unlimited' : (string) $license->maxUsers,
+                'policy' => $license->policyType === 'custom' ? 'Custom' : 'Standard',
+                'features' => $license->features === [] ? 'None' : implode(', ', array_map([Entitlements::class, 'name'], $license->features)),
                 'issued_at' => $license->issuedAt->format('M j, Y H:i') . ' UTC',
                 'expires_at' => $license->expiresAt->format('M j, Y'),
             ],

@@ -102,7 +102,7 @@ class SystemController extends Controller
         unset($data['system_key']);
 
         $system = DB::transaction(function () use ($request, $data, $account, $replaces, $user) {
-            $created = $this->systems->createSystem($request, $data, $account);
+            $created = $this->systems->createSystem($request, $data, $account, $replaces !== null && $replaces->status === 'active');
             if ($created instanceof SystemRegister && $replaces !== null) {
                 $replaces->status = 'inactive';
                 $replaces->save();

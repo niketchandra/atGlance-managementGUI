@@ -33,30 +33,44 @@ final class TestLicense
         return [self::KEY_ID => ['public_key' => $key['ed25519_public_b64'], 'enc_key' => $key['aes_key_hex']]];
     }
 
+    /** Every feature key in the catalog (tests/Fixtures/licensing/features.json). */
+    public static function allFeatures(): array
+    {
+        return array_column(json_decode((string) file_get_contents(self::fixtureDir() . '/features.json'), true)['features'], 'key');
+    }
+
     /**
-     * A licence file issued at $issuedAt (default now).
+     * A licence file issued at $issuedAt (default now). Payload v2 with no limits and every
+     * feature, unless $overrides say otherwise; pass 'format_version' => 1 for a v1 payload
+     * (with 'seats', default 10).
      *
      * @param array<string, mixed> $overrides payload fields to change
      */
     public static function issue(array $overrides = [], ?\DateTimeInterface $issuedAt = null): string
     {
         $issued = \DateTimeImmutable::createFromInterface($issuedAt ?? now('UTC'));
+        $v1 = ($overrides['format_version'] ?? 2) === 1;
         $payload = array_merge([
-            'format_version' => 1,
+            'format_version' => 2,
             'license_id' => 'LIC-' . Str::uuid(),
             'product' => 'atglance-console',
             'key_id' => self::KEY_ID,
             'customer' => 'Test Org',
             'email' => 'owner@example.test',
             'plan' => 'enterprise',
-            'seats' => 10,
-            'features' => ['sso'],
+            'features' => $v1 ? ['sso'] : self::allFeatures(),
             'issued_at' => Verifier::formatDate($issued),
             'activate_before' => Verifier::formatDate($issued->modify('+3 hours')),
             'expires_at' => Verifier::formatDate($issued->modify('+365 days')),
             'min_version' => '2.0.0',
             'install_id' => null,
-        ], $overrides);
+        ] + ($v1 ? ['seats' => 10] : [
+            'max_nodes' => 0,
+            'max_users' => 0,
+            'policy_id' => 'global',
+            'policy_type' => 'default',
+            'validity_months' => 12,
+        ]), $overrides);
 
         return self::pack(json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR), (string) $payload['key_id']);
     }

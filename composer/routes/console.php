@@ -4,6 +4,7 @@ use App\Services\BackupService;
 use App\Services\WorkspaceAiSweep;
 use App\Support\InstallationState;
 use App\Support\License;
+use App\Support\Licensing\Entitlements;
 use App\Support\Licensing\LicenseException;
 use App\Support\WorkspaceSettings;
 use Illuminate\Foundation\Inspiring;
@@ -18,6 +19,11 @@ Artisan::command('inspire', function () {
 
 $runBackup = function (string $type) {
     return function (BackupService $backups) use ($type) {
+        if (!Entitlements::isFeatureEnabled('backup_restore')) {
+            $this->warn(Entitlements::notLicensedMessage('backup_restore'));
+
+            return 0;
+        }
         $run = $backups->run($type);
 
         match ($run['status']) {
@@ -62,7 +68,8 @@ Artisan::command('license:verify', function () {
     $summary = License::summary();
 
     if ($summary['active']) {
-        $this->info("Licence active: {$summary['customer']} ({$summary['plan']}, {$summary['seats']} seats), expires {$summary['expires_at']} UTC, {$summary['days_left']} days left.");
+        $limit = fn (?int $max) => $max === 0 ? 'unlimited' : (string) $max;
+        $this->info("Licence active: {$summary['customer']} ({$summary['plan']}, {$summary['policy_type']} policy, {$limit($summary['max_nodes'])} nodes, {$limit($summary['max_users'])} users), expires {$summary['expires_at']} UTC, {$summary['days_left']} days left.");
         if ($banner = License::banner()) {
             $this->warn($banner['text']);
         }
@@ -112,7 +119,8 @@ if (InstallationState::isInstalled()) {
             $expression = $backups->scheduleExpression($type);
 
             if ($expression !== null) {
-                Schedule::command($command)->cron($expression)->withoutOverlapping(120);
+                Schedule::command($command)->cron($expression)->withoutOverlapping(120)
+                    ->when(fn () => Entitlements::isFeatureEnabled('backup_restore'));
             }
         }
     } catch (Throwable $e) {
@@ -121,6 +129,11 @@ if (InstallationState::isInstalled()) {
 }
 
 Artisan::command('ai:validate-workspace {workspace : Workspace id}', function (WorkspaceAiSweep $sweep) {
+    if (!Entitlements::isFeatureEnabled('ai_connect')) {
+        $this->warn(Entitlements::notLicensedMessage('ai_connect'));
+
+        return 0;
+    }
     $run = $sweep->run((int) $this->argument('workspace'));
     $this->info($run['message']);
 
@@ -141,6 +154,11 @@ if (InstallationState::isInstalled()) {
 }
 
 Artisan::command('backup:workspace {workspace : Workspace id}', function (BackupService $backups) {
+    if (!Entitlements::isFeatureEnabled('backup_restore')) {
+        $this->warn(Entitlements::notLicensedMessage('backup_restore'));
+
+        return 0;
+    }
     $run = $backups->runWorkspace((int) $this->argument('workspace'));
     $run->status === BackupService::STATUS_SUCCESS ? $this->info($run->message) : $this->error($run->message);
 
@@ -159,7 +177,8 @@ if (InstallationState::isInstalled()) {
             $expression = WorkspaceSettings::expression($settings, 'ai_sweep');
 
             if ($expression !== null) {
-                Schedule::command('ai:validate-workspace ' . $workspaceId)->cron($expression)->withoutOverlapping(120);
+                Schedule::command('ai:validate-workspace ' . $workspaceId)->cron($expression)->withoutOverlapping(120)
+                    ->when(fn () => Entitlements::isFeatureEnabled('ai_connect'));
             }
         }
 
@@ -167,7 +186,8 @@ if (InstallationState::isInstalled()) {
             $expression = WorkspaceSettings::expression($settings, 'backup');
 
             if ($expression !== null) {
-                Schedule::command('backup:workspace ' . $workspaceId)->cron($expression)->withoutOverlapping(120);
+                Schedule::command('backup:workspace ' . $workspaceId)->cron($expression)->withoutOverlapping(120)
+                    ->when(fn () => Entitlements::isFeatureEnabled('backup_restore'));
             }
         }
     } catch (Throwable $e) {

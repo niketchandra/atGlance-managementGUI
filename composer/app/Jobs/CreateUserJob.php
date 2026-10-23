@@ -54,9 +54,9 @@ class CreateUserJob implements ShouldQueue
                 'email' => $this->userData['email'] ?? null
             ]);
 
-            // Queued while the database was down: the seats may have filled up since.
-            if (!License::hasFreeSeat()) {
-                Log::warning("CreateUserJob skipped: no free licence seat", ['request_id' => $this->requestId]);
+            // Queued while the database was down: the user limit may be reached by now.
+            if (!License::canAddUser()) {
+                Log::warning("CreateUserJob skipped: user limit of the licence reached", ['request_id' => $this->requestId]);
 
                 return;
             }

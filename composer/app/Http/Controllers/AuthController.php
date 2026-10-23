@@ -100,10 +100,10 @@ class AuthController extends Controller
         $label = SsoProviders::label($provider);
         $user = User::where('email', $email)->first();
         if (!$user) {
-            if (!License::hasFreeSeat()) {
+            if (!License::canAddUser()) {
                 return redirect()->route('home')->withErrors([
                     'login' => License::isActive()
-                        ? 'No new accounts can be created: every seat of the AtGlance licence is in use. Ask an admin.'
+                        ? 'No new accounts can be created: the user limit of the AtGlance licence is reached. Ask an admin.'
                         : 'New accounts cannot be created until an admin adds a licence.',
                 ]);
             }
@@ -180,9 +180,9 @@ class AuthController extends Controller
             ]);
         }
 
-        if (!License::hasFreeSeat()) {
+        if (!License::canAddUser()) {
             return back()->withErrors(['register' => License::isActive()
-                ? 'Registration is closed: every seat of the AtGlance licence is in use. Ask an admin.'
+                ? 'Registration is closed: the user limit of the AtGlance licence is reached. Ask an admin.'
                 : 'Registration is unavailable until an admin adds a licence.']);
         }
 

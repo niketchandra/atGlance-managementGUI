@@ -6,7 +6,26 @@
         "now": "2026-01-01T01:00:00Z",
         "app_version": "2.3.0",
         "install_id": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
-        "expect": "ok"
+        "expect": "ok",
+        "decoded": {
+            "format_version": 1,
+            "max_nodes": 0,
+            "max_users": 25,
+            "policy_id": "v1",
+            "policy_type": "default",
+            "validity_months": null,
+            "features": [
+                "ai_connect",
+                "backup_restore",
+                "custom_domain",
+                "mcp_server",
+                "notifications",
+                "s3_backup",
+                "service_accounts",
+                "sso",
+                "workspaces"
+            ]
+        }
     },
     {
         "name": "valid license at startup months later",
@@ -142,5 +161,229 @@
         "app_version": "1.9.9",
         "install_id": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
         "expect": "E_MIN_VERSION"
+    },
+    {
+        "name": "v2 default policy",
+        "file": "v2-default.atgl",
+        "mode": "activation",
+        "now": "2026-01-01T01:00:00Z",
+        "app_version": "2.3.0",
+        "install_id": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+        "expect": "ok",
+        "decoded": {
+            "format_version": 2,
+            "max_nodes": 25,
+            "max_users": 10,
+            "policy_id": "global",
+            "policy_type": "default",
+            "validity_months": 12,
+            "features": [
+                "ai_connect",
+                "backup_restore",
+                "custom_domain",
+                "mcp_server",
+                "notifications",
+                "s3_backup",
+                "service_accounts",
+                "sso",
+                "workspaces"
+            ]
+        }
+    },
+    {
+        "name": "v2 custom policy",
+        "file": "v2-custom.atgl",
+        "mode": "activation",
+        "now": "2026-01-01T00:59:00Z",
+        "app_version": "2.3.0",
+        "install_id": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+        "expect": "ok",
+        "decoded": {
+            "format_version": 2,
+            "max_nodes": 100,
+            "max_users": 50,
+            "policy_id": "custom:42",
+            "policy_type": "custom",
+            "validity_months": 24,
+            "features": [
+                "notifications",
+                "sso"
+            ]
+        }
+    },
+    {
+        "name": "v2 custom policy after its 60-minute window",
+        "file": "v2-custom.atgl",
+        "mode": "activation",
+        "now": "2026-01-01T01:00:01Z",
+        "app_version": "2.3.0",
+        "install_id": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+        "expect": "E_ACTIVATION_WINDOW"
+    },
+    {
+        "name": "v2 custom policy at startup after the window",
+        "file": "v2-custom.atgl",
+        "mode": "startup",
+        "now": "2027-06-01T00:00:00Z",
+        "app_version": "2.3.0",
+        "install_id": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+        "expect": "ok"
+    },
+    {
+        "name": "v2 unlimited",
+        "file": "v2-unlimited.atgl",
+        "mode": "activation",
+        "now": "2026-01-01T01:00:00Z",
+        "app_version": "2.3.0",
+        "install_id": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+        "expect": "ok",
+        "decoded": {
+            "format_version": 2,
+            "max_nodes": 0,
+            "max_users": 0,
+            "policy_id": "plan:enterprise",
+            "policy_type": "default",
+            "validity_months": 12,
+            "features": [
+                "ai_connect",
+                "backup_restore",
+                "custom_domain",
+                "mcp_server",
+                "notifications",
+                "s3_backup",
+                "service_accounts",
+                "sso",
+                "workspaces"
+            ]
+        }
+    },
+    {
+        "name": "v2 all features",
+        "file": "v2-all-features.atgl",
+        "mode": "activation",
+        "now": "2026-01-01T01:00:00Z",
+        "app_version": "2.3.0",
+        "install_id": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+        "expect": "ok",
+        "decoded": {
+            "format_version": 2,
+            "max_nodes": 25,
+            "max_users": 10,
+            "policy_id": "global",
+            "policy_type": "default",
+            "validity_months": 12,
+            "features": [
+                "ai_connect",
+                "backup_restore",
+                "custom_domain",
+                "mcp_server",
+                "notifications",
+                "s3_backup",
+                "service_accounts",
+                "sso",
+                "workspaces"
+            ]
+        }
+    },
+    {
+        "name": "v2 minimal features",
+        "file": "v2-minimal-features.atgl",
+        "mode": "activation",
+        "now": "2026-01-01T01:00:00Z",
+        "app_version": "2.3.0",
+        "install_id": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+        "expect": "ok",
+        "decoded": {
+            "format_version": 2,
+            "max_nodes": 25,
+            "max_users": 10,
+            "policy_id": "global",
+            "policy_type": "default",
+            "validity_months": 12,
+            "features": []
+        }
+    },
+    {
+        "name": "v2 unknown feature key is ignored",
+        "file": "v2-unknown-feature.atgl",
+        "mode": "activation",
+        "now": "2026-01-01T01:00:00Z",
+        "app_version": "2.3.0",
+        "install_id": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+        "expect": "ok",
+        "decoded": {
+            "format_version": 2,
+            "max_nodes": 25,
+            "max_users": 10,
+            "policy_id": "global",
+            "policy_type": "default",
+            "validity_months": 12,
+            "features": [
+                "sso"
+            ]
+        }
+    },
+    {
+        "name": "v2 console older than min_version 2.3.0",
+        "file": "v2-default.atgl",
+        "mode": "activation",
+        "now": "2026-01-01T01:00:00Z",
+        "app_version": "2.2.0",
+        "install_id": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+        "expect": "E_MIN_VERSION"
+    },
+    {
+        "name": "v2 negative limit",
+        "file": "v2-bad-negative-limit.atgl",
+        "mode": "activation",
+        "now": "2026-01-01T01:00:00Z",
+        "app_version": "2.3.0",
+        "install_id": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+        "expect": "E_PAYLOAD"
+    },
+    {
+        "name": "v2 activation window over 3 hours",
+        "file": "v2-bad-window.atgl",
+        "mode": "activation",
+        "now": "2026-01-01T01:00:00Z",
+        "app_version": "2.3.0",
+        "install_id": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+        "expect": "E_PAYLOAD"
+    },
+    {
+        "name": "v2 malformed feature key",
+        "file": "v2-bad-feature-key.atgl",
+        "mode": "activation",
+        "now": "2026-01-01T01:00:00Z",
+        "app_version": "2.3.0",
+        "install_id": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+        "expect": "E_PAYLOAD"
+    },
+    {
+        "name": "v2 missing field",
+        "file": "v2-missing-field.atgl",
+        "mode": "activation",
+        "now": "2026-01-01T01:00:00Z",
+        "app_version": "2.3.0",
+        "install_id": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+        "expect": "E_PAYLOAD"
+    },
+    {
+        "name": "v2 limit changed after signing",
+        "file": "v2-tampered-limit.atgl",
+        "mode": "activation",
+        "now": "2026-01-01T01:00:00Z",
+        "app_version": "2.3.0",
+        "install_id": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+        "expect": "E_SIGNATURE"
+    },
+    {
+        "name": "payload version 3",
+        "file": "v3-payload.atgl",
+        "mode": "activation",
+        "now": "2026-01-01T01:00:00Z",
+        "app_version": "2.3.0",
+        "install_id": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+        "expect": "E_VERSION"
     }
 ]

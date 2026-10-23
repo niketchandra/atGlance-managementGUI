@@ -1,0 +1,74 @@
+[
+    {
+        "name": "below both limits",
+        "file": "v2-limits.atgl",
+        "now": "2026-01-01T01:00:00Z",
+        "nodes": 1,
+        "users": 1,
+        "expect": {
+            "node_add": "ok",
+            "user_add": "ok",
+            "over_limit": false
+        }
+    },
+    {
+        "name": "node limit exceeded",
+        "file": "v2-limits.atgl",
+        "now": "2026-01-01T01:00:00Z",
+        "nodes": 2,
+        "users": 1,
+        "expect": {
+            "node_add": "NODE_LIMIT_REACHED",
+            "user_add": "ok",
+            "over_limit": false
+        }
+    },
+    {
+        "name": "user limit exceeded",
+        "file": "v2-limits.atgl",
+        "now": "2026-01-01T01:00:00Z",
+        "nodes": 1,
+        "users": 2,
+        "expect": {
+            "node_add": "ok",
+            "user_add": "USER_LIMIT_REACHED",
+            "over_limit": false
+        }
+    },
+    {
+        "name": "over both limits after a downgrade",
+        "file": "v2-limits.atgl",
+        "now": "2026-01-01T01:00:00Z",
+        "nodes": 3,
+        "users": 5,
+        "expect": {
+            "node_add": "NODE_LIMIT_REACHED",
+            "user_add": "USER_LIMIT_REACHED",
+            "over_limit": true
+        }
+    },
+    {
+        "name": "unlimited",
+        "file": "v2-unlimited.atgl",
+        "now": "2026-01-01T01:00:00Z",
+        "nodes": 1000,
+        "users": 1000,
+        "expect": {
+            "node_add": "ok",
+            "user_add": "ok",
+            "over_limit": false
+        }
+    },
+    {
+        "name": "v1: users limited by seats, nodes unlimited",
+        "file": "valid.atgl",
+        "now": "2026-01-01T01:00:00Z",
+        "nodes": 500,
+        "users": 25,
+        "expect": {
+            "node_add": "ok",
+            "user_add": "USER_LIMIT_REACHED",
+            "over_limit": false
+        }
+    }
+]
