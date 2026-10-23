@@ -40,6 +40,17 @@ RUN set -eux \
     ; rm -f /app/.env \
     ; chmod -R 775 storage bootstrap/cache
 
+# Licence verification keys (public key + AES key per key_id), embedded at build time:
+#   docker build --build-arg ATGLANCE_LICENSE_KEYRING="$(cat license-keyring.json)" .
+# Without it the committed config/license-keyring.json is used. See docs/LICENSING.md.
+ARG ATGLANCE_LICENSE_KEYRING=""
+RUN set -eu \
+    ; if [ -n "$ATGLANCE_LICENSE_KEYRING" ]; then \
+        printf '%s' "$ATGLANCE_LICENSE_KEYRING" > config/license-keyring.json \
+        && php -r '$k = json_decode(file_get_contents("config/license-keyring.json"), true); exit(is_array($k["keys"] ?? null) && $k["keys"] ? 0 : 1);' \
+        || { echo "ATGLANCE_LICENSE_KEYRING is not a keyring JSON with keys" >&2; exit 1; }; \
+      fi
+
 COPY docker/entrypoint.sh /usr/local/bin/atglance-entrypoint
 RUN chmod +x /usr/local/bin/atglance-entrypoint
 

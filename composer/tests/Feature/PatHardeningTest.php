@@ -24,12 +24,10 @@ class PatHardeningTest extends TestCase
 
     /**
      * createApiKey and PatTokenController::store refuse without an active licence.
-     * Set whatever App\Support\License::isActive() reads (see LicenseTest for the pattern).
      */
     private function activateLicence(): void
     {
-        \App\Models\AdminSetting::putValue('license', 'license_status', \App\Services\LicenseClient::VERIFIED_STATUS);
-        \App\Models\AdminSetting::putValue('license', 'license_key', 'test-key');
+        \Tests\Support\TestLicense::install();
     }
 
     public function test_console_key_is_hash_only_with_default_expiry(): void

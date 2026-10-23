@@ -1,0 +1,4 @@
+{
+    "_comment": "Licence verification keys, key_id => {public_key: base64, enc_key: hex}. Filled at image build time from the ATGLANCE_LICENSE_KEYRING build arg. See docs/LICENSING.md.",
+    "keys": {}
+}

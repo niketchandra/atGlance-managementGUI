@@ -1,0 +1,19 @@
+{
+    "format_version": 1,
+    "license_id": "LIC-0b9d6a3e-5f1c-4c2a-9e8b-7d6f5a4b3c21",
+    "product": "atglance-console",
+    "key_id": "test-2026",
+    "customer": "Example Org",
+    "email": "owner@example.com",
+    "plan": "enterprise",
+    "seats": 25,
+    "features": [
+        "sso",
+        "mcp"
+    ],
+    "issued_at": "2026-01-01T00:00:00Z",
+    "activate_before": "2026-01-01T03:00:00Z",
+    "expires_at": "2027-01-01T00:00:00Z",
+    "min_version": "2.0.0",
+    "install_id": null
+}

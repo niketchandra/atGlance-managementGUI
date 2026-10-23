@@ -1,10 +1,10 @@
 <?php
 
 use App\Services\BackupService;
-use App\Services\LicenseClient;
 use App\Services\WorkspaceAiSweep;
 use App\Support\InstallationState;
 use App\Support\License;
+use App\Support\Licensing\LicenseException;
 use App\Support\WorkspaceSettings;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
@@ -54,26 +54,50 @@ Artisan::command('activity:prune {--days= : Keep this many days (default ACTIVIT
     return 0;
 })->purpose('Delete activity log entries older than the retention period');
 
-Artisan::command('license:check', function (LicenseClient $client) {
-    $check = License::check($client);
+// Startup and hourly check of the stored licence file (offline, without the 3-hour rule).
+// Also records the current time, which detects a clock moved back. Exit code 1 when the
+// console is not licensed; the entrypoint only prints the result.
+Artisan::command('license:verify', function () {
+    License::reset();
+    $summary = License::summary();
 
-    match ($check['result']) {
-        'active' => $this->info($check['message']),
-        'inactive' => $this->error('Licence deactivated: ' . $check['message']),
-        default => $this->warn($check['message']),
-    };
-
-    if ($check['result'] === 'skipped') {
-        Log::warning('Licence check skipped', ['message' => $check['message']]);
+    if ($summary['active']) {
+        $this->info("Licence active: {$summary['customer']} ({$summary['plan']}, {$summary['seats']} seats), expires {$summary['expires_at']} UTC, {$summary['days_left']} days left.");
+        if ($banner = License::banner()) {
+            $this->warn($banner['text']);
+        }
+    } elseif ($summary['state'] === License::NONE) {
+        $this->warn('No licence file is installed. The console is read-only until one is uploaded in Admin Settings > Licence.');
+    } else {
+        $this->error("Licence not valid ({$summary['error']}): {$summary['error_message']} The console is read-only.");
+    }
+    if ($summary['clock_warning']) {
+        $this->warn(LicenseException::MESSAGES[LicenseException::CLOCK]);
     }
 
-    return 0;
-})->purpose('Check the stored licence with atglance.live (check only) and update its status');
+    return $summary['active'] ? 0 : 1;
+})->purpose('Verify the stored licence file (offline) and show its status');
+
+// Disabled: online licence key check against atglance.live, replaced by license:verify (offline).
+// Artisan::command('license:check', function (LicenseClient $client) {
+//     $check = License::check($client);
+//
+//     match ($check['result']) {
+//         'active' => $this->info($check['message']),
+//         'inactive' => $this->error('Licence deactivated: ' . $check['message']),
+//         default => $this->warn($check['message']),
+//     };
+//
+//     if ($check['result'] === 'skipped') {
+//         Log::warning('Licence check skipped', ['message' => $check['message']]);
+//     }
+//
+//     return 0;
+// })->purpose('Check the stored licence with atglance.live (check only) and update its status');
 
 if (InstallationState::isInstalled()) {
     Schedule::command('activity:prune')->dailyAt('03:30')->withoutOverlapping();
-    // Daily licence check paused for now; run `php artisan license:check` by hand if needed.
-    // Schedule::command('license:check')->dailyAt('02:15')->withoutOverlapping();
+    Schedule::command('license:verify')->hourly()->withoutOverlapping();
 }
 
 // Frequencies come from the Backup & Restore tab. The scheduler re-reads them on

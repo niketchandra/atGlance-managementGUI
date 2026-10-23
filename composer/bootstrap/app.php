@@ -33,6 +33,11 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->web(append: [
             \App\Http\Middleware\DetectFrontProxy::class,
             \App\Http\Middleware\EnforceDomainHttps::class,
+            \App\Http\Middleware\EnforceLicense::class,
+        ]);
+
+        $middleware->api(append: [
+            \App\Http\Middleware\EnforceLicense::class,
         ]);
 
         $middleware->alias([

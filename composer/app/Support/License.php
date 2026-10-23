@@ -2,148 +2,233 @@
 
 namespace App\Support;
 
-use App\Models\AdminSetting;
-use App\Services\LicenseClient;
+use App\Models\User;
+use App\Support\Licensing\LicenseData;
+use App\Support\Licensing\LicenseException;
+use App\Support\Licensing\LicenseStore;
+use App\Support\Licensing\Verifier;
+use DateTimeImmutable;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
 
 /**
- * The instance licence, stored in admin_settings (group "license").
+ * The instance licence: an offline .atgl file from atglance.live (docs/LICENSING.md).
  *
- * Without an active licence no user can be created or registered and no API
- * key can be created. The installer may skip the licence ("I'll add later");
- * an admin then adds it from Admin Settings > Licence.
+ * The file is verified with the public keys built into the console; nothing is sent over
+ * the network. It is uploaded in the installer or in Admin Settings > Licence (both within
+ * 3 hours of download), then re-verified on every request without the 3-hour rule.
+ *
+ * Without an active licence the console is locked: no user or API key can be created, and
+ * every write except the licence upload is refused (EnforceLicense middleware).
  */
 class License
 {
-    public const REQUIRED_MESSAGE = 'A valid AtGlance licence is required. An admin must add the licence key in Admin Settings > Licence.';
+    public const REQUIRED_MESSAGE = 'A valid AtGlance licence is required. An admin must upload the licence file in Admin Settings > Licence.';
+
+    public const NONE = 'none';
+    public const ACTIVE = 'active';
+    public const EXPIRED = 'expired';
+    public const INVALID = 'invalid';
+
+    /** @var array{state: string, license: ?LicenseData, error: ?string, activated_at: ?int, clock_warning: bool}|null */
+    private static ?array $status = null;
+
+    private static int $statusAt = 0;
+
+    /**
+     * Current licence state, recomputed at most once a minute (reset() clears it).
+     *
+     * @return array{state: string, license: ?LicenseData, error: ?string, activated_at: ?int, clock_warning: bool}
+     */
+    public static function status(): array
+    {
+        $now = self::now();
+        if (self::$status !== null && abs($now->getTimestamp() - self::$statusAt) < 60) {
+            return self::$status;
+        }
+
+        $store = LicenseStore::make();
+        $clockWarning = $store->clockRolledBack($now->getTimestamp(), (int) config('licensing.clock_rollback_seconds', 86400));
+        if (!$clockWarning) {
+            try {
+                $store->touchClock($now->getTimestamp());
+            } catch (\Throwable) {
+                // A read-only storage volume must not break the request.
+            }
+        }
+
+        $status = ['state' => self::NONE, 'license' => null, 'error' => null, 'activated_at' => null, 'clock_warning' => $clockWarning];
+        try {
+            $stored = $store->load();
+            if ($stored !== null) {
+                $status['activated_at'] = $stored['activated_at'];
+                $status['license'] = self::verifier()->verify($stored['bytes'], Verifier::MODE_STARTUP, $now, self::appVersion(), self::instanceId());
+                $status['state'] = self::ACTIVE;
+            }
+        } catch (LicenseException $e) {
+            $status['state'] = $e->errorCode === LicenseException::EXPIRED ? self::EXPIRED : self::INVALID;
+            $status['error'] = $e->errorCode;
+        }
+
+        self::$statusAt = $now->getTimestamp();
+
+        return self::$status = $status;
+    }
+
+    public static function reset(): void
+    {
+        self::$status = null;
+    }
 
     public static function isActive(): bool
     {
         try {
-            return AdminSetting::getValue('license_status') === LicenseClient::VERIFIED_STATUS
-                && trim((string) AdminSetting::getValue('license_key', '')) !== '';
+            return self::status()['state'] === self::ACTIVE;
         } catch (\Throwable) {
             return false;
         }
     }
 
-    /** A licence key is saved (active or not); changing it is then a replacement. */
-    public static function hasStoredKey(): bool
+    /**
+     * Seats = user accounts of any role (service accounts are separate and do not count).
+     * Users created by the installer count too.
+     */
+    public static function seatsUsed(): int
     {
         try {
-            return trim((string) AdminSetting::getValue('license_key', '')) !== '';
+            return User::query()->count();
         } catch (\Throwable) {
-            return false;
+            return 0;
         }
     }
 
-    /**
-     * Saves a licence from a successful LicenseClient::activate() result.
-     */
-    public static function store(string $key, array $result): void
+    /** Seats in the active licence; null without an active licence. */
+    public static function seatsTotal(): ?int
     {
-        $details = $result['details'] ?? [];
-        $extra = $details['extra'] ?? [];
+        $status = self::status();
 
-        AdminSetting::putValue('license', 'license_key', trim($key), true);
-        AdminSetting::putValue('license', 'license_status', (string) ($result['status'] ?? ''));
-        AdminSetting::putValue('license', 'license_name', (string) ($details['name'] ?? ''));
-        AdminSetting::putValue('license', 'license_plan', (string) ($details['plan'] ?? ''));
-        AdminSetting::putValue('license', 'license_expires_at', (string) ($details['expires_at'] ?? ''));
-        AdminSetting::putValue('license', 'license_details', $extra);
-        AdminSetting::putValue('license', 'license_activated_at', (string) ($extra['console.activated_at'] ?? now()->toDateTimeString()));
-        AdminSetting::putValue('license', 'license_verified_at', now()->toDateTimeString());
-        AdminSetting::putValue('license', 'license_check_message', '');
+        return $status['state'] === self::ACTIVE ? $status['license']->seats : null;
+    }
+
+    /** Another user may be created: the licence is active and not every seat is taken. */
+    public static function hasFreeSeat(): bool
+    {
+        $total = self::seatsTotal();
+
+        return $total !== null && self::seatsUsed() < $total;
+    }
+
+    /** Message when user creation is refused: no licence, or every seat taken. */
+    public static function seatMessage(): string
+    {
+        $total = self::seatsTotal();
+        if ($total === null) {
+            return self::REQUIRED_MESSAGE;
+        }
+
+        return 'All ' . $total . ' ' . ($total === 1 ? 'seat' : 'seats') . ' of the AtGlance licence are in use. '
+            . 'Delete a user, or get a licence with more seats at atglance.live.';
+    }
+
+    /** A licence file is stored (active or not); uploading another one is then a replacement. */
+    public static function hasStoredKey(): bool
+    {
+        return LicenseStore::make()->hasFile();
     }
 
     /**
-     * Daily check (`license:check`): asks atglance.live whether the stored
-     * licence is still in use by this console, without changing anything there.
+     * Checks an uploaded file without saving it (installer preview).
      *
-     * The licence stays active while the key is in_use by this console. It is
-     * turned off when atglance.live rejects the key (401/403), or reports it
-     * "available" (released) or in use by another console. When atglance.live
-     * cannot be reached or returns a server error, nothing changes.
-     *
-     * @return array{result: string, message: string} result: none, active, inactive or skipped
+     * @throws LicenseException
      */
-    public static function check(LicenseClient $client): array
+    public static function preview(string $bytes): LicenseData
     {
-        $key = trim((string) AdminSetting::getValue('license_key', ''));
-        if ($key === '') {
-            return ['result' => 'none', 'message' => 'No licence key is stored.'];
+        $now = self::now();
+        if (LicenseStore::make()->clockRolledBack($now->getTimestamp(), (int) config('licensing.clock_rollback_seconds', 86400))) {
+            throw new LicenseException(LicenseException::CLOCK);
         }
 
-        $response = $client->verify($key);
-        $httpStatus = (int) ($response['http_status'] ?? 0);
-        $details = $response['details'];
-        $extra = $details['extra'] ?? [];
-        $owner = trim((string) ($extra['console.instance_id'] ?? ''));
+        return self::verifier()->verify($bytes, Verifier::MODE_ACTIVATION, $now, self::appVersion(), self::instanceId());
+    }
 
-        if ($response['ok'] && $response['status'] === LicenseClient::VERIFIED_STATUS && ($owner === '' || $owner === self::instanceId())) {
-            AdminSetting::putValue('license', 'license_status', LicenseClient::VERIFIED_STATUS);
-            AdminSetting::putValue('license', 'license_name', (string) ($details['name'] ?? ''));
-            AdminSetting::putValue('license', 'license_plan', (string) ($details['plan'] ?? ''));
-            AdminSetting::putValue('license', 'license_expires_at', (string) ($details['expires_at'] ?? ''));
-            AdminSetting::putValue('license', 'license_details', $extra);
-            if (!empty($extra['console.activated_at'])) {
-                AdminSetting::putValue('license', 'license_activated_at', (string) $extra['console.activated_at']);
+    /**
+     * Verifies an uploaded file (with the 3-hour rule) and saves it as this console's licence.
+     *
+     * @throws LicenseException
+     */
+    public static function activate(string $bytes): LicenseData
+    {
+        $license = self::preview($bytes);
+        LicenseStore::make()->save($bytes, $license, self::now()->getTimestamp());
+        self::reset();
+
+        return $license;
+    }
+
+    /**
+     * Expiry banner for the layout: null, or the level (info, warning, danger) and text.
+     * Shown from 30, 7 and 1 days before expiry (config licensing.warn_days), and once locked.
+     *
+     * @return array{level: string, text: string}|null
+     */
+    public static function banner(): ?array
+    {
+        $status = self::status();
+        if ($status['state'] === self::EXPIRED) {
+            return ['level' => 'danger', 'text' => 'The AtGlance licence has expired. The console is read-only until a new licence file is uploaded in Admin Settings > Licence.'];
+        }
+        if ($status['state'] === self::INVALID) {
+            return ['level' => 'danger', 'text' => 'The AtGlance licence is not valid (' . $status['error'] . '). The console is read-only until a licence file is uploaded in Admin Settings > Licence.'];
+        }
+        if ($status['state'] !== self::ACTIVE) {
+            return null;
+        }
+
+        $days = $status['license']->daysLeft(self::now());
+        $warn = config('licensing.warn_days', [30, 7, 1]);
+        sort($warn);
+        foreach ($warn as $i => $threshold) {
+            if ($days <= $threshold) {
+                $level = ['danger', 'warning', 'info'][min($i, 2)];
+                $when = $days <= 0 ? 'today' : 'in ' . $days . ' ' . ($days === 1 ? 'day' : 'days');
+
+                return ['level' => $level, 'text' => 'The AtGlance licence expires ' . $when . ' (' . $status['license']->expiresAt->format('M j, Y') . '). Renew it at atglance.live and upload the new file in Admin Settings > Licence.'];
             }
-            AdminSetting::putValue('license', 'license_verified_at', now()->toDateTimeString());
-            AdminSetting::putValue('license', 'license_check_message', '');
-
-            return ['result' => 'active', 'message' => 'Licence is active.'];
         }
 
-        if (!$response['ok'] && !in_array($httpStatus, [401, 403, 409], true)) {
-            return ['result' => 'skipped', 'message' => 'Licence not checked: ' . $response['message']];
-        }
-
-        if ($response['ok']) {
-            $status = $response['status'] === 'available' ? 'available' : 'in_use_elsewhere';
-            $message = $status === 'available'
-                ? 'This licence is no longer activated for this console. Activate it again below.'
-                : 'This licence is now in use by another AtGlance console.';
-        } else {
-            $status = $response['status'] !== '' ? $response['status'] : 'rejected';
-            $message = $response['message'];
-        }
-
-        AdminSetting::putValue('license', 'license_status', $status);
-        AdminSetting::putValue('license', 'license_verified_at', now()->toDateTimeString());
-        AdminSetting::putValue('license', 'license_check_message', $message);
-
-        return ['result' => 'inactive', 'message' => $message];
+        return null;
     }
 
     /**
-     * @return array{active: bool, name: string, plan: string, expires_at: string, activated_at: string, verified_at: string, check_message: string, masked_key: string, details: array<string, mixed>}
+     * @return array{active: bool, state: string, error: ?string, error_message: string, clock_warning: bool, name: string, customer: string, email: string, plan: string, seats: ?int, seats_used: int, features: list<string>, license_id: string, issued_at: string, expires_at: string, activated_at: string, days_left: ?int, install_id: ?string}
      */
     public static function summary(): array
     {
-        $key = trim((string) AdminSetting::getValue('license_key', ''));
-        $details = json_decode((string) AdminSetting::getValue('license_details', '[]'), true);
-        $details = is_array($details) ? $details : [];
-        // Licence owner fields (user.*) are not shown in the console.
-        $details = array_filter($details, fn ($field) => !str_starts_with((string) $field, 'user.'), ARRAY_FILTER_USE_KEY);
+        $status = self::status();
+        $license = $status['license'];
 
         return [
-            'active' => self::isActive(),
-            'name' => (string) AdminSetting::getValue('license_name', ''),
-            'plan' => (string) AdminSetting::getValue('license_plan', ''),
-            'expires_at' => (string) AdminSetting::getValue('license_expires_at', ''),
-            'activated_at' => (string) AdminSetting::getValue('license_activated_at', ''),
-            'verified_at' => (string) AdminSetting::getValue('license_verified_at', ''),
-            'check_message' => (string) AdminSetting::getValue('license_check_message', ''),
-            'masked_key' => self::mask($key),
-            'details' => $details,
+            'active' => $status['state'] === self::ACTIVE,
+            'state' => $status['state'],
+            'error' => $status['error'],
+            'error_message' => $status['error'] !== null ? (LicenseException::MESSAGES[$status['error']] ?? '') : '',
+            'clock_warning' => $status['clock_warning'],
+            'name' => $license?->customer ?? '',
+            'customer' => $license?->customer ?? '',
+            'email' => $license?->email ?? '',
+            'plan' => $license?->plan ?? '',
+            'seats' => $license?->seats,
+            'seats_used' => self::seatsUsed(),
+            'features' => $license?->features ?? [],
+            'license_id' => $license?->licenseId ?? '',
+            'issued_at' => $license ? $license->issuedAt->format('Y-m-d H:i:s') : '',
+            'expires_at' => $license ? $license->expiresAt->format('Y-m-d H:i:s') : '',
+            'activated_at' => $status['activated_at'] ? date('Y-m-d H:i:s', $status['activated_at']) : '',
+            'days_left' => $license?->daysLeft(self::now()),
+            'install_id' => $license?->installId,
         ];
     }
 
-    /**
-     * A stored date/time as a date only ("Sep 30, 2026"); '' when empty.
-     */
     /**
      * Sidebar expiry line: "Expires On <date> (N days left)", "Expired On <date>", or "No expiry date".
      *
@@ -172,6 +257,7 @@ class License
         ];
     }
 
+    /** A stored date/time as a date only ("Sep 30, 2026"); '' when empty. */
     public static function date(string $value): string
     {
         if (trim($value) === '') {
@@ -186,29 +272,14 @@ class License
     }
 
     /**
-     * Identity sent with every verify call. atglance.live binds the licence to
-     * the first console that verifies it, keyed by instance_id.
-     *
-     * @return array{instance_id: string, hostname: string, version: string}
-     */
-    public static function consoleIdentity(): array
-    {
-        return [
-            'instance_id' => self::instanceId(),
-            'hostname' => (string) (gethostname() ?: 'atglance-console'),
-            'version' => (string) config('app.version'),
-        ];
-    }
-
-    /**
-     * A UUID generated once per console and kept in storage (not the DB): the
-     * installer verifies the licence before the database is migrated, and the
-     * container hostname changes whenever the container is recreated.
+     * This console's Installation ID: a UUID generated once and kept in storage (not the
+     * DB, which does not exist yet when the installer runs). A licence file generated with
+     * this ID works on this console only.
      */
     public static function instanceId(): string
     {
         $path = storage_path('app/installer/instance_id');
-        $existing = is_file($path) ? trim((string) @file_get_contents($path)) : '';
+        $existing = is_file($path) ? strtolower(trim((string) @file_get_contents($path))) : '';
         if ($existing !== '') {
             return $existing;
         }
@@ -224,17 +295,21 @@ class License
 
     public static function portalUrl(): string
     {
-        return (string) config('services.atglance_license.portal_url', 'https://atglance.live');
+        return (string) config('licensing.portal_url', 'https://atglance.live');
     }
 
-    private static function mask(string $key): string
+    private static function verifier(): Verifier
     {
-        if ($key === '') {
-            return '';
-        }
+        return new Verifier(Verifier::keyring((array) config('licensing.keyring', [])));
+    }
 
-        return strlen($key) <= 10
-            ? str_repeat('•', strlen($key))
-            : substr($key, 0, 6) . str_repeat('•', 8) . substr($key, -4);
+    private static function now(): DateTimeImmutable
+    {
+        return Carbon::now('UTC')->toDateTimeImmutable();
+    }
+
+    private static function appVersion(): string
+    {
+        return (string) config('app.version');
     }
 }

@@ -69,8 +69,8 @@ class UserController extends Controller
     {
         $caller = $this->authorizeAdmin($request);
 
-        if (!License::isActive()) {
-            return response()->json(['message' => License::REQUIRED_MESSAGE], 403);
+        if (!License::hasFreeSeat()) {
+            return response()->json(['message' => License::seatMessage()], 403);
         }
 
         $baseRules = [

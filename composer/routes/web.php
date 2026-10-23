@@ -21,9 +21,13 @@ use App\Support\SiteProfile;
 
 Route::get('/install', [InstallerController::class, 'show'])->name('install.show');
 Route::post('/install', [InstallerController::class, 'install'])->name('install.run');
-Route::post('/install/license/verify', [InstallerController::class, 'verifyLicense'])
+Route::post('/install/license/preview', [InstallerController::class, 'previewLicense'])
     ->middleware('throttle:10,1')
-    ->name('install.license.verify');
+    ->name('install.license.preview');
+// Disabled: online licence key check in the installer, replaced by install.license.preview.
+// Route::post('/install/license/verify', [InstallerController::class, 'verifyLicense'])
+//     ->middleware('throttle:10,1')
+//     ->name('install.license.verify');
 Route::get('/install/info', [InstallerController::class, 'info'])->name('install.info');
 
 // Root route - installer first, then login/registration app page

@@ -146,7 +146,7 @@
                         <span class="ag-card-icon"><i class="fas fa-key"></i></span>
                         <span>Licence</span>
                         <span class="ag-badge {{ $agLicence['active'] ? 'ag-badge--success' : 'ag-badge--warning' }}">
-                            {{ $agLicence['active'] ? 'Active' : 'Not licensed' }}
+                            {{ $agLicence['active'] ? 'Active' : ($agLicence['state'] === 'expired' ? 'Expired' : 'Not licensed') }}
                         </span>
                     </div>
                     @if($agLicence['active'])
@@ -154,7 +154,7 @@
                         <div class="ag-licence-line">Activated On {{ $agLicenceActivated !== '' ? $agLicenceActivated : '-' }}</div>
                         <div class="ag-licence-line" @if($agLicenceExpiry['days_left'] !== null && $agLicenceExpiry['days_left'] <= 30) style="color: var(--ag-warning);" @endif>{{ $agLicenceExpiry['text'] }}</div>
                     @else
-                        <div class="ag-licence-line">New users and API keys stay locked until a licence is added.</div>
+                        <div class="ag-licence-line">{{ $agLicence['state'] === 'none' ? 'Read-only until a licence file is uploaded.' : 'Licence not valid (' . $agLicence['error'] . '). Read-only.' }}</div>
                     @endif
                     @if($agLicence['active'])
                         <a href="{{ \App\Support\License::portalUrl() }}" target="_blank" rel="noopener" class="ag-btn ag-btn--sm ag-licence-btn">
@@ -175,6 +175,16 @@
 
                 @if($requiresProfileSetup)
                     <div class="ag-notice"><i class="fas fa-lock"></i> Complete mandatory profile setup to unlock all pages.</div>
+                @endif
+
+                @php $agLicenceBanner = \App\Support\License::banner(); @endphp
+                @if($agLicenceBanner)
+                    <div class="ag-notice ag-notice--{{ $agLicenceBanner['level'] }}" role="status">
+                        <i class="fas {{ $agLicenceBanner['level'] === 'danger' ? 'fa-lock' : 'fa-clock' }}"></i> {{ $agLicenceBanner['text'] }}
+                        @if($agIsSuperAdmin)
+                            <a href="{{ route('admin.settings', ['tab' => 'licence']) }}" style="font-weight: 600; text-decoration: underline;">Open Licence settings</a>
+                        @endif
+                    </div>
                 @endif
 
                 <main class="ag-main">

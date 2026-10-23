@@ -785,56 +785,86 @@
         <h2 style="font-size: 18px; margin-bottom: 8px;">Licence</h2>
         @php
             $licence = \App\Support\License::summary();
+            $licenceBanner = \App\Support\License::banner();
         @endphp
+
+        @if($licence['clock_warning'])
+            <div style="margin-bottom: 14px; padding: 10px; border-radius: 12px; background: var(--ag-warning-soft); color: var(--ag-warning); font-size: 13px;">
+                <strong>E_CLOCK:</strong> {{ \App\Support\Licensing\LicenseException::MESSAGES['E_CLOCK'] }} New licence files cannot be activated until then.
+            </div>
+        @endif
 
         @if($licence['active'])
             <div style="margin-bottom: 14px; padding: 10px; border-radius: 12px; background: var(--ag-success-soft); color: var(--ag-success); font-size: 13px; font-weight: 600;">Licence active</div>
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-bottom: 16px; font-size: 14px;">
-                <div><div style="font-size: 12px; color: var(--ag-muted);">Licence name</div><div>{{ $licence['name'] !== '' ? $licence['name'] : '-' }}</div></div>
-                <div><div style="font-size: 12px; color: var(--ag-muted);">Plan</div><div>{{ $licence['plan'] !== '' ? $licence['plan'] : '-' }}</div></div>
-                <div><div style="font-size: 12px; color: var(--ag-muted);">Expires</div><div>{{ $licence['expires_at'] !== '' ? $licence['expires_at'] : '-' }}</div></div>
-                <div><div style="font-size: 12px; color: var(--ag-muted);">Licence key</div><div>{{ $licence['masked_key'] }}</div></div>
-                <div><div style="font-size: 12px; color: var(--ag-muted);">Activated on</div><div>{{ \App\Support\License::date($licence['activated_at']) ?: '-' }}</div></div>
-                <div><div style="font-size: 12px; color: var(--ag-muted);">Validated on</div><div>{{ \App\Support\License::date($licence['verified_at']) ?: '-' }}</div></div>
-            </div>
-            @php
-                $licenceExtra = collect($licence['details'])->except(['license.name', 'plan', 'license.expires_at']);
-            @endphp
-            @if($licenceExtra->isNotEmpty())
-                <details style="margin-bottom: 16px; font-size: 13px;">
-                    <summary style="cursor: pointer; color: var(--ag-subtle);">All licence details</summary>
-                    <table class="ag-table" style="margin-top: 8px;">
-                        @foreach($licenceExtra as $field => $value)
-                            <tr>
-                                <td style="padding: 4px 12px 4px 0;">{{ $field }}</td>
-                                <td style="padding: 4px 0;">{{ is_bool($value) ? ($value ? 'true' : 'false') : $value }}</td>
-                            </tr>
-                        @endforeach
-                    </table>
-                </details>
+            @if($licenceBanner)
+                <div style="margin-bottom: 14px; padding: 10px; border-radius: 12px; background: var(--ag-warning-soft); color: var(--ag-warning); font-size: 13px;">{{ $licenceBanner['text'] }}</div>
             @endif
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-bottom: 16px; font-size: 14px;">
+                <div><div style="font-size: 12px; color: var(--ag-muted);">Customer</div><div>{{ $licence['customer'] }}</div></div>
+                <div><div style="font-size: 12px; color: var(--ag-muted);">Plan</div><div>{{ ucfirst($licence['plan']) }}</div></div>
+                <div><div style="font-size: 12px; color: var(--ag-muted);">Seats (users, all roles)</div><div @if($licence['seats_used'] >= $licence['seats']) style="color: var(--ag-warning);" @endif>{{ $licence['seats_used'] }} of {{ $licence['seats'] }} used</div></div>
+                <div><div style="font-size: 12px; color: var(--ag-muted);">Issued</div><div>{{ \App\Support\License::date($licence['issued_at']) }}</div></div>
+                <div><div style="font-size: 12px; color: var(--ag-muted);">Expires</div><div>{{ \App\Support\License::date($licence['expires_at']) }}</div></div>
+                <div><div style="font-size: 12px; color: var(--ag-muted);">Days remaining</div><div>{{ max(0, (int) $licence['days_left']) }}</div></div>
+                <div><div style="font-size: 12px; color: var(--ag-muted);">Activated on</div><div>{{ \App\Support\License::date($licence['activated_at']) ?: '-' }}</div></div>
+                <div><div style="font-size: 12px; color: var(--ag-muted);">Licence ID</div><div style="font-family: monospace; font-size: 12px; word-break: break-all;">{{ $licence['license_id'] }}</div></div>
+            </div>
+            <div style="margin-bottom: 16px; font-size: 13px;">
+                <div style="font-size: 12px; color: var(--ag-muted);">Features</div>
+                <div>{{ $licence['features'] ? implode(', ', $licence['features']) : 'Standard' }}</div>
+            </div>
         @else
             <div style="margin-bottom: 14px; padding: 12px; border-radius: 12px; background: var(--ag-warning-soft); border: 1px solid #fcd34d; color: var(--ag-warning); font-size: 13px;">
-                <strong>No active licence.</strong> Until a licence is added, nobody can create or register users and no API keys can be created.
-                @if($licence['check_message'] !== '')
-                    <div style="margin-top: 6px;">Last check ({{ \App\Support\License::date($licence['verified_at']) }}): {{ $licence['check_message'] }}</div>
+                @if($licence['state'] === 'none')
+                    <strong>No licence.</strong> The console is read-only until a licence file is uploaded: nobody can create users or API keys, and no changes can be saved.
+                @else
+                    <strong>Licence not valid ({{ $licence['error'] }}).</strong> {{ $licence['error_message'] }} The console is read-only until a new licence file is uploaded.
                 @endif
             </div>
         @endif
 
         <div style="border-radius: 12px; padding: 12px; background: var(--ag-surface); margin-bottom: 14px;">
-            <strong style="font-size: 13px;">Get a licence</strong>
+            <strong style="font-size: 13px;">Get a licence file</strong>
             <ol style="margin: 6px 0 0 18px; padding: 0; font-size: 13px; color: var(--ag-subtle); line-height: 1.6;">
-                <li>Log in to <a href="{{ \App\Support\License::portalUrl() }}" target="_blank" rel="noopener" style="color: var(--ag-teal); text-decoration: underline;">atglance.live</a>.</li>
-                <li>Generate a licence.</li>
-                <li>Copy the licence key and paste it below.</li>
+                <li>Log in to <a href="{{ \App\Support\License::portalUrl() }}" target="_blank" rel="noopener" style="color: var(--ag-teal); text-decoration: underline;">atglance.live</a> and open Licences.</li>
+                <li>Click Generate licence file and download the .atgl file.</li>
+                <li>Upload it below within 3 hours of downloading.</li>
             </ol>
         </div>
 
-        <p style="font-size: 12px; color: var(--ag-muted); margin-bottom: 10px;">
-            A licence works on one console only. This console's ID is <span>{{ \App\Support\License::instanceId() }}</span>.
-        </p>
+        @if(config('licensing.show_install_id'))
+            <p style="font-size: 12px; color: var(--ag-muted); margin-bottom: 10px;">
+                Installation ID (optional on atglance.live, binds the file to this console): <span style="font-family: monospace;">{{ \App\Support\License::instanceId() }}</span>
+            </p>
+        @endif
 
+        @php $licenceReplacing = \App\Support\License::hasStoredKey(); @endphp
+        <form method="POST" action="{{ route('admin.settings.licence') }}" enctype="multipart/form-data">
+            @csrf
+            <label class="ag-label" for="license-file">{{ $licenceReplacing ? 'Upload new licence' : 'Licence file' }}</label>
+            <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-end;">
+                <input class="ag-input" id="license-file" type="file" name="license_file" accept=".atgl" required style="flex: 1; min-width: 240px;">
+                @if($licenceReplacing)
+                    <div style="flex: 0 1 240px; min-width: 200px;">
+                        <label class="ag-label" for="license-password">Your password</label>
+                        <input class="ag-input" id="license-password" type="password" name="password" required autocomplete="current-password" style="width: 100%;">
+                    </div>
+                @endif
+                <button class="ag-btn" type="submit">{{ $licenceReplacing ? 'Verify & Replace' : 'Verify & Save' }}</button>
+            </div>
+            @if($licenceReplacing)
+                <p style="font-size: 12px; color: var(--ag-muted); margin-top: 6px;">Enter your password to replace the licence. The current licence stays in place if the new file is not accepted.</p>
+            @endif
+            @error('license_file')
+                <div style="font-size: 12px; color: var(--ag-danger); margin-top: 6px;">{{ $message }}</div>
+            @enderror
+            @error('password')
+                <div style="font-size: 12px; color: var(--ag-danger); margin-top: 6px;">{{ $message }}</div>
+            @enderror
+        </form>
+
+        {{-- Disabled: online licence key (atg_...), replaced by the licence file upload above.
+             Kept for reference only; LicenseClient is commented out as well.
         @php $licenceReplacing = \App\Support\License::hasStoredKey(); @endphp
         <form method="POST" action="{{ route('admin.settings.licence') }}">
             @csrf
@@ -856,6 +886,7 @@
                 <div style="font-size: 12px; color: var(--ag-danger); margin-top: 6px;">{{ $message }}</div>
             @enderror
         </form>
+        --}}
     </div>
 
     @if($aiPluginEnabled)

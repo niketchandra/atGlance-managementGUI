@@ -236,8 +236,8 @@ class AdminDashboardController extends Controller
 
     public function createUser(Request $request): RedirectResponse
     {
-        if (!License::isActive()) {
-            return redirect()->back()->withInput()->withErrors(['licence' => License::REQUIRED_MESSAGE]);
+        if (!License::hasFreeSeat()) {
+            return redirect()->back()->withInput()->withErrors(['licence' => License::seatMessage()]);
         }
 
         $actor = Auth::user();

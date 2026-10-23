@@ -2,31 +2,33 @@
 
 namespace Tests\Feature;
 
-use App\Models\AdminSetting;
-use App\Models\Organization;
 use App\Models\PatToken;
 use App\Models\User;
-use App\Services\LicenseClient;
 use App\Support\License;
+use App\Support\Licensing\LicenseException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Http\Client\Request as HttpRequest;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Http;
 use Tests\Feature\Concerns\InteractsWithAdminConsole;
+use Tests\Support\TestLicense;
 use Tests\TestCase;
 
+/**
+ * Offline licence files in the console: Admin Settings > Licence, the read-only lock,
+ * banners, the licence gates and `license:verify`. Installer: LicenseInstallerTest.
+ */
 class LicenseTest extends TestCase
 {
     use RefreshDatabase;
     use InteractsWithAdminConsole;
 
-    private const KEY = 'atg_test_licence_key_123456';
-    private const VERIFY_URL = 'https://atglance.live/api/licenses/verify';
-    private const ACTIVATE_URL = 'https://atglance.live/api/licenses/activate';
+    protected bool $withLicense = false;
 
     protected function setUp(): void
     {
         parent::setUp();
         $this->setUpAdminConsole();
+        // Licences are checked offline: any HTTP call fails the test.
         Http::preventStrayRequests();
     }
 
@@ -36,390 +38,235 @@ class LicenseTest extends TestCase
         parent::tearDown();
     }
 
-    private function fakeVerify(array $body, int $status = 200): void
+    private function upload(string $bytes, string $name = 'atglance-licence.atgl'): UploadedFile
     {
-        Http::fake([self::VERIFY_URL => Http::response($body, $status)]);
+        return UploadedFile::fake()->createWithContent($name, $bytes);
     }
 
-    private function fakeActivate(array $body, int $status = 201): void
-    {
-        Http::fake([self::ACTIVATE_URL => Http::response($body, $status)]);
-    }
-
-    private function inUseBody(): array
+    private function newUserPayload(): array
     {
         return [
-            'valid' => true,
-            'status' => 'in_use',
-            'user' => ['id' => '1', 'email' => 'ops@company.com', 'name' => 'ops'],
-            'license' => ['name' => 'Ops licence'],
-            'plan' => 'free',
-            'console' => ['instance_id' => License::instanceId(), 'org_name' => 'Acme Corp', 'hostname' => 'ops-01', 'version' => '1.0.0', 'activated_at' => '2026-09-01T10:00:00Z'],
+            'username' => 'newbie',
+            'first_name' => 'New',
+            'last_name' => 'User',
+            'email' => 'newbie@example.test',
+            'password' => 'password123',
+            'password_confirmation' => 'password123',
+            'role' => 'user',
         ];
     }
 
-    public function test_verify_only_checks_the_key(): void
-    {
-        $this->fakeVerify(['valid' => true, 'status' => 'available', 'license' => ['name' => 'Ops licence'], 'plan' => 'free']);
-
-        $result = app(LicenseClient::class)->verify(self::KEY);
-
-        $this->assertTrue($result['ok']);
-        $this->assertSame('available', $result['status']);
-        $this->assertSame('Licence is valid.', $result['message']);
-        $this->assertSame('Ops licence', $result['details']['name']);
-        Http::assertSent(fn (HttpRequest $request) => $request->url() === self::VERIFY_URL
-            && $request->hasHeader('Authorization', 'Bearer ' . self::KEY)
-            && $request->hasHeader('Accept', 'application/json')
-            && $request->data() === []);
-        Http::assertNotSent(fn (HttpRequest $request) => $request->url() === self::ACTIVATE_URL);
-    }
-
-    private function otherConsoleBody(): array
-    {
-        $body = $this->inUseBody();
-        $body['console']['instance_id'] = 'another-console';
-
-        return $body;
-    }
-
-    private function availableBody(): array
-    {
-        return ['valid' => true, 'status' => 'available', 'license' => ['name' => 'Ops licence'], 'plan' => 'free'];
-    }
-
-    public function test_check_refuses_key_in_use_by_another_console_without_naming_the_org(): void
-    {
-        $this->fakeVerify($this->otherConsoleBody());
-
-        $result = app(LicenseClient::class)->checkAvailable(self::KEY);
-
-        $this->assertFalse($result['ok']);
-        $this->assertSame(LicenseClient::IN_USE_MESSAGE, $result['message']);
-        $this->assertStringNotContainsString('Acme Corp', $result['message']);
-    }
-
-    public function test_check_refuses_key_in_use_even_by_this_console(): void
-    {
-        // A reinstall keeps the same console ID; an "In Use" key must still be refused.
-        $this->fakeVerify($this->inUseBody());
-        $this->fakeActivate($this->inUseBody(), 200);
-
-        $result = app(LicenseClient::class)->activateIfAvailable(self::KEY, 'Acme Corp');
-
-        $this->assertFalse($result['ok']);
-        $this->assertSame(LicenseClient::IN_USE_MESSAGE, $result['message']);
-        Http::assertNotSent(fn (HttpRequest $request) => $request->url() === self::ACTIVATE_URL);
-    }
-
-    public function test_in_use_message_does_not_say_another_console(): void
-    {
-        $this->assertStringNotContainsString('another', LicenseClient::IN_USE_MESSAGE);
-    }
-
-    public function test_check_allows_available_key(): void
-    {
-        $this->fakeVerify($this->availableBody());
-
-        $result = app(LicenseClient::class)->checkAvailable(self::KEY);
-
-        $this->assertTrue($result['ok']);
-        $this->assertSame('Licence is valid and ready to activate.', $result['message']);
-    }
-
-    public function test_in_use_key_never_reaches_activate_api(): void
-    {
-        $this->fakeVerify($this->otherConsoleBody());
-        $this->fakeActivate($this->inUseBody(), 201);
-
-        $result = app(LicenseClient::class)->activateIfAvailable(self::KEY, 'New Org');
-
-        $this->assertFalse($result['ok']);
-        $this->assertSame(LicenseClient::IN_USE_MESSAGE, $result['message']);
-        Http::assertNotSent(fn (HttpRequest $request) => $request->url() === self::ACTIVATE_URL);
-    }
-
-    public function test_admin_cannot_save_key_in_use_by_another_console(): void
+    public function test_first_licence_upload_activates_without_password(): void
     {
         $this->actingAsRole(100);
-        $this->fakeVerify($this->otherConsoleBody());
-        $this->fakeActivate($this->inUseBody(), 201);
 
-        $this->post(route('admin.settings.licence'), ['license_key' => self::KEY])
-            ->assertSessionHasErrors(['license_key' => LicenseClient::IN_USE_MESSAGE]);
+        $this->get(route('admin.settings', ['tab' => 'licence']))
+            ->assertOk()
+            ->assertSee('No licence.')
+            ->assertDontSee('id="license-password"', false);
 
-        $this->assertFalse(License::isActive());
-        Http::assertNotSent(fn (HttpRequest $request) => $request->url() === self::ACTIVATE_URL);
-    }
-
-    public function test_activate_sends_org_and_console_identity(): void
-    {
-        $this->fakeActivate($this->inUseBody(), 201);
-
-        $result = app(LicenseClient::class)->activate(self::KEY, 'Acme Corp');
-
-        $this->assertTrue($result['ok']);
-        $this->assertSame('in_use', $result['status']);
-        $this->assertSame('Ops licence', $result['details']['name']);
-        $this->assertSame('free', $result['details']['plan']);
-        $this->assertArrayNotHasKey('user.email', $result['details']['extra']);
-        $this->assertSame('ops-01', $result['details']['extra']['console.hostname']);
-        Http::assertSent(fn (HttpRequest $request) => $request->url() === self::ACTIVATE_URL
-            && $request->hasHeader('Authorization', 'Bearer ' . self::KEY)
-            && $request->hasHeader('Accept', 'application/json')
-            && $request['org_name'] === 'Acme Corp'
-            && $request['instance_id'] === License::instanceId()
-            && isset($request['hostname'], $request['version']));
-    }
-
-    public function test_activate_requires_org_name(): void
-    {
-        $result = app(LicenseClient::class)->activate(self::KEY, '  ');
-
-        $this->assertFalse($result['ok']);
-        Http::assertNothingSent();
-    }
-
-    public function test_instance_id_is_stable(): void
-    {
-        $this->assertSame(License::instanceId(), License::instanceId());
-        $this->assertMatchesRegularExpression('/^[0-9a-f-]{36}$/', License::instanceId());
-    }
-
-    public function test_client_explains_licence_used_by_another_console(): void
-    {
-        $this->fakeActivate(['valid' => false, 'status' => 'in_use_elsewhere'], 409);
-
-        $result = app(LicenseClient::class)->activate(self::KEY, 'Acme Corp');
-
-        $this->assertFalse($result['ok']);
-        $this->assertSame(LicenseClient::IN_USE_MESSAGE, $result['message']);
-    }
-
-    public function test_client_explains_unverified_licence(): void
-    {
-        $this->fakeVerify(['valid' => false, 'status' => 'unverified'], 403);
-
-        $result = app(LicenseClient::class)->verify(self::KEY);
-
-        $this->assertFalse($result['ok']);
-        $this->assertStringContainsString('code emailed', $result['message']);
-    }
-
-    public function test_client_reports_wrong_key(): void
-    {
-        $this->fakeVerify(['message' => 'Unauthenticated.'], 401);
-
-        $result = app(LicenseClient::class)->verify(self::KEY);
-
-        $this->assertFalse($result['ok']);
-        $this->assertSame('The licence key is wrong or has been revoked.', $result['message']);
-    }
-
-    public function test_admin_saves_activated_licence(): void
-    {
-        Organization::query()->updateOrCreate(['id' => 200], ['name' => 'Acme Corp']);
-        $this->actingAsRole(100);
-        $this->fakeVerify($this->availableBody());
-        $this->fakeActivate($this->inUseBody(), 201);
-
-        $this->post(route('admin.settings.licence'), ['license_key' => self::KEY])
-            ->assertRedirect(route('admin.settings', ['tab' => 'licence']))
+        $this->post(route('admin.settings.licence'), ['license_file' => $this->upload(TestLicense::issue(['customer' => 'Acme Corp']))])
             ->assertSessionHasNoErrors();
 
         $this->assertTrue(License::isActive());
-        Http::assertSent(fn (HttpRequest $request) => $request->url() === self::ACTIVATE_URL
-            && $request['org_name'] === 'Acme Corp');
-        $summary = License::summary();
-        $this->assertSame('Ops licence', $summary['name']);
-        $this->assertSame('free', $summary['plan']);
+        $this->assertSame('Acme Corp', License::summary()['customer']);
+    }
 
-        $row = AdminSetting::query()->where('setting_key', 'license_key')->first();
-        $this->assertTrue($row->is_encrypted);
-        $this->assertStringNotContainsString(self::KEY, $row->setting_value);
+    public function test_upload_after_the_activation_window_is_refused_with_the_exact_message(): void
+    {
+        $this->actingAsRole(100);
+        $bytes = TestLicense::issue([], now()->subHours(3)->subMinute());
+
+        $this->post(route('admin.settings.licence'), ['license_file' => $this->upload($bytes)])
+            ->assertSessionHasErrors(['license_file' => 'E_ACTIVATION_WINDOW: This license file has expired. Licence files must be installed within 3 hours of download. Please generate a new one at atglance.live.']);
+
+        $this->assertFalse(License::isActive());
+    }
+
+    public function test_only_atgl_files_are_accepted(): void
+    {
+        $this->actingAsRole(100);
+
+        $this->post(route('admin.settings.licence'), ['license_file' => $this->upload(TestLicense::issue(), 'licence.json')])
+            ->assertSessionHasErrors('license_file');
+
+        $this->assertFalse(License::isActive());
+    }
+
+    public function test_replacing_a_licence_needs_the_password_and_keeps_the_old_one_on_failure(): void
+    {
+        $this->actingAsRole(100);
+        TestLicense::install(['customer' => 'Old Org']);
+
+        $this->get(route('admin.settings', ['tab' => 'licence']))
+            ->assertOk()
+            ->assertSee('Upload new licence')
+            ->assertSee('name="password"', false);
+
+        $renewal = TestLicense::issue(['customer' => 'New Org']);
+        $this->post(route('admin.settings.licence'), ['license_file' => $this->upload($renewal)])
+            ->assertSessionHasErrors('password');
+        $this->post(route('admin.settings.licence'), ['license_file' => $this->upload($renewal), 'password' => 'wrong'])
+            ->assertSessionHasErrors('password');
+
+        $tampered = $renewal;
+        $tampered[strlen($tampered) - 1] = chr(ord($tampered[strlen($tampered) - 1]) ^ 1);
+        $this->post(route('admin.settings.licence'), ['license_file' => $this->upload($tampered), 'password' => 'secret-pass'])
+            ->assertSessionHasErrors(['license_file' => 'E_DECRYPT: ' . LicenseException::MESSAGES['E_DECRYPT']]);
+        License::reset();
+        $this->assertSame('Old Org', License::summary()['customer']);
+
+        $this->post(route('admin.settings.licence'), ['license_file' => $this->upload($renewal), 'password' => 'secret-pass'])
+            ->assertSessionHasNoErrors();
+        License::reset();
+        $this->assertSame('New Org', License::summary()['customer']);
+    }
+
+    public function test_licence_tab_shows_details(): void
+    {
+        $this->actingAsRole(100);
+        TestLicense::install(['customer' => 'Acme Corp', 'plan' => 'enterprise', 'seats' => 25, 'features' => ['sso', 'mcp']]);
 
         $this->get(route('admin.settings', ['tab' => 'licence']))
             ->assertOk()
             ->assertSee('Licence active')
-            ->assertSee('Sep 1, 2026')
-            ->assertDontSee('ops@company.com')
-            ->assertDontSee('user.email');
+            ->assertSee('Acme Corp')
+            ->assertSee('Enterprise')
+            ->assertSee('1 of 25 used')
+            ->assertSee('sso, mcp')
+            ->assertSee('Days remaining');
     }
 
-    public function test_replacing_a_saved_licence_needs_the_password(): void
+    public function test_edited_activation_record_makes_the_licence_invalid(): void
     {
-        Organization::query()->updateOrCreate(['id' => 200], ['name' => 'Acme Corp']);
-        $this->actingAsRole(100);
-        License::store('atg_old_licence_key_000000', ['details' => ['name' => 'Old licence', 'plan' => 'free', 'expires_at' => null, 'extra' => []]]);
-        $this->fakeVerify($this->availableBody());
-        $this->fakeActivate($this->inUseBody(), 201);
+        TestLicense::install();
+        $record = $this->licenseDir . '/activation.json';
+        $data = json_decode((string) file_get_contents($record), true);
+        $data['activated_at'] = 1;
+        file_put_contents($record, json_encode($data));
+        License::reset();
 
-        $this->get(route('admin.settings', ['tab' => 'licence']))
-            ->assertOk()
-            ->assertSee('Replace licence key')
-            ->assertSee('name="password"', false);
-
-        $this->post(route('admin.settings.licence'), ['license_key' => self::KEY])
-            ->assertSessionHasErrors('password');
-        $this->post(route('admin.settings.licence'), ['license_key' => self::KEY, 'password' => 'wrong'])
-            ->assertSessionHasErrors('password');
-        Http::assertNothingSent();
-        $this->assertSame('atg_old_licence_key_000000', (string) AdminSetting::getValue('license_key'));
-
-        $this->post(route('admin.settings.licence'), ['license_key' => self::KEY, 'password' => 'secret-pass'])
-            ->assertSessionHasNoErrors();
-        $this->assertSame(self::KEY, (string) AdminSetting::getValue('license_key'));
+        $this->assertFalse(License::isActive());
+        $this->assertSame('E_RECORD', License::status()['error']);
     }
 
-    public function test_first_licence_does_not_ask_for_a_password(): void
+    public function test_a_file_copied_in_without_activation_is_not_accepted(): void
     {
-        $this->actingAsRole(100);
+        @mkdir($this->licenseDir, 0750, true);
+        file_put_contents($this->licenseDir . '/license.atgl', TestLicense::issue());
+        License::reset();
 
-        $this->get(route('admin.settings', ['tab' => 'licence']))
-            ->assertOk()
-            ->assertDontSee('id="license-password"', false);
+        $this->assertFalse(License::isActive());
+        $this->assertSame('E_RECORD', License::status()['error']);
     }
 
-    public function test_sidebar_shows_activated_and_expiry_dates(): void
+    public function test_startup_check_ignores_the_activation_window_but_enforces_expiry(): void
     {
-        $this->fakeActivate($this->inUseBody(), 201);
-        License::store(self::KEY, app(LicenseClient::class)->activate(self::KEY, 'Acme Corp'));
-        AdminSetting::putValue('license', 'license_expires_at', now()->addDays(45)->toDateString());
+        TestLicense::install();
 
-        $this->actingAsRole(100);
-        $this->get(route('profile'))
-            ->assertOk()
-            ->assertSee('Activated On Sep 1, 2026')
-            ->assertSee('Expires On ' . now()->addDays(45)->format('M j, Y') . ' (45 days left)')
-            ->assertDontSee('Validated On');
-    }
-
-    public function test_expiry_line_wording(): void
-    {
-        $this->assertSame('No expiry date', License::expiry('')['text']);
-        $this->assertSame('Expires On ' . now()->addDay()->format('M j, Y') . ' (1 day left)', License::expiry(now()->addDay()->toDateString())['text']);
-        $this->assertSame('Expires On ' . now()->format('M j, Y') . ' (today)', License::expiry(now()->toDateString())['text']);
-        $this->assertSame('Expired On ' . now()->subDays(3)->format('M j, Y'), License::expiry(now()->subDays(3)->toDateString())['text']);
-    }
-
-    public function test_daily_check_keeps_licence_active_and_updates_validated_date(): void
-    {
-        $this->activateLicense();
-        AdminSetting::putValue('license', 'license_verified_at', '2026-01-01 00:00:00');
-        $this->fakeVerify($this->inUseBody());
-
-        $this->artisan('license:check')->assertExitCode(0);
-
+        $this->travel(30)->days();
+        License::reset();
         $this->assertTrue(License::isActive());
-        $this->assertSame(now()->format('M j, Y'), License::date(License::summary()['verified_at']));
-        $this->assertSame('2026-09-01T10:00:00Z', License::summary()['activated_at']);
-        Http::assertNotSent(fn (HttpRequest $request) => $request->url() === self::ACTIVATE_URL);
-    }
 
-    public function test_daily_check_deactivates_revoked_licence(): void
-    {
-        $this->activateLicense();
-        $this->fakeVerify(['message' => 'Unauthenticated.'], 401);
-
-        $this->artisan('license:check')->assertExitCode(0);
-
+        $this->travel(400)->days();
+        License::reset();
         $this->assertFalse(License::isActive());
-        $this->assertSame('The licence key is wrong or has been revoked.', License::summary()['check_message']);
+        $this->assertSame(License::EXPIRED, License::status()['state']);
     }
 
-    public function test_daily_check_deactivates_licence_owned_by_another_console(): void
+    public function test_clock_moved_back_more_than_a_day_refuses_activation(): void
     {
-        $this->activateLicense();
-        $body = $this->inUseBody();
-        $body['console']['instance_id'] = 'another-console';
-        $this->fakeVerify($body);
+        $this->actingAsRole(100);
+        TestLicense::install();
 
-        $this->artisan('license:check')->assertExitCode(0);
+        $this->travel(-2)->days();
+        License::reset();
 
-        $this->assertFalse(License::isActive());
-        $this->assertStringContainsString('another AtGlance console', License::summary()['check_message']);
+        $this->post(route('admin.settings.licence'), ['license_file' => $this->upload(TestLicense::issue()), 'password' => 'secret-pass'])
+            ->assertSessionHasErrors(['license_file' => 'E_CLOCK: ' . LicenseException::MESSAGES['E_CLOCK']]);
+        $this->assertTrue(License::status()['clock_warning']);
     }
 
-    public function test_daily_check_keeps_licence_when_server_unreachable(): void
+    public function test_clock_moved_back_less_than_a_day_is_fine(): void
     {
-        $this->activateLicense();
-        $this->fakeVerify(['message' => 'Server Error'], 503);
+        TestLicense::install();
 
-        $this->artisan('license:check')->assertExitCode(0);
+        $this->travel(-23)->hours();
+        License::reset();
+
+        $this->assertFalse(License::status()['clock_warning']);
+        License::activate(TestLicense::issue());
+        $this->assertTrue(License::isActive());
+    }
+
+    public function test_install_bound_licence_is_checked_against_this_console(): void
+    {
+        $this->expectExceptionObject(new LicenseException(LicenseException::INSTALL_ID));
+        License::activate(TestLicense::issue(['install_id' => '11111111-2222-4333-8444-555555555555']));
+    }
+
+    public function test_install_bound_licence_for_this_console_is_accepted(): void
+    {
+        License::activate(TestLicense::issue(['install_id' => License::instanceId()]));
 
         $this->assertTrue(License::isActive());
     }
 
-    public function test_daily_check_is_paused(): void
+    public function test_banners_at_30_7_and_1_days(): void
     {
-        // The daily schedule is commented out in routes/console.php for now; the command still works by hand.
-        $events = collect(app(\Illuminate\Console\Scheduling\Schedule::class)->events())
-            ->filter(fn ($event) => str_contains((string) $event->command, 'license:check'));
+        TestLicense::install(['expires_at' => now('UTC')->addDays(60)->format('Y-m-d\TH:i:s\Z')]);
+        License::reset();
+        $this->assertNull(License::banner());
 
-        $this->assertCount(0, $events);
+        foreach ([[30, 'info'], [7, 'warning'], [1, 'danger']] as [$days, $level]) {
+            TestLicense::install(['expires_at' => now('UTC')->addDays($days)->addHour()->format('Y-m-d\TH:i:s\Z')]);
+            License::reset();
+            $banner = License::banner();
+            $this->assertSame($level, $banner['level'], "$days days");
+            $this->assertStringContainsString("in $days day", $banner['text']);
+        }
+
+        $this->actingAsRole(100);
+        $this->get(route('profile'))->assertOk()->assertSee('ag-notice--danger', false)->assertSee('in 1 day');
     }
 
-    public function test_failed_activation_does_not_save(): void
-    {
-        $this->actingAsRole(101);
-        $this->fakeVerify($this->availableBody());
-        $this->fakeActivate(['valid' => false, 'status' => 'in_use_elsewhere'], 409);
-
-        $this->post(route('admin.settings.licence'), ['license_key' => self::KEY])
-            ->assertSessionHasErrors('license_key');
-
-        $this->assertFalse(License::isActive());
-    }
-
-    public function test_licence_tab_renders(): void
+    public function test_without_licence_writes_are_blocked_but_reads_and_licence_upload_work(): void
     {
         $this->actingAsRole(100);
 
-        $this->get(route('admin.settings', ['tab' => 'licence']))
-            ->assertOk()
-            ->assertSee('No active licence.');
-    }
-
-    public function test_admin_cannot_create_user_without_licence(): void
-    {
-        $this->actingAsRole(100);
-
-        $this->post(route('admin.users.store'), [
-            'username' => 'newbie',
-            'first_name' => 'New',
-            'last_name' => 'User',
-            'email' => 'newbie@example.test',
-            'password' => 'password123',
-            'password_confirmation' => 'password123',
-            'role' => 'user',
-        ])->assertSessionHasErrors('licence');
-
+        $this->post(route('admin.users.store'), $this->newUserPayload())->assertSessionHasErrors('licence');
         $this->assertDatabaseMissing('users', ['email' => 'newbie@example.test']);
+
+        $this->postJson(route('admin.settings.site'), [])
+            ->assertStatus(403)
+            ->assertJson(['code' => 'E_NO_LICENSE']);
+
+        $this->get(route('admin.settings', ['tab' => 'licence']))->assertOk();
+        $this->post(route('admin.settings.licence'), ['license_file' => $this->upload(TestLicense::issue())])
+            ->assertSessionHasNoErrors();
+
+        $this->post(route('admin.users.store'), $this->newUserPayload())->assertSessionDoesntHaveErrors('licence');
+        $this->assertDatabaseHas('users', ['email' => 'newbie@example.test']);
     }
 
-    public function test_admin_creates_user_with_licence(): void
+    public function test_expired_licence_locks_writes_with_the_expiry_message(): void
     {
-        $this->activateLicense();
+        TestLicense::install();
+        $this->travel(366)->days();
+        License::reset();
         $this->actingAsRole(100);
 
-        $this->post(route('admin.users.store'), [
-            'username' => 'newbie',
-            'first_name' => 'New',
-            'last_name' => 'User',
-            'email' => 'newbie@example.test',
-            'password' => 'password123',
-            'password_confirmation' => 'password123',
-            'role' => 'user',
-        ])->assertSessionDoesntHaveErrors('licence');
-
-        $this->assertDatabaseHas('users', ['email' => 'newbie@example.test']);
+        $this->postJson(route('settings.api-keys.create'), ['name' => 'prod'])
+            ->assertStatus(403)
+            ->assertJson(['code' => 'E_EXPIRED']);
+        $this->get(route('profile'))->assertOk()->assertSee('The AtGlance licence has expired.');
     }
 
     public function test_api_key_creation_blocked_without_licence(): void
     {
         $user = $this->actingAsRole(102);
 
-        $this->post(route('settings.api-keys.create'), ['name' => 'prod'])
+        $this->postJson(route('settings.api-keys.create'), ['name' => 'prod'])
             ->assertStatus(403)
             ->assertJson(['success' => false]);
 
@@ -428,7 +275,7 @@ class LicenseTest extends TestCase
 
     public function test_api_key_creation_allowed_with_licence(): void
     {
-        $this->activateLicense();
+        TestLicense::install();
         $this->actingAsRole(102);
 
         $this->post(route('settings.api-keys.create'), ['name' => 'prod', 'expiration_date' => now()->addMonth()->toDateString()])
@@ -443,7 +290,7 @@ class LicenseTest extends TestCase
             'email' => 'someone@example.test',
             'password' => 'password123',
             'password_confirmation' => 'password123',
-        ])->assertSessionHasErrors('register');
+        ])->assertSessionHasErrors();
 
         $this->assertDatabaseMissing('users', ['email' => 'someone@example.test']);
     }
@@ -460,18 +307,17 @@ class LicenseTest extends TestCase
         $this->assertSame(0, User::query()->where('email', 'someone@example.test')->count());
     }
 
-    public function test_sidebar_licence_card_shows_upgrade_to_admins_when_active(): void
+    public function test_sidebar_licence_card_shows_plan_to_the_super_admin(): void
     {
-        License::store(self::KEY, ['status' => LicenseClient::VERIFIED_STATUS, 'details' => ['name' => 'Ops licence', 'plan' => 'free']]);
+        TestLicense::install(['plan' => 'free']);
 
         $this->actingAsRole(100);
         $this->get(route('profile'))
             ->assertOk()
             ->assertSee('ag-licence-card', false)
-            ->assertDontSee('Ops licence')
             ->assertSee('Free')
             ->assertSee('Upgrade')
-            ->assertSee(License::portalUrl(), false);
+            ->assertSee('Expires On ' . now()->addDays(365)->format('M j, Y'));
     }
 
     public function test_sidebar_licence_card_asks_the_super_admin_to_add_a_missing_licence(): void
@@ -486,15 +332,73 @@ class LicenseTest extends TestCase
 
     public function test_admins_and_users_do_not_see_the_sidebar_licence_card(): void
     {
-        License::store(self::KEY, ['status' => LicenseClient::VERIFIED_STATUS, 'details' => ['plan' => 'free']]);
+        TestLicense::install();
 
         foreach ([101, 102] as $rbacId) {
             $this->actingAsRole($rbacId);
             $this->get(route('profile'))
                 ->assertOk()
                 ->assertDontSee('ag-licence-card', false)
-                ->assertDontSee('Upgrade')
                 ->assertDontSee('Add licence');
         }
+    }
+
+    public function test_expiry_line_wording(): void
+    {
+        $this->assertSame('No expiry date', License::expiry('')['text']);
+        $this->assertSame('Expires On ' . now()->addDay()->format('M j, Y') . ' (1 day left)', License::expiry(now()->addDay()->toDateString())['text']);
+        $this->assertSame('Expired On ' . now()->subDays(3)->format('M j, Y'), License::expiry(now()->subDays(3)->toDateString())['text']);
+    }
+
+    public function test_verify_command_reports_status(): void
+    {
+        $this->artisan('license:verify')->assertExitCode(1);
+
+        TestLicense::install(['customer' => 'Acme Corp']);
+        $this->artisan('license:verify')->expectsOutputToContain('Licence active: Acme Corp')->assertExitCode(0);
+    }
+
+    public function test_seats_limit_the_number_of_users_of_any_role(): void
+    {
+        $this->actingAsRole(100);
+        TestLicense::install(['seats' => 2]);
+
+        $this->post(route('admin.users.store'), $this->newUserPayload())->assertSessionDoesntHaveErrors('licence');
+        $this->assertSame(2, User::query()->count());
+
+        $payload = array_merge($this->newUserPayload(), ['username' => 'third', 'email' => 'third@example.test']);
+        $this->post(route('admin.users.store'), $payload)
+            ->assertSessionHasErrors(['licence' => 'All 2 seats of the AtGlance licence are in use. Delete a user, or get a licence with more seats at atglance.live.']);
+        $this->assertDatabaseMissing('users', ['email' => 'third@example.test']);
+
+        $this->get(route('admin.settings', ['tab' => 'licence']))->assertOk()->assertSee('2 of 2 used');
+    }
+
+    public function test_registration_is_closed_when_every_seat_is_taken(): void
+    {
+        $this->actingAsRole(102);
+        TestLicense::install(['seats' => 1]);
+        auth()->logout();
+
+        $this->postJson('/api/auth/register', [
+            'name' => 'Someone',
+            'email' => 'someone@example.test',
+            'password' => 'password123',
+            'password_confirmation' => 'password123',
+        ])->assertStatus(403)->assertJsonFragment(['message' => License::seatMessage()]);
+
+        $this->post(route('register'), [
+            'name' => 'Someone',
+            'email' => 'someone@example.test',
+            'password' => 'password123',
+            'password_confirmation' => 'password123',
+        ])->assertSessionHasErrors();
+
+        $this->assertDatabaseMissing('users', ['email' => 'someone@example.test']);
+    }
+
+    public function test_instance_id_is_stable(): void
+    {
+        $this->assertSame(License::instanceId(), License::instanceId());
     }
 }

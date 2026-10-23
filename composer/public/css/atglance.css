@@ -335,6 +335,9 @@ body.ag-body {
     font-size: 13px;
 }
 
+.ag-notice--info { background: var(--ag-surface); color: var(--ag-text); }
+.ag-notice--danger { background: var(--ag-danger-soft); color: var(--ag-danger); }
+
 .ag-main {
     flex: 1;
     min-width: 0;

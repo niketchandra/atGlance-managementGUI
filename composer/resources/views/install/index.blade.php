@@ -75,9 +75,42 @@
                     </div>
                 @endif
 
-                <form id="installerForm" action="{{ route('install.run') }}" method="POST" class="mt-6 space-y-5">
+                <form id="installerForm" action="{{ route('install.run') }}" method="POST" enctype="multipart/form-data" class="mt-6 space-y-5">
                     @csrf
 
+                    <section class="rounded-2xl border border-slate-300 bg-slate-50 p-4 sm:p-5">
+                        <h2 class="text-base font-extrabold text-slate-900">Step 1 &mdash; Licence File</h2>
+                        <p class="mt-1 text-xs text-slate-600">Upload your AtGlance licence file (.atgl). It is checked on this server; nothing is sent over the internet.</p>
+
+                        <ol class="mt-3 list-decimal space-y-1 pl-5 text-xs text-slate-700">
+                            <li>Log in to <a href="{{ $licensePortalUrl }}" target="_blank" rel="noopener" class="font-semibold text-black underline">atglance.live</a> and open <span class="font-semibold">Licences</span>.</li>
+                            @if ($showInstallId)
+                                <li>Optional: enter this Installation ID so the file works on this server only: <span class="font-mono font-semibold text-black">{{ $installId }}</span></li>
+                            @endif
+                            <li>Click <span class="font-semibold">Generate licence file</span> and download it.</li>
+                            <li>Upload it below <span class="font-semibold">within 3 hours</span> of downloading.</li>
+                        </ol>
+
+                        <label for="license_file" class="mt-4 block text-sm font-semibold text-slate-800">Licence File</label>
+                        <input
+                            id="license_file"
+                            name="license_file"
+                            type="file"
+                            accept=".atgl"
+                            required
+                            class="mt-2 block w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-black file:px-3 file:py-1.5 file:text-xs file:font-bold file:text-white"
+                        >
+                        <p id="licensePreview" class="mt-2 hidden text-xs font-semibold" role="status"></p>
+                        <dl id="licenseDetails" class="mt-3 hidden grid grid-cols-2 gap-x-4 gap-y-1 rounded-xl border border-green-200 bg-green-50 p-3 text-xs text-slate-800">
+                            <dt class="text-slate-500">Customer</dt><dd data-field="customer"></dd>
+                            <dt class="text-slate-500">Plan</dt><dd data-field="plan"></dd>
+                            <dt class="text-slate-500">Seats</dt><dd data-field="seats"></dd>
+                            <dt class="text-slate-500">Issued</dt><dd data-field="issued_at"></dd>
+                            <dt class="text-slate-500">Expires</dt><dd data-field="expires_at"></dd>
+                        </dl>
+                    </section>
+
+                    {{-- Disabled: online licence key step, replaced by the licence file upload above. Kept for reference only.
                     @php($licenseLater = old('license_later') === '1')
                     <section class="rounded-2xl border border-slate-300 bg-slate-50 p-4 sm:p-5">
                         <h2 class="text-base font-extrabold text-slate-900">Step 1 &mdash; Licence Key</h2>
@@ -123,6 +156,7 @@
                             <p class="mt-1">To add it later: log in as the super admin, open <span class="font-semibold">Admin Settings &rsaquo; Licence</span>, paste the licence key and click <span class="font-semibold">Verify &amp; Save</span>.</p>
                         </div>
                     </section>
+                    --}}
 
                     <h2 class="text-base font-extrabold text-slate-900">Step 2 &mdash; Application Setup</h2>
 
@@ -266,11 +300,10 @@
 
     <script>
         (function () {
-            var keyInput = document.getElementById('license_key');
-            var laterBox = document.getElementById('license_later');
-            var verifyBtn = document.getElementById('licenseVerifyBtn');
-            var result = document.getElementById('licenseVerifyResult');
-            var warning = document.getElementById('licenseLaterWarning');
+            var fileInput = document.getElementById('license_file');
+            var result = document.getElementById('licensePreview');
+            var details = document.getElementById('licenseDetails');
+            var submitBtn = document.querySelector('#installerForm [type="submit"]');
 
             function showResult(ok, message) {
                 result.textContent = message;
@@ -278,52 +311,58 @@
                 result.classList.add(ok ? 'text-green-700' : 'text-red-700');
             }
 
-            laterBox.addEventListener('change', function () {
-                var later = laterBox.checked;
-                keyInput.disabled = later;
-                verifyBtn.disabled = later;
-                keyInput.required = !later;
-                warning.classList.toggle('hidden', !later);
-                if (later) {
-                    result.classList.add('hidden');
-                }
-            });
-            keyInput.required = !laterBox.checked;
+            function setValid(valid) {
+                if (submitBtn) { submitBtn.disabled = !valid; }
+                details.classList.toggle('hidden', !valid);
+            }
 
-            verifyBtn.addEventListener('click', function () {
-                if (keyInput.value.trim() === '') {
-                    showResult(false, 'Enter a licence key first.');
+            setValid(false);
+
+            fileInput.addEventListener('change', function () {
+                setValid(false);
+                if (!fileInput.files.length) {
+                    result.classList.add('hidden');
+                    return;
+                }
+                if (!/\.atgl$/i.test(fileInput.files[0].name)) {
+                    showResult(false, 'Choose an .atgl licence file.');
                     return;
                 }
 
-                verifyBtn.disabled = true;
-                verifyBtn.textContent = 'Verifying...';
+                var body = new FormData();
+                body.append('license_file', fileInput.files[0]);
+                showResult(true, 'Checking the licence file...');
 
-                fetch(@json(route('install.license.verify')), {
+                fetch(@json(route('install.license.preview')), {
                     method: 'POST',
                     headers: {
-                        'Content-Type': 'application/json',
                         'Accept': 'application/json',
                         'X-CSRF-TOKEN': document.querySelector('#installerForm [name="_token"]').value
                     },
-                    body: JSON.stringify({ license_key: keyInput.value.trim() })
+                    body: body
                 })
-                    .then(function (response) { return response.json(); })
-                    .then(function (data) {
-                        if (data.ok) {
-                            var parts = [];
-                            if (data.name) { parts.push('Licence: ' + data.name); }
-                            if (data.plan) { parts.push('Plan: ' + data.plan); }
-                            if (data.expires_at) { parts.push('Expires: ' + data.expires_at); }
-                            showResult(true, (data.message || 'Licence is valid.') + (parts.length ? ' ' + parts.join(' · ') : ''));
-                        } else {
-                            showResult(false, data.message || 'Licence verification failed.');
+                    .then(function (response) {
+                        // An expired session (419) is answered with a redirect to an HTML page, not JSON.
+                        if (response.redirected || (response.headers.get('Content-Type') || '').indexOf('application/json') === -1) {
+                            throw new Error('session');
                         }
+                        return response.json();
                     })
-                    .catch(function () { showResult(false, 'Could not verify the licence. Try again.'); })
-                    .finally(function () {
-                        verifyBtn.disabled = laterBox.checked;
-                        verifyBtn.textContent = 'Verify';
+                    .then(function (data) {
+                        if (!data.ok) {
+                            showResult(false, data.message || 'The licence file is not valid.');
+                            return;
+                        }
+                        details.querySelectorAll('[data-field]').forEach(function (el) {
+                            el.textContent = data.license[el.getAttribute('data-field')] || '-';
+                        });
+                        showResult(true, 'Licence file is valid. Check the details, then install.');
+                        setValid(true);
+                    })
+                    .catch(function (error) {
+                        showResult(false, error && error.message === 'session'
+                            ? 'Your session expired. Reload this page and choose the licence file again.'
+                            : 'Could not check the licence file. Try again.');
                     });
             });
         })();

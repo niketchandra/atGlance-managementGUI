@@ -664,7 +664,7 @@ Open the app URL in a browser: `http://<server-ip>:8000` on a VM, or `https://<y
 - the organization name
 - your super admin account (email and password)
 - the IP address
-- a licence key, or "add later". A key that atglance.live shows as "In Use" is refused, even on a reinstall of the same server: deactivate it there first, or create a new key.
+- the licence file (`.atgl`) generated on atglance.live > Licences, uploaded within 3 hours of generating it. The installer shows its details and does not install without a valid file. See [docs/LICENSING.md](docs/LICENSING.md).
 
 It ends on a summary page (`/install/info`). Save the details it shows: the page is only available until the first login. After that it redirects to the login page, and the stored super admin password is removed. Log in with the super admin account you created.
 

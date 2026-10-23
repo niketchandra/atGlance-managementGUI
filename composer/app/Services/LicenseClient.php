@@ -1,5 +1,11 @@
 <?php
 
+/*
+ * Disabled: online licence keys (atg_...) checked against atglance.live. Replaced by offline
+ * licence files (.atgl), see App\Support\License and docs/LICENSING.md. Kept for reference
+ * only: nothing loads this class. Inner comment closers are written as "* /".
+ *
+
 namespace App\Services;
 
 use App\Support\License;
@@ -21,12 +27,12 @@ use Illuminate\Support\Facades\Http;
  * "in_use". The first console to activate a licence owns it; the console is
  * identified by the instance_id we send (see License::instanceId()), so the
  * installer and the Licence tab must send the same identity.
- */
+ * /
 class LicenseClient
 {
     public const VERIFIED_STATUS = 'in_use';
 
-    /** Statuses the verify call returns for a key that can be used. */
+    /** Statuses the verify call returns for a key that can be used. * /
     private const USABLE_STATUSES = ['available', 'in_use'];
 
     public const IN_USE_MESSAGE = 'This licence key is already in use. Deactivate it on atglance.live, or create a new licence key and use that one.';
@@ -44,7 +50,7 @@ class LicenseClient
      * http_status is 0 when atglance.live could not be reached.
      *
      * @return array{ok: bool, message: string, status: string, http_status: int, details: array<string, mixed>}
-     */
+     * /
     public function verify(string $key): array
     {
         $key = trim($key);
@@ -82,7 +88,7 @@ class LicenseClient
      * "available"; a key already "in_use" is refused with IN_USE_MESSAGE.
      *
      * @return array{ok: bool, message: string, status: string, http_status: int, details: array<string, mixed>}
-     */
+     * /
     public function checkAvailable(string $key): array
     {
         $result = $this->verify($key);
@@ -107,7 +113,7 @@ class LicenseClient
      * is refused without calling the activate API.
      *
      * @return array{ok: bool, message: string, status: string, http_status: int, details: array<string, mixed>}
-     */
+     * /
     public function activateIfAvailable(string $key, string $orgName): array
     {
         $check = $this->checkAvailable($key);
@@ -122,7 +128,7 @@ class LicenseClient
      * http_status is 0 when atglance.live could not be reached.
      *
      * @return array{ok: bool, message: string, status: string, http_status: int, details: array<string, mixed>}
-     */
+     * /
     public function activate(string $key, string $orgName): array
     {
         $key = trim($key);
@@ -200,7 +206,7 @@ class LicenseClient
      * response fields flattened to dot keys (user.email, console.instance_id, ...).
      *
      * @return array<string, mixed>
-     */
+     * /
     private function details(array $body): array
     {
         $license = is_array($body['license'] ?? null) ? $body['license'] : [];
@@ -220,7 +226,7 @@ class LicenseClient
 
     /**
      * @return array<string, scalar>
-     */
+     * /
     private function flatten(array $data, string $prefix = ''): array
     {
         $flat = [];
@@ -245,3 +251,4 @@ class LicenseClient
         return ['ok' => false, 'message' => $message, 'status' => $status, 'http_status' => $httpStatus, 'details' => []];
     }
 }
+*/

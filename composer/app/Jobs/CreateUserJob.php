@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Models\User;
+use App\Support\License;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -52,6 +53,13 @@ class CreateUserJob implements ShouldQueue
                 'attempt' => $this->attempts(),
                 'email' => $this->userData['email'] ?? null
             ]);
+
+            // Queued while the database was down: the seats may have filled up since.
+            if (!License::hasFreeSeat()) {
+                Log::warning("CreateUserJob skipped: no free licence seat", ['request_id' => $this->requestId]);
+
+                return;
+            }
 
             $user = User::create($this->userData);
 

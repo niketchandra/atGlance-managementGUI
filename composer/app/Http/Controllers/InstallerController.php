@@ -6,10 +6,10 @@ use App\Models\AdminSetting;
 use App\Models\Organization;
 use App\Models\User;
 use App\Rules\IpAddressWithOptionalPort;
-use App\Services\LicenseClient;
 use App\Support\EnvFile;
 use App\Support\InstallationState;
 use App\Support\License;
+use App\Support\Licensing\LicenseException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -39,31 +39,59 @@ class InstallerController extends Controller
             'defaultIpAddress' => $defaultIp,
             'defaultDomain' => $requestHost,
             'licensePortalUrl' => License::portalUrl(),
+            'showInstallId' => (bool) config('licensing.show_install_id'),
+            'installId' => License::instanceId(),
         ]);
     }
 
     /**
-     * "Verify" button on the installer: checks the key only. The licence is
-     * activated for this console and organisation when the form is submitted.
+     * Installer licence step: checks the uploaded .atgl file (with the 3-hour rule) and
+     * returns its details for confirmation. Nothing is saved; install() checks it again.
      */
-    public function verifyLicense(Request $request, LicenseClient $client): JsonResponse
+    public function previewLicense(Request $request): JsonResponse
     {
         if (InstallationState::isInstalled()) {
             return response()->json(['ok' => false, 'message' => 'Application is already installed.'], 403);
         }
 
-        $result = $client->checkAvailable((string) $request->input('license_key', ''));
+        $bytes = self::uploadedLicense($request);
+        if ($bytes === null) {
+            return response()->json(['ok' => false, 'message' => 'Choose an .atgl licence file (at most 64 KB).'], 422);
+        }
+
+        try {
+            $license = License::preview($bytes);
+        } catch (LicenseException $e) {
+            return response()->json(['ok' => false, 'code' => $e->errorCode, 'message' => $e->display()], 422);
+        }
 
         return response()->json([
-            'ok' => $result['ok'],
-            'message' => $result['message'],
-            'name' => $result['details']['name'] ?? null,
-            'plan' => $result['details']['plan'] ?? null,
-            'expires_at' => $result['details']['expires_at'] ?? null,
+            'ok' => true,
+            'license' => [
+                'customer' => $license->customer,
+                'plan' => ucfirst($license->plan),
+                'seats' => (string) $license->seats,
+                'issued_at' => $license->issuedAt->format('M j, Y H:i') . ' UTC',
+                'expires_at' => $license->expiresAt->format('M j, Y'),
+            ],
         ]);
     }
 
-    public function install(Request $request, LicenseClient $licenseClient): RedirectResponse
+    /** The uploaded licence file's bytes, or null when missing, too large or not .atgl. */
+    public static function uploadedLicense(Request $request): ?string
+    {
+        $file = $request->file('license_file');
+        if (!$file || !$file->isValid() || $file->getSize() > 65536
+            || strtolower((string) $file->getClientOriginalExtension()) !== 'atgl') {
+            return null;
+        }
+
+        $bytes = @file_get_contents($file->getRealPath());
+
+        return is_string($bytes) && $bytes !== '' ? $bytes : null;
+    }
+
+    public function install(Request $request): RedirectResponse
     {
         if (InstallationState::isInstalled()) {
             return redirect()->route('home');
@@ -74,25 +102,24 @@ class InstallerController extends Controller
             'app_ip' => ['required', 'string', 'max:255', new IpAddressWithOptionalPort()],
             'superadmin_email' => ['required', 'email', 'max:255'],
             'superadmin_password' => ['required', 'string', 'min:8', 'confirmed'],
-            'license_later' => ['nullable', 'in:0,1'],
-            'license_key' => ['required_unless:license_later,1', 'nullable', 'string', 'max:512'],
-        ], [
-            'license_key.required_unless' => 'Enter your licence key, or tick "I\'ll add later".',
         ]);
 
         $organizationName = trim((string) $validated['organization_name']);
 
-        // Links the licence to this console and organisation (marks it In Use on
-        // atglance.live). A key in use by another console is refused before activate.
-        $licenseKey = $request->input('license_later') === '1' ? '' : trim((string) ($validated['license_key'] ?? ''));
-        $licenseResult = null;
-        if ($licenseKey !== '') {
-            $licenseResult = $licenseClient->activateIfAvailable($licenseKey, $organizationName);
-            if (!$licenseResult['ok']) {
-                return back()
-                    ->withInput($request->except(['superadmin_password', 'superadmin_password_confirmation']))
-                    ->withErrors(['license_key' => 'Licence activation failed: ' . $licenseResult['message']]);
-            }
+        // The licence file is required and checked before anything is changed. It is
+        // saved (activated) only once the database is ready.
+        $licenseBytes = self::uploadedLicense($request);
+        if ($licenseBytes === null) {
+            return back()
+                ->withInput($request->except(['superadmin_password', 'superadmin_password_confirmation']))
+                ->withErrors(['license_file' => 'Upload your .atgl licence file from atglance.live.']);
+        }
+        try {
+            $license = License::preview($licenseBytes);
+        } catch (LicenseException $e) {
+            return back()
+                ->withInput($request->except(['superadmin_password', 'superadmin_password_confirmation']))
+                ->withErrors(['license_file' => $e->display()]);
         }
 
         $appIpAddress = strtolower(trim((string) $validated['app_ip']));
@@ -144,12 +171,15 @@ class InstallerController extends Controller
             if (Schema::hasTable('admin_settings')) {
                 AdminSetting::putValue('site', 'site_domain_alias_ip', $appIpAddress);
 
-                if ($licenseResult !== null) {
-                    License::store($licenseKey, $licenseResult);
-                }
             }
 
+            License::activate($licenseBytes);
+
             Artisan::call('optimize:clear');
+        } catch (LicenseException $exception) {
+            return back()
+                ->withInput($request->except(['superadmin_password', 'superadmin_password_confirmation']))
+                ->withErrors(['license_file' => $exception->display()]);
         } catch (\Throwable $exception) {
             return back()
                 ->withInput()
@@ -165,9 +195,9 @@ class InstallerController extends Controller
             'superadmin_email' => $superAdminEmail,
             'default_superadmin_email' => 'superadmin@admin.com',
             'superadmin_password' => $superAdminPassword,
-            'license_active' => $licenseResult !== null,
-            'license_name' => $licenseResult['details']['name'] ?? null,
-            'license_plan' => $licenseResult['details']['plan'] ?? null,
+            'license_active' => true,
+            'license_name' => $license->customer,
+            'license_plan' => $license->plan,
         ]);
 
         return redirect()->route('install.info');

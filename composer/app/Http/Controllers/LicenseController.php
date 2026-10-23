@@ -2,32 +2,32 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Organization;
-use App\Services\LicenseClient;
 use App\Support\ActivityRecorder;
 use App\Support\License;
-use App\Support\SiteProfile;
+use App\Support\Licensing\LicenseException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 
 /**
- * Licence tab of /admin/settings: activates a licence key on atglance.live for
- * this console and organisation, and saves it once the API reports "in_use".
+ * Licence tab of /admin/settings: uploads a new .atgl licence file (first licence or a
+ * renewal). The file is verified offline, with the 3-hour activation window, and replaces
+ * the stored one only when it is valid.
  */
 class LicenseController extends Controller
 {
-    public function update(Request $request, LicenseClient $client): RedirectResponse
+    public function update(Request $request): RedirectResponse
     {
         $back = redirect()->route('admin.settings', ['tab' => 'licence']);
 
-        // Replacing a saved licence needs the user's password; the first licence does not.
+        // Replacing a stored licence needs the user's password; the first licence does not.
         $replacing = License::hasStoredKey();
         $validated = $request->validate([
-            'license_key' => ['required', 'string', 'max:512'],
+            'license_file' => ['required', 'file', 'max:64'],
             'password' => [$replacing ? 'required' : 'nullable', 'string'],
         ], [
+            'license_file.required' => 'Choose the .atgl licence file to upload.',
             'password.required' => 'Enter your password to replace the licence.',
         ]);
 
@@ -41,17 +41,21 @@ class LicenseController extends Controller
             }
         }
 
-        $key = trim((string) $validated['license_key']);
-        $orgName = trim((string) Organization::query()->whereKey(SiteProfile::DEFAULT_ORGANIZATION_ID)->value('name'));
-        $result = $client->activateIfAvailable($key, $orgName !== '' ? $orgName : config('app.name', 'AtGlance'));
-
-        if (!$result['ok']) {
-            return $back->withErrors(['license_key' => $result['message']]);
+        $bytes = InstallerController::uploadedLicense($request);
+        if ($bytes === null) {
+            return $back->withErrors(['license_file' => 'Choose an .atgl licence file (at most 64 KB).']);
         }
 
-        License::store($key, $result);
-        ActivityRecorder::record(Auth::id(), $replacing ? 'license.replaced' : 'license.added', $replacing ? 'Replaced the licence' : 'Added a licence', ActivityRecorder::SUCCESS, $request);
+        try {
+            $license = License::activate($bytes);
+        } catch (LicenseException $e) {
+            ActivityRecorder::record(Auth::id(), 'license.upload_refused', 'Licence file refused: ' . $e->errorCode, ActivityRecorder::FAILURE, $request);
 
-        return $back->with('success', $replacing ? 'Licence replaced, activated and saved.' : 'Licence activated and saved.');
+            return $back->withErrors(['license_file' => $e->display()]);
+        }
+
+        ActivityRecorder::record(Auth::id(), $replacing ? 'license.replaced' : 'license.added', ($replacing ? 'Replaced the licence: ' : 'Added a licence: ') . $license->licenseId, ActivityRecorder::SUCCESS, $request);
+
+        return $back->with('success', 'Licence file accepted. Licensed to ' . $license->customer . ' until ' . $license->expiresAt->format('M j, Y') . '.');
     }
 }

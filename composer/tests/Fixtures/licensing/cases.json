@@ -1,0 +1,146 @@
+[
+    {
+        "name": "valid license at activation",
+        "file": "valid.atgl",
+        "mode": "activation",
+        "now": "2026-01-01T01:00:00Z",
+        "app_version": "2.3.0",
+        "install_id": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+        "expect": "ok"
+    },
+    {
+        "name": "valid license at startup months later",
+        "file": "valid.atgl",
+        "mode": "startup",
+        "now": "2026-06-01T00:00:00Z",
+        "app_version": "2.3.0",
+        "install_id": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+        "expect": "ok"
+    },
+    {
+        "name": "activation window at exactly 3h",
+        "file": "valid.atgl",
+        "mode": "activation",
+        "now": "2026-01-01T03:00:00Z",
+        "app_version": "2.3.0",
+        "install_id": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+        "expect": "ok"
+    },
+    {
+        "name": "activation window passed (3h + 1s)",
+        "file": "valid.atgl",
+        "mode": "activation",
+        "now": "2026-01-01T03:00:01Z",
+        "app_version": "2.3.0",
+        "install_id": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+        "expect": "E_ACTIVATION_WINDOW"
+    },
+    {
+        "name": "license expired",
+        "file": "valid.atgl",
+        "mode": "startup",
+        "now": "2027-01-01T00:00:00Z",
+        "app_version": "2.3.0",
+        "install_id": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+        "expect": "E_EXPIRED"
+    },
+    {
+        "name": "tampered byte",
+        "file": "tampered.atgl",
+        "mode": "activation",
+        "now": "2026-01-01T01:00:00Z",
+        "app_version": "2.3.0",
+        "install_id": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+        "expect": "E_DECRYPT"
+    },
+    {
+        "name": "wrong key_id",
+        "file": "unknown-key-id.atgl",
+        "mode": "activation",
+        "now": "2026-01-01T01:00:00Z",
+        "app_version": "2.3.0",
+        "install_id": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+        "expect": "E_KEY_ID"
+    },
+    {
+        "name": "signature from another key",
+        "file": "foreign-signature.atgl",
+        "mode": "activation",
+        "now": "2026-01-01T01:00:00Z",
+        "app_version": "2.3.0",
+        "install_id": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+        "expect": "E_SIGNATURE"
+    },
+    {
+        "name": "wrong product",
+        "file": "wrong-product.atgl",
+        "mode": "activation",
+        "now": "2026-01-01T01:00:00Z",
+        "app_version": "2.3.0",
+        "install_id": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+        "expect": "E_PRODUCT"
+    },
+    {
+        "name": "future issued_at",
+        "file": "future-issued.atgl",
+        "mode": "activation",
+        "now": "2026-01-01T00:00:00Z",
+        "app_version": "2.3.0",
+        "install_id": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+        "expect": "E_ISSUED_FUTURE"
+    },
+    {
+        "name": "issued_at within 10 min tolerance",
+        "file": "future-issued.atgl",
+        "mode": "activation",
+        "now": "2026-01-01T00:10:00Z",
+        "app_version": "2.3.0",
+        "install_id": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+        "expect": "ok"
+    },
+    {
+        "name": "install_id mismatch",
+        "file": "install-bound.atgl",
+        "mode": "activation",
+        "now": "2026-01-01T01:00:00Z",
+        "app_version": "2.3.0",
+        "install_id": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+        "expect": "E_INSTALL_ID"
+    },
+    {
+        "name": "install_id match",
+        "file": "install-bound.atgl",
+        "mode": "activation",
+        "now": "2026-01-01T01:00:00Z",
+        "app_version": "2.3.0",
+        "install_id": "11111111-2222-4333-8444-555555555555",
+        "expect": "ok"
+    },
+    {
+        "name": "invalid magic",
+        "file": "bad-magic.atgl",
+        "mode": "activation",
+        "now": "2026-01-01T01:00:00Z",
+        "app_version": "2.3.0",
+        "install_id": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+        "expect": "E_MAGIC"
+    },
+    {
+        "name": "truncated file",
+        "file": "truncated.atgl",
+        "mode": "activation",
+        "now": "2026-01-01T01:00:00Z",
+        "app_version": "2.3.0",
+        "install_id": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+        "expect": "E_FORMAT"
+    },
+    {
+        "name": "console older than min_version",
+        "file": "valid.atgl",
+        "mode": "activation",
+        "now": "2026-01-01T01:00:00Z",
+        "app_version": "1.9.9",
+        "install_id": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+        "expect": "E_MIN_VERSION"
+    }
+]

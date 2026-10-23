@@ -66,6 +66,12 @@ if [ "${ATGLANCE_ROLE:-app}" = "app" ] && [ "${ATGLANCE_AUTO_MIGRATE:-true}" = "
     done
 fi
 
+# Startup licence check (offline). Only prints the status: without a valid licence the
+# console still starts, read-only, so an admin can upload a new licence file.
+if [ "${ATGLANCE_ROLE:-app}" = "app" ] && [ -f /app/storage/app/installer/installed.json ]; then
+    php artisan license:verify --no-interaction || true
+fi
+
 # Built-in proxy (opt-in, docker-compose.domain.yml). A failure here must not
 # stop the console: it keeps serving on :8000.
 # The app touches storage/caddy/reload when the domain or HTTPS mode changes

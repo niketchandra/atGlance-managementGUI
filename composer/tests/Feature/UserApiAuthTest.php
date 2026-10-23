@@ -2,11 +2,9 @@
 
 namespace Tests\Feature;
 
-use App\Models\AdminSetting;
 use App\Models\Organization;
 use App\Models\PatToken;
 use App\Models\User;
-use App\Services\LicenseClient;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Tests\TestCase;
@@ -103,9 +101,7 @@ class UserApiAuthTest extends TestCase
     public function test_admin_create_forces_its_own_org(): void
     {
         $admin = $this->user('admin@acme.test', 101);
-        // store() is licence-gated; activate a licence so we reach the authorization path.
-        AdminSetting::putValue('license', 'license_status', LicenseClient::VERIFIED_STATUS);
-        AdminSetting::putValue('license', 'license_key', 'test-key');
+        // store() is licence-gated; the base TestCase installs a valid licence file.
 
         $this->postJson('/api/users', [
             'name' => 'New', 'email' => 'new@acme.test', 'dob' => '1990-01-01', 'password' => 'password123',
