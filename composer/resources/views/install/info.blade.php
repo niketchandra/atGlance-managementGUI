@@ -93,7 +93,7 @@
                 <div class="mt-6 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 sm:p-5">
                     <p class="font-semibold">Licence required</p>
                     <p class="mt-1">No licence was added. Until you add one, nobody can create or register users and no API keys can be created.</p>
-                    <p class="mt-1">Log in with the super admin account, open <span class="font-medium">Admin Settings &rsaquo; Licence</span>, paste the licence key from atglance.live and click <span class="font-medium">Verify &amp; Save</span>.</p>
+                    <p class="mt-1">Log in with the super admin account, open <span class="font-medium">Admin Settings &rsaquo; Licence</span>, upload the licence file (.atgl) from atglance.live and click <span class="font-medium">Verify &amp; Save</span>.</p>
                 </div>
             @endunless
 

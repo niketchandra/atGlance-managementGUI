@@ -6,7 +6,6 @@ use App\Models\AdminSetting;
 use App\Models\Organization;
 use App\Models\User;
 use App\Rules\IpAddressWithOptionalPort;
-use App\Services\LicenseClient;
 use App\Support\EnvFile;
 use App\Support\InstallationState;
 use App\Support\License;
@@ -83,22 +82,7 @@ class InstallerController extends Controller
         ]);
     }
 
-    /**
-     * Installer "Verify" for a licence key: asks atglance.live whether the key can be used by
-     * this console. Nothing changes; the key is activated when the form is submitted.
-     */
-    public function verifyLicenseKey(Request $request, LicenseClient $client): JsonResponse
-    {
-        if (InstallationState::isInstalled()) {
-            return response()->json(['ok' => false, 'message' => 'Application is already installed.'], 403);
-        }
-
-        $result = $client->verify((string) $request->input('license_key', ''));
-
-        return response()->json($result, $result['ok'] ? 200 : 422);
-    }
-
-    public function install(Request $request, LicenseClient $client): RedirectResponse
+    public function install(Request $request): RedirectResponse
     {
         if (InstallationState::isInstalled()) {
             return redirect()->route('home');
@@ -113,22 +97,20 @@ class InstallerController extends Controller
 
         $organizationName = trim((string) $validated['organization_name']);
 
-        // A licence is required and checked before anything is changed: a licence key is
-        // activated online (atglance.live answers with the licence file), or a licence file is
-        // uploaded. The file is saved (activated) only once the database is ready.
-        $input = LicenseInput::resolve($request, $client, $organizationName);
-        if ($input['bytes'] === null) {
+        // The licence file is required and checked before anything is changed. It is saved
+        // (activated) only once the database is ready.
+        $licenseBytes = LicenseInput::uploadedFile($request);
+        if ($licenseBytes === null) {
             return back()
                 ->withInput($request->except(['superadmin_password', 'superadmin_password_confirmation', 'license_file']))
-                ->withErrors([$input['field'] => $input['error']]);
+                ->withErrors(['license_file' => 'Upload your .atgl licence file from atglance.live.']);
         }
-        $licenseBytes = $input['bytes'];
         try {
             $license = License::preview($licenseBytes);
         } catch (LicenseException $e) {
             return back()
                 ->withInput($request->except(['superadmin_password', 'superadmin_password_confirmation', 'license_file']))
-                ->withErrors([$input['field'] => $e->display()]);
+                ->withErrors(['license_file' => $e->display()]);
         }
 
         $appIpAddress = strtolower(trim((string) $validated['app_ip']));
@@ -188,7 +170,7 @@ class InstallerController extends Controller
         } catch (LicenseException $exception) {
             return back()
                 ->withInput($request->except(['superadmin_password', 'superadmin_password_confirmation', 'license_file']))
-                ->withErrors([$input['field'] => $exception->display()]);
+                ->withErrors(['license_file' => $exception->display()]);
         } catch (\Throwable $exception) {
             return back()
                 ->withInput()

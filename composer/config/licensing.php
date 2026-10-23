@@ -33,8 +33,4 @@ return [
 
     'portal_url' => env('ATGLANCE_LICENSE_PORTAL_URL', 'https://atglance.live'),
 
-    // Licence key API (online activation; consoles with internet access only). atglance.live
-    // answers an activation with the licence file, which is then checked offline like an upload.
-    'api_url' => env('ATGLANCE_LICENSE_API_URL', rtrim((string) env('ATGLANCE_LICENSE_PORTAL_URL', 'https://atglance.live'), '/') . '/api/licenses'),
-
 ];

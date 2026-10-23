@@ -85,8 +85,6 @@ Artisan::command('license:verify', function () {
     return $summary['active'] ? 0 : 1;
 })->purpose('Verify the stored licence file (offline) and show its status');
 
-// No online re-check: a licence key is activated with atglance.live once (Admin Settings >
-// Licence or the installer), which returns the licence file; license:verify checks it offline.
 
 if (InstallationState::isInstalled()) {
     Schedule::command('activity:prune')->dailyAt('03:30')->withoutOverlapping();

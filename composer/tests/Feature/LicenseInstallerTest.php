@@ -67,67 +67,16 @@ class LicenseInstallerTest extends TestCase
         ], $extra);
     }
 
-    public function test_installer_offers_licence_key_and_licence_file(): void
+    public function test_installer_asks_for_a_licence_file(): void
     {
         $this->get(route('install.show'))
             ->assertOk()
-            ->assertSee('Step 1 &mdash; Licence', false)
-            ->assertSee('If this Management Console has internet access')
-            ->assertSee('Without internet access')
-            ->assertSee('name="license_key"', false)
+            ->assertSee('Step 1 &mdash; Licence File', false)
+            ->assertDontSee('name="license_key"', false)
             ->assertSee('name="license_file"', false)
             ->assertSee('accept=".atgl"', false)
             ->assertSee(License::instanceId())
             ->assertDontSee('name="license_later"', false);
-    }
-
-    public function test_install_with_a_licence_key_activates_it_online(): void
-    {
-        $file = TestLicense::issue(['customer' => 'Acme Corp', 'install_id' => License::instanceId()]);
-        Http::fake(['*/api/licenses/activate' => Http::response([
-            'valid' => true, 'status' => 'in_use', 'license_file' => base64_encode($file), 'license_file_id' => 'LIC-x',
-        ], 201)]);
-
-        $this->post(route('install.run'), $this->form(['license_mode' => 'key', 'license_key' => 'atg_test_key_123']))
-            ->assertSessionHasNoErrors()
-            ->assertRedirect(route('install.info'));
-
-        Http::assertSent(fn ($request) => str_ends_with($request->url(), '/api/licenses/activate')
-            && $request->hasHeader('Authorization', 'Bearer atg_test_key_123')
-            && $request['license_file'] === true
-            && $request['instance_id'] === License::instanceId()
-            && $request['org_name'] === 'Acme Corp');
-        License::reset();
-        $this->assertTrue(License::isActive());
-        $this->assertSame($file, file_get_contents($this->licenseDir . '/license.atgl'));
-    }
-
-    public function test_install_with_a_key_in_use_elsewhere_is_refused(): void
-    {
-        Http::fake(['*/api/licenses/activate' => Http::response(['valid' => false, 'status' => 'in_use_elsewhere'], 409)]);
-
-        $this->post(route('install.run'), $this->form(['license_mode' => 'key', 'license_key' => 'atg_test_key_123']))
-            ->assertSessionHasErrors(['license_key' => 'This licence key is already in use by another Management Console. Revoke it on atglance.live and create a new licence, or use another key.']);
-
-        $this->assertFileDoesNotExist($this->marker);
-    }
-
-    public function test_install_with_a_key_without_internet_suggests_the_licence_file(): void
-    {
-        Http::fake(['*' => fn () => throw new \Illuminate\Http\Client\ConnectionException('offline')]);
-
-        $this->post(route('install.run'), $this->form(['license_mode' => 'key', 'license_key' => 'atg_test_key_123']))
-            ->assertSessionHasErrors(['license_key' => 'Could not reach atglance.live. If this Management Console has no internet access, use a licence file instead of the licence key.']);
-    }
-
-    public function test_verify_key_checks_it_online_without_changing_anything(): void
-    {
-        Http::fake(['*/api/licenses/verify' => Http::response(['valid' => true, 'status' => 'available', 'license' => ['name' => 'prod'], 'plan' => 'enterprise'])]);
-
-        $this->postJson(route('install.license.verify'), ['license_key' => 'atg_test_key_123'])
-            ->assertOk()
-            ->assertJson(['ok' => true, 'name' => 'prod', 'plan' => 'enterprise']);
-        Http::assertNotSent(fn ($request) => str_ends_with($request->url(), '/activate'));
     }
 
     public function test_preview_shows_the_decoded_details(): void
