@@ -23,6 +23,7 @@ class EnforceLicense
         'admin.settings.licence',
         'install.run',
         'install.license.preview',
+        'install.license.verify',
     ];
 
     /** Unnamed API paths that stay writable without a licence. */

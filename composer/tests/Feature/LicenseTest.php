@@ -100,7 +100,7 @@ class LicenseTest extends TestCase
 
         $this->get(route('admin.settings', ['tab' => 'licence']))
             ->assertOk()
-            ->assertSee('Upload new licence')
+            ->assertSee('Renew or replace the licence')
             ->assertSee('name="password"', false);
 
         $renewal = TestLicense::issue(['customer' => 'New Org']);
@@ -200,6 +200,49 @@ class LicenseTest extends TestCase
         $this->assertTrue(License::isActive());
     }
 
+    public function test_licence_tab_offers_key_and_file(): void
+    {
+        $this->actingAsRole(100);
+
+        $this->get(route('admin.settings', ['tab' => 'licence']))
+            ->assertOk()
+            ->assertSee('If this Management Console has internet access')
+            ->assertSee('Without internet access')
+            ->assertSee('Licence key (internet access)')
+            ->assertSee('Licence file (no internet access)')
+            ->assertSee('name="license_key"', false)
+            ->assertSee('name="license_file"', false);
+    }
+
+    public function test_licence_key_is_activated_online_and_stored_as_the_licence_file(): void
+    {
+        $this->actingAsRole(100);
+        $file = TestLicense::issue(['customer' => 'Key Org', 'install_id' => License::instanceId()]);
+        Http::fake(['*/api/licenses/activate' => Http::response(['valid' => true, 'status' => 'in_use', 'license_file' => base64_encode($file)], 201)]);
+
+        $this->post(route('admin.settings.licence'), ['license_mode' => 'key', 'license_key' => 'atg_key_abc'])
+            ->assertSessionHasNoErrors()
+            ->assertSessionHas('success');
+
+        License::reset();
+        $this->assertTrue(License::isActive());
+        $this->assertSame('Key Org', License::summary()['customer']);
+    }
+
+    public function test_licence_key_errors_are_shown_on_the_key_option(): void
+    {
+        $this->actingAsRole(100);
+        Http::fake(['*/api/licenses/activate' => Http::response(['valid' => false, 'status' => 'unverified'], 403)]);
+
+        $this->followingRedirects()
+            ->post(route('admin.settings.licence'), ['license_mode' => 'key', 'license_key' => 'atg_key_abc'])
+            ->assertOk()
+            ->assertSee('Licence not accepted')
+            ->assertSee('This licence is not confirmed yet.');
+
+        $this->assertFalse(License::isActive());
+    }
+
     public function test_install_id_error_explains_how_to_fix_it(): void
     {
         $this->actingAsRole(100);
@@ -209,7 +252,7 @@ class LicenseTest extends TestCase
             ->post(route('admin.settings.licence'), ['license_file' => $this->upload($bytes)])
             ->assertOk()
             ->assertSee('data-licence-error="E_INSTALL_ID"', false)
-            ->assertSee('Licence file not accepted (E_INSTALL_ID)')
+            ->assertSee('Licence not accepted (E_INSTALL_ID)')
             ->assertSee('This licence file was generated for another installation.')
             ->assertSee(License::instanceId())
             ->assertSee('Enter the Installation ID above');

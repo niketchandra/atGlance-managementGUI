@@ -24,10 +24,10 @@ Route::post('/install', [InstallerController::class, 'install'])->name('install.
 Route::post('/install/license/preview', [InstallerController::class, 'previewLicense'])
     ->middleware('throttle:10,1')
     ->name('install.license.preview');
-// Disabled: online licence key check in the installer, replaced by install.license.preview.
-// Route::post('/install/license/verify', [InstallerController::class, 'verifyLicense'])
-//     ->middleware('throttle:10,1')
-//     ->name('install.license.verify');
+// Installer "Verify" for a licence key (online check, nothing changes).
+Route::post('/install/license/verify', [InstallerController::class, 'verifyLicenseKey'])
+    ->middleware('throttle:10,1')
+    ->name('install.license.verify');
 Route::get('/install/info', [InstallerController::class, 'info'])->name('install.info');
 
 // Root route - installer first, then login/registration app page

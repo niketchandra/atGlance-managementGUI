@@ -1,11 +1,5 @@
 <?php
 
-/*
- * Disabled: online licence keys (atg_...) checked against atglance.live. Replaced by offline
- * licence files (.atgl), see App\Support\License and docs/LICENSING.md. Kept for reference
- * only: nothing loads this class. Inner comment closers are written as "* /".
- *
-
 namespace App\Services;
 
 use App\Support\License;
@@ -13,44 +7,28 @@ use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 
 /**
- * Calls the atglance.live licence API.
+ * Online use of a licence key (consoles with internet access). The key is sent to
+ * atglance.live once, at activation; atglance.live answers with the licence file (.atgl) of
+ * that licence, bound to this console. The console then stores and checks that file exactly
+ * like an uploaded one, offline from then on (no later online checks).
  *
- * verify() only checks the key and changes nothing on atglance.live.
- *
- * checkAvailable() uses verify() to decide whether this console may use the
- * key: only "available" keys pass; a key already "in_use" (by any console,
- * this one included) is refused. It backs the
- * installer's "Verify" button, and activateIfAvailable() runs it before every
- * activation, so an in-use key never reaches the activate API.
- *
- * activate() links the licence to this console and organisation and marks it
- * "in_use". The first console to activate a licence owns it; the console is
- * identified by the instance_id we send (see License::instanceId()), so the
- * installer and the Licence tab must send the same identity.
- * /
+ * One licence = one console: a key already in use by another console is refused.
+ */
 class LicenseClient
 {
-    public const VERIFIED_STATUS = 'in_use';
-
-    /** Statuses the verify call returns for a key that can be used. * /
-    private const USABLE_STATUSES = ['available', 'in_use'];
-
-    public const IN_USE_MESSAGE = 'This licence key is already in use. Deactivate it on atglance.live, or create a new licence key and use that one.';
-
+    /** Licence statuses atglance.live reports for a key that this console may use. */
     private const STATUS_MESSAGES = [
-        'in_use_elsewhere' => self::IN_USE_MESSAGE,
-        'unverified' => 'This licence is not verified yet. Enter the code emailed to you on atglance.live, then try again.',
-        'under_review' => 'This licence is under review by the AtGlance team. Try again after it is approved.',
+        'in_use_elsewhere' => 'This licence key is already in use by another Management Console. Revoke it on atglance.live and create a new licence, or use another key.',
+        'unverified' => 'This licence is not confirmed yet. Enter the 5-digit code we emailed you on your atglance.live dashboard, then try again.',
+        'under_review' => 'This licence is waiting for approval by an AtGlance admin. Try again after it is approved.',
+        'expired' => 'This licence has expired. Create a new licence on atglance.live.',
     ];
 
     /**
-     * Checks the key only. ok is true for "available" and "in_use" (by any
-     * console); use checkAvailable() to decide whether this console may use it.
+     * Checks the key without changing anything on atglance.live (installer "Verify").
      *
-     * http_status is 0 when atglance.live could not be reached.
-     *
-     * @return array{ok: bool, message: string, status: string, http_status: int, details: array<string, mixed>}
-     * /
+     * @return array{ok: bool, message: string, name: ?string, plan: ?string, expires_at: ?string}
+     */
     public function verify(string $key): array
     {
         $key = trim($key);
@@ -59,118 +37,81 @@ class LicenseClient
         }
 
         try {
-            $response = Http::acceptJson()
-                ->withToken($key)
-                ->timeout(15)
-                ->post($this->url('verify_url', 'verify'));
-        } catch (\Throwable $e) {
-            return $this->failure('Could not reach the licence server: ' . $e->getMessage());
+            $response = Http::acceptJson()->withToken($key)->timeout(15)->post($this->url('verify'));
+        } catch (\Throwable) {
+            return $this->failure(self::unreachableMessage());
         }
 
         $body = $this->body($response);
-        $status = $this->status($body);
+        $status = strtolower((string) ($body['status'] ?? ''));
+        $owner = (string) ($body['console']['instance_id'] ?? '');
 
-        if ($response->successful() && in_array($status, self::USABLE_STATUSES, true)) {
+        if ($response->successful() && ($status === 'available' || ($status === 'in_use' && $owner === License::instanceId()))) {
             return [
                 'ok' => true,
-                'message' => 'Licence is valid.',
-                'status' => $status,
-                'http_status' => $response->status(),
-                'details' => $this->details($body),
+                'message' => 'Licence key is valid.',
+                'name' => $body['license']['name'] ?? null,
+                'plan' => is_string($body['plan'] ?? null) ? $body['plan'] : null,
+                'expires_at' => $body['license']['expires_at'] ?? null,
             ];
         }
-
-        return $this->failure($this->errorMessage($response, $body, $status), $status, $response->status());
-    }
-
-    /**
-     * Whether this console may use the key. ok is true only when the key is
-     * "available"; a key already "in_use" is refused with IN_USE_MESSAGE.
-     *
-     * @return array{ok: bool, message: string, status: string, http_status: int, details: array<string, mixed>}
-     * /
-    public function checkAvailable(string $key): array
-    {
-        $result = $this->verify($key);
-        if (!$result['ok']) {
-            return $result;
+        if ($response->successful() && $status === 'in_use') {
+            return $this->failure(self::STATUS_MESSAGES['in_use_elsewhere']);
         }
 
-        // Any key already "In Use" is refused, even one activated by this same
-        // console (a reinstall keeps storage/app/installer/instance_id). The
-        // owner deactivates it on atglance.live first, or uses a new key.
-        if ($result['status'] === self::VERIFIED_STATUS) {
-            return $this->failure(self::IN_USE_MESSAGE, 'in_use', $result['http_status']);
-        }
-
-        $result['message'] = 'Licence is valid and ready to activate.';
-
-        return $result;
+        return $this->failure($this->errorMessage($response, $body));
     }
 
     /**
-     * Activates the key only when checkAvailable() allows it; an in-use key
-     * is refused without calling the activate API.
+     * Activates the key for this console and organisation and returns the licence file.
      *
-     * @return array{ok: bool, message: string, status: string, http_status: int, details: array<string, mixed>}
-     * /
-    public function activateIfAvailable(string $key, string $orgName): array
-    {
-        $check = $this->checkAvailable($key);
-
-        return $check['ok'] ? $this->activate($key, $orgName) : $check;
-    }
-
-    /**
-     * Links the licence to this console and organisation. ok is true when
-     * atglance.live reports the licence "in_use" (201 new link, 200 same console).
-     *
-     * http_status is 0 when atglance.live could not be reached.
-     *
-     * @return array{ok: bool, message: string, status: string, http_status: int, details: array<string, mixed>}
-     * /
+     * @return array{ok: bool, message: string, bytes?: string}
+     */
     public function activate(string $key, string $orgName): array
     {
         $key = trim($key);
-        $orgName = trim($orgName);
         if ($key === '') {
             return $this->failure('Enter a licence key.');
         }
-        if ($orgName === '') {
-            return $this->failure('An organisation name is required to activate the licence.');
-        }
 
         try {
-            $response = Http::acceptJson()
-                ->asJson()
-                ->withToken($key)
-                ->timeout(15)
-                ->post($this->url('activate_url', 'activate'), ['org_name' => $orgName] + License::consoleIdentity());
-        } catch (\Throwable $e) {
-            return $this->failure('Could not reach the licence server: ' . $e->getMessage());
+            $response = Http::acceptJson()->asJson()->withToken($key)->timeout(20)->post($this->url('activate'), [
+                'org_name' => trim($orgName) !== '' ? trim($orgName) : (string) config('app.name', 'AtGlance'),
+                'instance_id' => License::instanceId(),
+                'hostname' => (string) (gethostname() ?: 'atglance-console'),
+                'version' => (string) config('app.version'),
+                'license_file' => true,
+            ]);
+        } catch (\Throwable) {
+            return $this->failure(self::unreachableMessage());
         }
 
         $body = $this->body($response);
-        $status = $this->status($body);
-
-        if ($response->successful() && $status === self::VERIFIED_STATUS) {
-            return [
-                'ok' => true,
-                'message' => 'Licence activated.',
-                'status' => $status,
-                'http_status' => $response->status(),
-                'details' => $this->details($body),
-            ];
+        if (!$response->successful()) {
+            return $this->failure($this->errorMessage($response, $body));
         }
 
-        return $this->failure($this->errorMessage($response, $body, $status), $status, $response->status());
+        $bytes = is_string($body['license_file'] ?? null) ? base64_decode($body['license_file'], true) : false;
+        if (!is_string($bytes) || $bytes === '') {
+            $reason = trim((string) ($body['license_file_error'] ?? ''));
+
+            return $this->failure('atglance.live accepted the key but sent no licence file' . ($reason !== '' ? ': ' . $reason : '.') . ' Try again later, or use a licence file.');
+        }
+
+        return ['ok' => true, 'message' => 'Licence key activated.', 'bytes' => $bytes];
     }
 
-    private function url(string $key, string $action): string
+    public static function unreachableMessage(): string
     {
-        return (string) config('services.atglance_license.' . $key, 'https://atglance.live/api/licenses/' . $action);
+        return 'Could not reach atglance.live. If this Management Console has no internet access, use a licence file instead of the licence key.';
     }
 
+    private function url(string $action): string
+    {
+        return rtrim((string) config('licensing.api_url'), '/') . '/' . $action;
+    }
+
+    /** @return array<string, mixed> */
     private function body(Response $response): array
     {
         $body = $response->json();
@@ -178,77 +119,24 @@ class LicenseClient
         return is_array($body) ? $body : [];
     }
 
-    private function status(array $body): string
+    /** @param array<string, mixed> $body */
+    private function errorMessage(Response $response, array $body): string
     {
-        return strtolower(trim((string) ($body['status'] ?? '')));
+        $status = strtolower((string) ($body['status'] ?? ''));
+        if (isset(self::STATUS_MESSAGES[$status])) {
+            return self::STATUS_MESSAGES[$status];
+        }
+        if ($response->status() === 401) {
+            return 'The licence key is wrong or has been revoked.';
+        }
+        $message = trim((string) ($body['message'] ?? ''));
+
+        return $message !== '' ? $message : 'atglance.live refused the licence key (HTTP ' . $response->status() . ').';
     }
 
-    private function errorMessage(Response $response, array $body, string $status): string
+    /** @return array{ok: false, message: string, name: null, plan: null, expires_at: null} */
+    private function failure(string $message): array
     {
-        $message = self::STATUS_MESSAGES[$status] ?? null;
-        if ($message === null && $response->status() === 401) {
-            $message = 'The licence key is wrong or has been revoked.';
-        }
-        if ($message === null) {
-            $message = trim((string) ($body['message'] ?? $body['error'] ?? ''));
-        }
-        if ($message === '') {
-            $message = $status !== ''
-                ? 'Licence is not usable (status: ' . $status . ').'
-                : 'Licence request failed (HTTP ' . $response->status() . ').';
-        }
-
-        return $message;
-    }
-
-    /**
-     * Picks the fields we show: licence name, plan, expiry, plus the other
-     * response fields flattened to dot keys (user.email, console.instance_id, ...).
-     *
-     * @return array<string, mixed>
-     * /
-    private function details(array $body): array
-    {
-        $license = is_array($body['license'] ?? null) ? $body['license'] : [];
-
-        $plan = $body['plan'] ?? $license['plan'] ?? null;
-        if (is_array($plan)) {
-            $plan = $plan['name'] ?? $plan['title'] ?? $plan['slug'] ?? null;
-        }
-
-        return [
-            'name' => $license['name'] ?? $body['license_name'] ?? null,
-            'plan' => $plan,
-            'expires_at' => $license['expires_at'] ?? $body['expires_at'] ?? null,
-            'extra' => $this->flatten($body),
-        ];
-    }
-
-    /**
-     * @return array<string, scalar>
-     * /
-    private function flatten(array $data, string $prefix = ''): array
-    {
-        $flat = [];
-        foreach ($data as $key => $value) {
-            if (in_array($key, ['key', 'license_key', 'token', 'message', 'valid', 'status', 'user'], true)) {
-                continue;
-            }
-
-            $path = $prefix . $key;
-            if (is_array($value)) {
-                $flat += $this->flatten($value, $path . '.');
-            } elseif (is_scalar($value)) {
-                $flat[$path] = $value;
-            }
-        }
-
-        return $flat;
-    }
-
-    private function failure(string $message, string $status = '', int $httpStatus = 0): array
-    {
-        return ['ok' => false, 'message' => $message, 'status' => $status, 'http_status' => $httpStatus, 'details' => []];
+        return ['ok' => false, 'message' => $message, 'name' => null, 'plan' => null, 'expires_at' => null];
     }
 }
-*/

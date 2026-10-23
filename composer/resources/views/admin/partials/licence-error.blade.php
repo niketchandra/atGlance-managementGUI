@@ -8,7 +8,7 @@
 @endphp
 <div role="alert" data-licence-error="{{ $licenceErrorCode ?? 'other' }}"
      style="margin-top: 10px; padding: 12px 14px; border-radius: 12px; background: var(--ag-danger-soft); color: var(--ag-danger); font-size: 13px; line-height: 1.5;">
-    <strong><i class="fas fa-circle-exclamation"></i> Licence file not accepted{{ $licenceErrorCode ? ' (' . $licenceErrorCode . ')' : '' }}</strong>
+    <strong><i class="fas fa-circle-exclamation"></i> Licence not accepted{{ $licenceErrorCode ? ' (' . $licenceErrorCode . ')' : '' }}</strong>
     <div style="margin-top: 4px;">{{ $licenceErrorText }}</div>
 
     @if($licenceErrorCode === 'E_INSTALL_ID')

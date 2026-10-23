@@ -85,22 +85,8 @@ Artisan::command('license:verify', function () {
     return $summary['active'] ? 0 : 1;
 })->purpose('Verify the stored licence file (offline) and show its status');
 
-// Disabled: online licence key check against atglance.live, replaced by license:verify (offline).
-// Artisan::command('license:check', function (LicenseClient $client) {
-//     $check = License::check($client);
-//
-//     match ($check['result']) {
-//         'active' => $this->info($check['message']),
-//         'inactive' => $this->error('Licence deactivated: ' . $check['message']),
-//         default => $this->warn($check['message']),
-//     };
-//
-//     if ($check['result'] === 'skipped') {
-//         Log::warning('Licence check skipped', ['message' => $check['message']]);
-//     }
-//
-//     return 0;
-// })->purpose('Check the stored licence with atglance.live (check only) and update its status');
+// No online re-check: a licence key is activated with atglance.live once (Admin Settings >
+// Licence or the installer), which returns the licence file; license:verify checks it offline.
 
 if (InstallationState::isInstalled()) {
     Schedule::command('activity:prune')->dailyAt('03:30')->withoutOverlapping();

@@ -856,53 +856,56 @@
             @endif
         @endif
 
-        <div style="border-radius: 12px; padding: 12px; background: var(--ag-surface); margin-bottom: 14px;">
-            <strong style="font-size: 13px;">Get a licence file</strong>
-            <ol style="margin: 6px 0 0 18px; padding: 0; font-size: 13px; color: var(--ag-subtle); line-height: 1.6;">
-                <li>Log in to <a href="{{ \App\Support\License::portalUrl() }}" target="_blank" rel="noopener" style="color: var(--ag-teal); text-decoration: underline;">atglance.live</a> and open Licences.</li>
-                <li>Click Generate licence file and download the .atgl file.</li>
-                <li>Upload it below within 3 hours of downloading.</li>
-            </ol>
+        @php
+            $licenceMode = old('license_mode', request('licence_mode', $errors->has('license_key') ? 'key' : 'file')) === 'key' ? 'key' : 'file';
+            $licenceReplacing = \App\Support\License::hasStoredKey();
+        @endphp
+        <div style="border-radius: 12px; padding: 12px; background: var(--ag-surface); margin-bottom: 14px; font-size: 13px; line-height: 1.6;" data-licence-help>
+            <strong>{{ $licenceReplacing ? 'Renew or replace the licence' : 'Add a licence' }}</strong>
+            <div style="color: var(--ag-subtle);">
+                <strong style="color: var(--ag-text);">If this Management Console has internet access</strong>, use your <strong style="color: var(--ag-text);">licence key</strong>.
+                <strong style="color: var(--ag-text);">Without internet access</strong>, a <strong style="color: var(--ag-text);">licence file</strong> is required.
+                Both come from the same licence on <a href="{{ \App\Support\License::portalUrl() }}" target="_blank" rel="noopener" style="color: var(--ag-teal); text-decoration: underline;">atglance.live</a> &rsaquo; Licences, which you confirm with the code we email you.
+            </div>
         </div>
 
-        {{-- Always shown here: a file bound to an Installation ID works only on that console. --}}
+        {{-- Always shown: a licence file is made for this Installation ID and works only on this console. --}}
         <p style="font-size: 12px; color: var(--ag-muted); margin-bottom: 10px;">
-            This console's Installation ID (optional on atglance.live, binds the file to this console): <span style="font-family: monospace;">{{ \App\Support\License::instanceId() }}</span>
+            This console's Installation ID (enter it on atglance.live when you download a licence file): <span style="font-family: monospace;">{{ \App\Support\License::instanceId() }}</span>
         </p>
 
-        @php $licenceReplacing = \App\Support\License::hasStoredKey(); @endphp
-        <form method="POST" action="{{ route('admin.settings.licence') }}" enctype="multipart/form-data">
+        <form method="POST" action="{{ route('admin.settings.licence') }}" enctype="multipart/form-data" id="licence-form">
             @csrf
-            <label class="ag-label" for="license-file">{{ $licenceReplacing ? 'Upload new licence' : 'Licence file' }}</label>
-            <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-end;">
-                <input class="ag-input" id="license-file" type="file" name="license_file" accept=".atgl" required style="flex: 1; min-width: 240px;">
-                @if($licenceReplacing)
-                    <div style="flex: 0 1 240px; min-width: 200px;">
-                        <label class="ag-label" for="license-password">Your password</label>
-                        <input class="ag-input" id="license-password" type="password" name="password" required autocomplete="current-password" style="width: 100%;">
-                    </div>
-                @endif
-                <button class="ag-btn" type="submit">{{ $licenceReplacing ? 'Verify & Replace' : 'Verify & Save' }}</button>
+            <input type="hidden" name="license_mode" id="licence-mode" value="{{ $licenceMode }}">
+            <div role="tablist" aria-label="How to add the licence" style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px;">
+                <button type="button" role="tab" class="ag-btn ag-btn--sm licence-mode-tab {{ $licenceMode === 'key' ? '' : 'ag-btn--ghost' }}" data-mode="key" aria-selected="{{ $licenceMode === 'key' ? 'true' : 'false' }}">
+                    <i class="fas fa-key"></i> Licence key (internet access)
+                </button>
+                <button type="button" role="tab" class="ag-btn ag-btn--sm licence-mode-tab {{ $licenceMode === 'file' ? '' : 'ag-btn--ghost' }}" data-mode="file" aria-selected="{{ $licenceMode === 'file' ? 'true' : 'false' }}">
+                    <i class="fas fa-file-arrow-up"></i> Licence file (no internet access)
+                </button>
             </div>
-            @if($licenceReplacing)
-                <p style="font-size: 12px; color: var(--ag-muted); margin-top: 6px;">Enter your password to replace the licence. The current licence stays in place if the new file is not accepted.</p>
-            @endif
-            @error('license_file')
-                @include('admin.partials.licence-error', ['licenceError' => $message])
-            @enderror
-            @error('password')
-                <div style="font-size: 12px; color: var(--ag-danger); margin-top: 6px;">{{ $message }}</div>
-            @enderror
-        </form>
 
-        {{-- Disabled: online licence key (atg_...), replaced by the licence file upload above.
-             Kept for reference only; LicenseClient is commented out as well.
-        @php $licenceReplacing = \App\Support\License::hasStoredKey(); @endphp
-        <form method="POST" action="{{ route('admin.settings.licence') }}">
-            @csrf
-            <label class="ag-label" for="license-key">{{ $licenceReplacing ? 'Replace licence key' : 'Licence key' }}</label>
-            <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-end;">
-                <input class="ag-input" id="license-key" type="text" name="license_key" required autocomplete="off" spellcheck="false" placeholder="Paste your licence key" style="flex: 1; min-width: 240px;">
+            <div data-licence-panel="key" style="display: {{ $licenceMode === 'key' ? 'block' : 'none' }};">
+                <label class="ag-label" for="license-key">Licence key</label>
+                <input class="ag-input" id="license-key" type="text" name="license_key" autocomplete="off" spellcheck="false" value="{{ old('license_key') }}"
+                       placeholder="Paste your licence key (atg_...)" style="width: 100%; max-width: 520px;">
+                <p style="font-size: 12px; color: var(--ag-muted); margin-top: 4px;">The console activates the key on atglance.live once and stores the licence; after that it works offline.</p>
+                @error('license_key')
+                    @include('admin.partials.licence-error', ['licenceError' => $message])
+                @enderror
+            </div>
+
+            <div data-licence-panel="file" style="display: {{ $licenceMode === 'file' ? 'block' : 'none' }};">
+                <label class="ag-label" for="license-file">Licence file (.atgl)</label>
+                <input class="ag-input" id="license-file" type="file" name="license_file" accept=".atgl" style="width: 100%; max-width: 520px;">
+                <p style="font-size: 12px; color: var(--ag-muted); margin-top: 4px;">On atglance.live, click "Licence file" on your licence, enter the Installation ID above, and upload the file within the time shown there.</p>
+                @error('license_file')
+                    @include('admin.partials.licence-error', ['licenceError' => $message])
+                @enderror
+            </div>
+
+            <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-end; margin-top: 12px;">
                 @if($licenceReplacing)
                     <div style="flex: 0 1 240px; min-width: 200px;">
                         <label class="ag-label" for="license-password">Your password</label>
@@ -912,13 +915,36 @@
                 <button class="ag-btn" type="submit">{{ $licenceReplacing ? 'Verify & Replace' : 'Verify & Save' }}</button>
             </div>
             @if($licenceReplacing)
-                <p style="font-size: 12px; color: var(--ag-muted); margin-top: 6px;">A licence is already saved. Enter your password to replace it; the current licence stays in place if the new key is not accepted.</p>
+                <p style="font-size: 12px; color: var(--ag-muted); margin-top: 6px;">Enter your password to replace the licence. The current licence stays in place if the new one is not accepted.</p>
             @endif
             @error('password')
                 <div style="font-size: 12px; color: var(--ag-danger); margin-top: 6px;">{{ $message }}</div>
             @enderror
         </form>
-        --}}
+        <script>
+            (function () {
+                var form = document.getElementById('licence-form');
+                if (!form) { return; }
+                var modeInput = document.getElementById('licence-mode');
+                function setMode(mode) {
+                    modeInput.value = mode;
+                    form.querySelectorAll('[data-licence-panel]').forEach(function (panel) {
+                        panel.style.display = panel.getAttribute('data-licence-panel') === mode ? 'block' : 'none';
+                    });
+                    form.querySelectorAll('.licence-mode-tab').forEach(function (tab) {
+                        var active = tab.getAttribute('data-mode') === mode;
+                        tab.classList.toggle('ag-btn--ghost', !active);
+                        tab.setAttribute('aria-selected', active ? 'true' : 'false');
+                    });
+                    document.getElementById('license-key').required = mode === 'key';
+                    document.getElementById('license-file').required = mode === 'file';
+                }
+                form.querySelectorAll('.licence-mode-tab').forEach(function (tab) {
+                    tab.addEventListener('click', function () { setMode(tab.getAttribute('data-mode')); });
+                });
+                setMode(modeInput.value);
+            })();
+        </script>
     </div>
 
     @if($aiPluginEnabled)

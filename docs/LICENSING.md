@@ -190,19 +190,25 @@ ask customers to generate new files.
 
 ## Customer install flow
 
-1. Sign in on atglance.live, open **Licences**, and click **Generate licence file**. To bind the
-   file to one console, first enter that console's **Installation ID**. It is shown when
-   `ATGLANCE_LICENSE_SHOW_INSTALL_ID=true` (off by default).
-2. Within **3 hours**, upload the `.atgl` file in the console installer (step 1). The installer shows
-   customer, plan, policy, node and user limits, features, issue date and expiry, and refuses
-   to install without a valid file.
+1. Sign in on atglance.live, open **Licences**, create a licence and confirm it with the emailed
+   5-digit code (flagged accounts also need admin approval). One licence works on one console.
+2. In the console installer (step 1) or **Admin Settings > Licence**, choose one way:
+   - **Licence key** (console with internet access): paste the key. The console calls
+     `POST <ATGLANCE_LICENSE_API_URL>/activate` once with its Installation ID; atglance.live
+     answers with the licence file for this console, which is stored like an upload. There is no
+     later online check.
+   - **Licence file** (console without internet access): on atglance.live click **Licence file**
+     on the licence, enter the console's **Installation ID** (shown in the installer and on the
+     Licence tab), download the `.atgl` and upload it within the window shown (5 to 180 minutes).
+     The installer previews customer, plan, policy, limits, features and dates.
+   The installer refuses to install without a valid licence.
 3. Afterwards, the file is re-verified on every request and by `php artisan license:verify` (at
    container start and hourly). The 3-hour rule no longer applies; `expires_at` does.
 4. Banners appear 30, 7 and 1 days before expiry. After expiry the console is **read-only**: every
    write is refused, except sign-in, sign-out and the licence upload in **Admin Settings > Licence**.
-5. To renew, generate a new file and upload it in **Admin Settings > Licence** (your password is
-   required). Renewal files are also subject to the 3-hour window. The current licence stays in
-   place if the new file is refused.
+5. To renew, use a new licence key or file in **Admin Settings > Licence** (your password is
+   required). Renewal files are also subject to their activation window. The current licence stays
+   in place if the new one is refused.
 
 Stored files (on the `app-storage` volume, `storage/app/license/`):
 
@@ -214,10 +220,10 @@ Stored files (on the `app-storage` volume, `storage/app/license/`):
 
 ### Upgrading from licence keys (2.2 and earlier)
 
-Consoles up to 2.2 used online licence keys (`atg_...`). From this version on, a stored key is
-ignored. After the update, the console is read-only until an admin uploads a licence file in
-**Admin Settings > Licence**. Generate the file just before uploading it, because of the 3-hour
-window.
+Consoles up to 2.2 kept the licence key and checked it online. From this version on, the console
+needs the licence file: after the update it is read-only until an admin enters the licence key again
+in **Admin Settings > Licence** (with internet access; the key is activated once and the file is
+stored) or uploads a licence file.
 
 ## Troubleshooting
 
@@ -239,6 +245,8 @@ window.
 | `E_CLOCK` | This server's clock is more than 24 hours behind the latest time the console recorded | Correct the clock. Activation stays refused until the clock has caught up |
 | `E_RECORD` | `activation.json` was edited, is missing, or does not match `license.atgl` | Upload the licence file again in Admin Settings > Licence |
 | `E_NO_LICENSE` | (API responses) no licence file is installed | Upload one in Admin Settings > Licence |
+| Licence key: "Could not reach atglance.live" | The console has no internet access, or a proxy blocks `ATGLANCE_LICENSE_API_URL` | Use a licence file instead |
+| Licence key: "already in use by another Management Console" | One licence = one console | Revoke it on atglance.live and create a new licence |
 | `NODE_LIMIT_REACHED` | The active nodes reached `max_nodes` | Deregister nodes you no longer use, or upload a licence with a higher node limit |
 | `USER_LIMIT_REACHED` | The users reached `max_users` | Delete users you no longer need, or upload a licence with a higher user limit |
 | `FEATURE_NOT_LICENSED` | The licence does not include the feature | Ask your atglance.live admin for a licence that includes it, then upload the new file |

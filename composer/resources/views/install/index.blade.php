@@ -78,88 +78,62 @@
                 <form id="installerForm" action="{{ route('install.run') }}" method="POST" enctype="multipart/form-data" class="mt-6 space-y-5">
                     @csrf
 
-                    <section class="rounded-2xl border border-slate-300 bg-slate-50 p-4 sm:p-5">
-                        <h2 class="text-base font-extrabold text-slate-900">Step 1 &mdash; Licence File</h2>
-                        <p class="mt-1 text-xs text-slate-600">Upload your AtGlance licence file (.atgl). It is checked on this server; nothing is sent over the internet.</p>
+                    @php($licenseMode = old('license_mode', $errors->has('license_key') ? 'key' : 'file') === 'key' ? 'key' : 'file')
+                    <section class="rounded-2xl border border-slate-300 bg-slate-50 p-4 sm:p-5" data-license-mode="{{ $licenseMode }}" id="licenseStep">
+                        <h2 class="text-base font-extrabold text-slate-900">Step 1 &mdash; Licence</h2>
+                        <p class="mt-1 text-xs text-slate-700">
+                            <span class="font-semibold">If this Management Console has internet access</span>, use your <span class="font-semibold">licence key</span>.
+                            <span class="font-semibold">Without internet access</span>, a <span class="font-semibold">licence file</span> is required.
+                            Both come from the same licence on <a href="{{ $licensePortalUrl }}" target="_blank" rel="noopener" class="font-semibold text-black underline">atglance.live</a> &rsaquo; Licences.
+                        </p>
 
-                        <ol class="mt-3 list-decimal space-y-1 pl-5 text-xs text-slate-700">
-                            <li>Log in to <a href="{{ $licensePortalUrl }}" target="_blank" rel="noopener" class="font-semibold text-black underline">atglance.live</a> and open <span class="font-semibold">Licences</span>.</li>
-                            @if ($showInstallId)
-                                <li>Optional: enter this Installation ID so the file works on this server only: <span class="font-mono font-semibold text-black">{{ $installId }}</span></li>
-                            @endif
-                            <li>Click <span class="font-semibold">Generate licence file</span> and download it.</li>
-                            <li>Upload it below <span class="font-semibold">within 3 hours</span> of downloading.</li>
-                        </ol>
-
-                        <label for="license_file" class="mt-4 block text-sm font-semibold text-slate-800">Licence File</label>
-                        <input
-                            id="license_file"
-                            name="license_file"
-                            type="file"
-                            accept=".atgl"
-                            required
-                            class="mt-2 block w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-black file:px-3 file:py-1.5 file:text-xs file:font-bold file:text-white"
-                        >
-                        <p id="licensePreview" class="mt-2 hidden text-xs font-semibold" role="status"></p>
-                        <dl id="licenseDetails" class="mt-3 hidden grid grid-cols-2 gap-x-4 gap-y-1 rounded-xl border border-green-200 bg-green-50 p-3 text-xs text-slate-800">
-                            <dt class="text-slate-500">Customer</dt><dd data-field="customer"></dd>
-                            <dt class="text-slate-500">Plan</dt><dd data-field="plan"></dd>
-                            <dt class="text-slate-500">Policy</dt><dd data-field="policy"></dd>
-                            <dt class="text-slate-500">Node limit</dt><dd data-field="nodes"></dd>
-                            <dt class="text-slate-500">User limit</dt><dd data-field="users"></dd>
-                            <dt class="text-slate-500">Features</dt><dd data-field="features"></dd>
-                            <dt class="text-slate-500">Issued</dt><dd data-field="issued_at"></dd>
-                            <dt class="text-slate-500">Expires</dt><dd data-field="expires_at"></dd>
-                        </dl>
-                    </section>
-
-                    {{-- Disabled: online licence key step, replaced by the licence file upload above. Kept for reference only.
-                    @php($licenseLater = old('license_later') === '1')
-                    <section class="rounded-2xl border border-slate-300 bg-slate-50 p-4 sm:p-5">
-                        <h2 class="text-base font-extrabold text-slate-900">Step 1 &mdash; Licence Key</h2>
-                        <p class="mt-1 text-xs text-slate-600">Add your AtGlance licence key before you start the installation.</p>
-
-                        <ol class="mt-3 list-decimal space-y-1 pl-5 text-xs text-slate-700">
-                            <li>Log in to <a href="{{ $licensePortalUrl }}" target="_blank" rel="noopener" class="font-semibold text-black underline">atglance.live</a>.</li>
-                            <li>Generate a licence for this installation.</li>
-                            <li>Copy the licence key and paste it below.</li>
-                        </ol>
-
-                        <label for="license_key" class="mt-4 block text-sm font-semibold text-slate-800">Licence Key</label>
-                        <div class="mt-2 flex flex-col gap-2 sm:flex-row">
-                            <input
-                                id="license_key"
-                                name="license_key"
-                                type="text"
-                                autocomplete="off"
-                                spellcheck="false"
-                                value="{{ old('license_key', '') }}"
-                                placeholder="Paste your licence key"
-                                {{ $licenseLater ? 'disabled' : '' }}
-                                class="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 font-mono text-sm outline-none transition focus:border-black focus:ring-4 focus:ring-slate-200 disabled:bg-slate-100 disabled:text-slate-400"
-                            >
-                            <button
-                                id="licenseVerifyBtn"
-                                type="button"
-                                {{ $licenseLater ? 'disabled' : '' }}
-                                class="shrink-0 rounded-xl border border-black bg-white px-4 py-3 text-sm font-bold text-black transition hover:bg-slate-100 disabled:border-slate-300 disabled:text-slate-400"
-                            >Verify</button>
+                        <input type="hidden" name="license_mode" id="license_mode" value="{{ $licenseMode }}">
+                        <div class="mt-3 grid grid-cols-2 gap-2" role="tablist" aria-label="How to add the licence">
+                            <button type="button" role="tab" data-mode="key" aria-selected="{{ $licenseMode === 'key' ? 'true' : 'false' }}"
+                                class="license-tab rounded-xl border px-3 py-2 text-sm font-bold transition">Licence key <span class="block text-[11px] font-medium">internet access</span></button>
+                            <button type="button" role="tab" data-mode="file" aria-selected="{{ $licenseMode === 'file' ? 'true' : 'false' }}"
+                                class="license-tab rounded-xl border px-3 py-2 text-sm font-bold transition">Licence file <span class="block text-[11px] font-medium">no internet access</span></button>
                         </div>
-                        <p id="licenseVerifyResult" class="mt-2 hidden text-xs font-semibold" role="status"></p>
 
-                        <label class="mt-3 flex items-center gap-2 text-sm text-slate-800">
-                            <input type="hidden" name="license_later" value="0">
-                            <input id="license_later" type="checkbox" name="license_later" value="1" {{ $licenseLater ? 'checked' : '' }} class="h-4 w-4 rounded border-slate-400">
-                            I'll add later
-                        </label>
+                        {{-- Licence key: activated online once; atglance.live answers with the licence file. --}}
+                        <div data-panel="key" class="mt-4 {{ $licenseMode === 'key' ? '' : 'hidden' }}">
+                            <ol class="list-decimal space-y-1 pl-5 text-xs text-slate-700">
+                                <li>On atglance.live &rsaquo; Licences, create a licence and confirm it with the emailed code.</li>
+                                <li>Copy the licence key and paste it below. The console activates it online once; after that it works offline.</li>
+                            </ol>
+                            <label for="license_key" class="mt-3 block text-sm font-semibold text-slate-800">Licence Key</label>
+                            <div class="mt-2 flex flex-col gap-2 sm:flex-row">
+                                <input id="license_key" name="license_key" type="text" autocomplete="off" spellcheck="false" value="{{ old('license_key', '') }}" placeholder="Paste your licence key (atg_...)"
+                                    class="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 font-mono text-sm outline-none transition focus:border-black focus:ring-4 focus:ring-slate-200">
+                                <button id="licenseVerifyBtn" type="button"
+                                    class="shrink-0 rounded-xl border border-black bg-white px-4 py-3 text-sm font-bold text-black transition hover:bg-slate-100 disabled:border-slate-300 disabled:text-slate-400">Verify</button>
+                            </div>
+                            <p id="licenseVerifyResult" class="mt-2 hidden text-xs font-semibold" role="status"></p>
+                        </div>
 
-                        <div id="licenseLaterWarning" class="mt-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900 {{ $licenseLater ? '' : 'hidden' }}">
-                            <p class="font-bold">Warning: AtGlance will be installed without a licence.</p>
-                            <p class="mt-1">Until a licence is added, nobody can create or register users and no API keys can be created, so no server can connect with the atglance CLI.</p>
-                            <p class="mt-1">To add it later: log in as the super admin, open <span class="font-semibold">Admin Settings &rsaquo; Licence</span>, paste the licence key and click <span class="font-semibold">Verify &amp; Save</span>.</p>
+                        {{-- Licence file: checked on this server only. --}}
+                        <div data-panel="file" class="mt-4 {{ $licenseMode === 'file' ? '' : 'hidden' }}">
+                            <ol class="list-decimal space-y-1 pl-5 text-xs text-slate-700">
+                                <li>On atglance.live &rsaquo; Licences, click <span class="font-semibold">Licence file</span> on a confirmed licence.</li>
+                                <li>Enter this console's Installation ID: <span class="font-mono font-semibold text-black">{{ $installId }}</span></li>
+                                <li>Download the .atgl file and upload it below <span class="font-semibold">within the time shown on atglance.live</span>.</li>
+                            </ol>
+                            <label for="license_file" class="mt-3 block text-sm font-semibold text-slate-800">Licence File</label>
+                            <input id="license_file" name="license_file" type="file" accept=".atgl"
+                                class="mt-2 block w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-black file:px-3 file:py-1.5 file:text-xs file:font-bold file:text-white">
+                            <p id="licensePreview" class="mt-2 hidden text-xs font-semibold" role="status"></p>
+                            <dl id="licenseDetails" class="mt-3 hidden grid grid-cols-2 gap-x-4 gap-y-1 rounded-xl border border-green-200 bg-green-50 p-3 text-xs text-slate-800">
+                                <dt class="text-slate-500">Customer</dt><dd data-field="customer"></dd>
+                                <dt class="text-slate-500">Plan</dt><dd data-field="plan"></dd>
+                                <dt class="text-slate-500">Policy</dt><dd data-field="policy"></dd>
+                                <dt class="text-slate-500">Node limit</dt><dd data-field="nodes"></dd>
+                                <dt class="text-slate-500">User limit</dt><dd data-field="users"></dd>
+                                <dt class="text-slate-500">Features</dt><dd data-field="features"></dd>
+                                <dt class="text-slate-500">Issued</dt><dd data-field="issued_at"></dd>
+                                <dt class="text-slate-500">Expires</dt><dd data-field="expires_at"></dd>
+                            </dl>
                         </div>
                     </section>
-                    --}}
 
                     <h2 class="text-base font-extrabold text-slate-900">Step 2 &mdash; Application Setup</h2>
 
@@ -303,70 +277,131 @@
 
     <script>
         (function () {
+            var step = document.getElementById('licenseStep');
+            var modeInput = document.getElementById('license_mode');
             var fileInput = document.getElementById('license_file');
+            var keyInput = document.getElementById('license_key');
+            var verifyBtn = document.getElementById('licenseVerifyBtn');
+            var verifyResult = document.getElementById('licenseVerifyResult');
             var result = document.getElementById('licensePreview');
             var details = document.getElementById('licenseDetails');
             var submitBtn = document.querySelector('#installerForm [type="submit"]');
+            var token = document.querySelector('#installerForm [name="_token"]').value;
+            var fileValid = false;
 
-            function showResult(ok, message) {
-                result.textContent = message;
-                result.classList.remove('hidden', 'text-green-700', 'text-red-700');
-                result.classList.add(ok ? 'text-green-700' : 'text-red-700');
+            function show(el, ok, message) {
+                el.textContent = message;
+                el.classList.remove('hidden', 'text-green-700', 'text-red-700');
+                el.classList.add(ok ? 'text-green-700' : 'text-red-700');
             }
 
-            function setValid(valid) {
-                if (submitBtn) { submitBtn.disabled = !valid; }
-                details.classList.toggle('hidden', !valid);
+            // A key is activated on submit; a file must pass the preview first.
+            function refreshSubmit() {
+                var mode = modeInput.value;
+                if (submitBtn) {
+                    submitBtn.disabled = mode === 'file' ? !fileValid : keyInput.value.trim() === '';
+                }
             }
 
-            setValid(false);
+            function setMode(mode) {
+                modeInput.value = mode;
+                step.setAttribute('data-license-mode', mode);
+                step.querySelectorAll('[data-panel]').forEach(function (panel) {
+                    panel.classList.toggle('hidden', panel.getAttribute('data-panel') !== mode);
+                });
+                step.querySelectorAll('.license-tab').forEach(function (tab) {
+                    var active = tab.getAttribute('data-mode') === mode;
+                    tab.setAttribute('aria-selected', active ? 'true' : 'false');
+                    tab.classList.toggle('border-black', active);
+                    tab.classList.toggle('bg-black', active);
+                    tab.classList.toggle('text-white', active);
+                    tab.classList.toggle('border-slate-300', !active);
+                    tab.classList.toggle('bg-white', !active);
+                    tab.classList.toggle('text-slate-800', !active);
+                });
+                refreshSubmit();
+            }
+
+            step.querySelectorAll('.license-tab').forEach(function (tab) {
+                tab.addEventListener('click', function () { setMode(tab.getAttribute('data-mode')); });
+            });
+            keyInput.addEventListener('input', refreshSubmit);
+            setMode(modeInput.value);
+
+            function readJson(response) {
+                // An expired session (419) is answered with a redirect to an HTML page, not JSON.
+                if (response.redirected || (response.headers.get('Content-Type') || '').indexOf('application/json') === -1) {
+                    throw new Error('session');
+                }
+                return response.json();
+            }
+
+            function failed(el, error, fallback) {
+                show(el, false, error && error.message === 'session'
+                    ? 'Your session expired. Reload this page and try again.'
+                    : fallback);
+            }
+
+            verifyBtn.addEventListener('click', function () {
+                if (keyInput.value.trim() === '') {
+                    show(verifyResult, false, 'Enter a licence key first.');
+                    return;
+                }
+                verifyBtn.disabled = true;
+                verifyBtn.textContent = 'Verifying...';
+                fetch(@json(route('install.license.verify')), {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': token },
+                    body: JSON.stringify({ license_key: keyInput.value.trim() })
+                })
+                    .then(readJson)
+                    .then(function (data) {
+                        var parts = [];
+                        if (data.ok && data.name) { parts.push('Licence: ' + data.name); }
+                        if (data.ok && data.plan) { parts.push('Plan: ' + data.plan); }
+                        show(verifyResult, !!data.ok, (data.message || (data.ok ? 'Licence key is valid.' : 'The licence key was not accepted.')) + (parts.length ? ' ' + parts.join(' · ') : ''));
+                    })
+                    .catch(function (error) { failed(verifyResult, error, 'Could not check the licence key. Without internet access, use a licence file.'); })
+                    .finally(function () { verifyBtn.disabled = false; verifyBtn.textContent = 'Verify'; });
+            });
 
             fileInput.addEventListener('change', function () {
-                setValid(false);
+                fileValid = false;
+                details.classList.add('hidden');
+                refreshSubmit();
                 if (!fileInput.files.length) {
                     result.classList.add('hidden');
                     return;
                 }
                 if (!/\.atgl$/i.test(fileInput.files[0].name)) {
-                    showResult(false, 'Choose an .atgl licence file.');
+                    show(result, false, 'Choose an .atgl licence file.');
                     return;
                 }
 
                 var body = new FormData();
                 body.append('license_file', fileInput.files[0]);
-                showResult(true, 'Checking the licence file...');
+                show(result, true, 'Checking the licence file...');
 
                 fetch(@json(route('install.license.preview')), {
                     method: 'POST',
-                    headers: {
-                        'Accept': 'application/json',
-                        'X-CSRF-TOKEN': document.querySelector('#installerForm [name="_token"]').value
-                    },
+                    headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': token },
                     body: body
                 })
-                    .then(function (response) {
-                        // An expired session (419) is answered with a redirect to an HTML page, not JSON.
-                        if (response.redirected || (response.headers.get('Content-Type') || '').indexOf('application/json') === -1) {
-                            throw new Error('session');
-                        }
-                        return response.json();
-                    })
+                    .then(readJson)
                     .then(function (data) {
                         if (!data.ok) {
-                            showResult(false, data.message || 'The licence file is not valid.');
+                            show(result, false, data.message || 'The licence file is not valid.');
                             return;
                         }
                         details.querySelectorAll('[data-field]').forEach(function (el) {
                             el.textContent = data.license[el.getAttribute('data-field')] || '-';
                         });
-                        showResult(true, 'Licence file is valid. Check the details, then install.');
-                        setValid(true);
+                        show(result, true, 'Licence file is valid. Check the details, then install.');
+                        details.classList.remove('hidden');
+                        fileValid = true;
+                        refreshSubmit();
                     })
-                    .catch(function (error) {
-                        showResult(false, error && error.message === 'session'
-                            ? 'Your session expired. Reload this page and choose the licence file again.'
-                            : 'Could not check the licence file. Try again.');
-                    });
+                    .catch(function (error) { failed(result, error, 'Could not check the licence file. Try again.'); });
             });
         })();
 
