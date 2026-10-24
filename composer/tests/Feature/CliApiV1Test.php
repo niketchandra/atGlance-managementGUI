@@ -230,7 +230,7 @@ class CliApiV1Test extends TestCase
             'workspace_id' => $this->foreignWorkspace->id, 'validation_hash' => 'legacy-hash',
         ], $headers)->assertCreated()
             ->assertJsonPath('message', 'System registered successfully')
-            ->assertJsonPath('system.validation_hash', 'legacy-hash')
+            ->assertJsonMissingPath('system.validation_hash')
             ->assertJsonPath('system.workspace_id', $this->foreignWorkspace->id);
         $systemId = $created->json('system.id');
 
@@ -303,7 +303,8 @@ class CliApiV1Test extends TestCase
         $response->assertJsonPath('system.status', 'active')->assertJsonPath('system.workspace_id', $this->workspace->id);
 
         $system = SystemRegister::find($response->json('system.id'));
-        $this->assertSame(self::KEY, $system->validation_hash);
+        $this->assertTrue($system->matchesKey(self::KEY));
+        $this->assertNull($system->getRawOriginal('validation_hash'));
         $this->assertSame(200, (int) $system->org_id);
         $this->assertSame($user->id, (int) $system->user_id);
     }
@@ -598,7 +599,7 @@ class CliApiV1Test extends TestCase
         $this->postJson('/api/v1/systems/self/rotate-key', ['password' => 'secret-pass', 'new_key' => $newKey], $pat + $this->systemHeaders($system))
             ->assertOk()->assertExactJson(['system_id' => $system->id, 'rotated' => true]);
 
-        $this->assertSame($newKey, $system->fresh()->validation_hash);
+        $this->assertTrue($system->fresh()->matchesKey($newKey));
         $this->getJson('/api/v1/systems/self', $pat + $this->systemHeaders($system))->assertNotFound();
         $this->getJson('/api/v1/systems/self', $pat + $this->systemHeaders($system, $newKey))->assertOk();
         $this->assertDatabaseHas('activity_logs', ['user_id' => $owner->id, 'event' => 'system.key_rotated']);
@@ -621,7 +622,7 @@ class CliApiV1Test extends TestCase
         $this->postJson('/api/v1/systems/self/rotate-key', ['password' => 'secret-pass', 'new_key' => str_repeat('n', 40)], $this->pat($teammate) + $this->systemHeaders($system))
             ->assertForbidden();
 
-        $this->assertSame(self::KEY, $system->fresh()->validation_hash);
+        $this->assertTrue($system->fresh()->matchesKey(self::KEY));
     }
 
     // ---------------------------------------------------------------- force (v1)
@@ -671,7 +672,7 @@ class CliApiV1Test extends TestCase
 
         $response = $this->post('/api/v1/config-files', ['file' => $this->configFile('sshd_config', $content), 'service_name' => 'ssh'], $headers)
             ->assertCreated();
-        $this->assertSame(['id', 'file_name', 'service_name', 'version', 'created_at'], array_keys($response->json('file')));
+        $this->assertSame(['id', 'file_name', 'service_name', 'version', 'created_at', 'sha256'], array_keys($response->json('file')));
         $response->assertJsonPath('file.file_name', 'sshd_config')->assertJsonPath('file.version', 'v1');
         $this->assertStringNotContainsString(self::KEY, $response->getContent());
         $this->assertStringNotContainsString('config_files', $response->getContent());
@@ -689,7 +690,7 @@ class CliApiV1Test extends TestCase
         $this->assertCount(2, $list->json('files'));
         $this->assertSame('nginx.conf', $list->json('files.0.file_name'));
         $this->assertSame(['id' => $owner->id, 'name' => $owner->name], $list->json('files.1.created_by'));
-        $this->assertSame(['id', 'file_name', 'service_name', 'version', 'created_at', 'created_by'], array_keys($list->json('files.0')));
+        $this->assertSame(['id', 'file_name', 'service_name', 'version', 'created_at', 'created_by', 'sha256'], array_keys($list->json('files.0')));
 
         $filtered = $this->getJson('/api/v1/config-files?service_name=ssh', $headers)->assertOk();
         $this->assertCount(1, $filtered->json('files'));
@@ -787,11 +788,12 @@ class CliApiV1Test extends TestCase
         $admin = $this->user('admin@example.test', 101);
         $system = $this->system($owner);
 
+        // Attempts 1-5 fail (401); the 5th failure locks the email, so 6-10 answer 423 (lockout).
         for ($i = 0; $i < 5; $i++) {
             $this->postJson('/api/v1/systems/' . $system->id . '/deregister-force', ['email' => 'Admin@Example.test', 'password' => 'wrong'])
-                ->assertUnauthorized();
+                ->assertStatus($i * 2 + 1 <= 5 ? 401 : 423);
             $this->postJson('/api/system-deregister-force', ['system_id' => $system->id, 'email' => 'admin@example.test', 'password' => 'wrong'])
-                ->assertUnauthorized();
+                ->assertStatus($i * 2 + 2 <= 5 ? 401 : 423);
         }
 
         // 11th attempt for the same email (any case, legacy or v1 route) is limited.

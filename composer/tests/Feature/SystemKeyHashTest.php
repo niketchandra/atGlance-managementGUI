@@ -10,7 +10,7 @@ use Tests\TestCase;
 
 /**
  * Task 5: system keys are stored as sha256 hashes (system_key_hash) with their last four
- * characters for display. validation_hash is still written until Task 5e.
+ * characters for display. Task 5e: the plaintext validation_hash is no longer kept.
  */
 class SystemKeyHashTest extends TestCase
 {
@@ -106,7 +106,7 @@ class SystemKeyHashTest extends TestCase
         $this->assertSame(hash('sha256', self::KEY_2), $row->system_key_hash);
         $this->assertSame('ba98', $row->system_key_last_four);
 
-        $system->update(['validation_hash' => null]);
+        $system->update(['validation_hash' => '']); // an empty key clears the hash
         $row = DB::table('system_register')->where('id', $system->id)->first();
         $this->assertNull($row->system_key_hash);
         $this->assertNull($row->system_key_last_four);

@@ -17,6 +17,9 @@ trait InteractsWithAdminConsole
     private bool $createdInstalledMarker = false;
     private ?string $originalEnv = null;
 
+    /** @var array{0: array, 1: array, 2: array}|null */
+    private ?array $originalEnvVars = null;
+
     protected function setUpAdminConsole(): void
     {
         // Saved secrets are encrypted; the test env has no APP_KEY of its own.
@@ -31,6 +34,9 @@ trait InteractsWithAdminConsole
 
         $envPath = base_path('.env');
         $this->originalEnv = is_file($envPath) ? file_get_contents($envPath) : null;
+        // Settings saved to .env also go to $_ENV, $_SERVER and putenv() (read by env()); keep a
+        // copy so one test's values (e.g. SSO_ENABLED_PROVIDERS) do not leak into the next.
+        $this->originalEnvVars = [$_ENV, $_SERVER, getenv()];
     }
 
     protected function tearDownAdminConsole(): void
@@ -44,6 +50,16 @@ trait InteractsWithAdminConsole
             file_put_contents($envPath, $this->originalEnv);
         } elseif (is_file($envPath)) {
             unlink($envPath);
+        }
+        if ($this->originalEnvVars !== null) {
+            [$_ENV, $_SERVER, $process] = $this->originalEnvVars;
+            foreach (getenv() as $key => $value) {
+                if (!array_key_exists($key, $process)) {
+                    putenv($key);
+                } elseif ($process[$key] !== $value) {
+                    putenv($key . '=' . $process[$key]);
+                }
+            }
         }
     }
 

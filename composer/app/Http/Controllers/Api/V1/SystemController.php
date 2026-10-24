@@ -193,7 +193,7 @@ class SystemController extends Controller
             ],
         ]);
 
-        $this->systems->rotateSystemKey($system, $data['new_key'], $request->user(), $identity?->serviceAccount);
+        $this->systems->rotateSystemKey($system, $data['new_key'], $request->user(), $identity?->serviceAccount, (string) $request->header('X-Atglance-System-Key', ''));
 
         return response()->json(['system_id' => $system->id, 'rotated' => true]);
     }

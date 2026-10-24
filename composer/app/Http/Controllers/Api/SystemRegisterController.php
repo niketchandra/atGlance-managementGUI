@@ -539,20 +539,23 @@ class SystemRegisterController extends Controller
     }
 
     /**
-     * Replaces the system's key (validation_hash) and records who did it: a person or the
-     * service account the system runs as.
+     * Replaces the system's key and records who did it: a person or the service account the
+     * system runs as. $oldKey is the current key as the host sent it (the system stores only
+     * its hash); it is checked against the hash before the file copies are moved over.
      */
-    public function rotateSystemKey(SystemRegister $system, string $newKey, ?User $actor, ?ServiceAccount $account = null): void
+    public function rotateSystemKey(SystemRegister $system, string $newKey, ?User $actor, ?ServiceAccount $account = null, ?string $oldKey = null): void
     {
-        DB::transaction(function () use ($system, $newKey): void {
-            $oldKey = (string) $system->validation_hash;
+        $oldKey = (string) ($oldKey ?? $system->getRawOriginal('validation_hash') ?? '');
 
+        DB::transaction(function () use ($system, $newKey, $oldKey): void {
             // Copies of the key stored with this system's backups and services.
-            foreach (['configuration_files', 'raw_data'] as $table) {
-                DB::table($table)
-                    ->where('system_register_id', $system->id)
-                    ->where('validation_hash', $oldKey)
-                    ->update(['validation_hash' => $newKey]);
+            if ($oldKey !== '' && $system->matchesKey($oldKey)) {
+                foreach (['configuration_files', 'raw_data'] as $table) {
+                    DB::table($table)
+                        ->where('system_register_id', $system->id)
+                        ->where('validation_hash', $oldKey)
+                        ->update(['validation_hash' => $newKey]);
+                }
             }
             DB::table('services')->where('system_id', $system->id)->update(['system_hash' => $newKey]);
 

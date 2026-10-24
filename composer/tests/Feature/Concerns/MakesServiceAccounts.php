@@ -123,7 +123,7 @@ trait MakesServiceAccounts
 
     protected function makeSystem(User $registeredBy, array $overrides = []): SystemRegister
     {
-        return SystemRegister::create(array_merge([
+        $system = SystemRegister::create(array_merge([
             'pat_token_id' => 1,
             'user_id' => $registeredBy->id,
             'org_id' => $registeredBy->org_id,
@@ -136,13 +136,19 @@ trait MakesServiceAccounts
             'status' => 'active',
             'validation_hash' => self::SYSTEM_KEY,
         ], $overrides));
+        $this->systemKeys[$system->id] = (string) ($overrides['validation_hash'] ?? self::SYSTEM_KEY);
+
+        return $system;
     }
+
+    /** Plaintext keys of systems made by makeSystem(), by id: the database keeps only a hash. */
+    protected array $systemKeys = [];
 
     /**
      * @return array<string, string>
      */
-    protected function systemHeaders(\App\Models\SystemRegister $system): array
+    protected function systemHeaders(\App\Models\SystemRegister $system, ?string $key = null): array
     {
-        return ['X-Atglance-System-Id' => (string) $system->id, 'X-Atglance-System-Key' => (string) $system->validation_hash];
+        return ['X-Atglance-System-Id' => (string) $system->id, 'X-Atglance-System-Key' => $key ?? $this->systemKeys[$system->id] ?? self::SYSTEM_KEY];
     }
 }

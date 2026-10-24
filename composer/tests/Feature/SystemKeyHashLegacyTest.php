@@ -67,7 +67,7 @@ class SystemKeyHashLegacyTest extends TestCase
         return (int) $this->postJson('/api/system-register', array_filter([
             'system_name' => 'web-09', 'os_type' => 'linux', 'ip_address' => '10.0.0.9',
             'workspace_id' => $this->workspace->id, 'validation_hash' => $key,
-        ]), $headers)->assertCreated()->assertJsonPath('system.validation_hash', $key)->json('system.id');
+        ]), $headers)->assertCreated()->assertJsonMissingPath('system.validation_hash')->json('system.id');
     }
 
     private function legacyUpload(array $headers, int $systemId, string $key, string $service = 'ssh'): int
@@ -93,7 +93,7 @@ class SystemKeyHashLegacyTest extends TestCase
         $headers = $this->pat($this->user('owner@example.test'));
 
         $row = DB::table('system_register')->where('id', $this->legacyRegister($headers, self::KEY))->first();
-        $this->assertSame(self::KEY, $row->validation_hash);
+        $this->assertNull($row->validation_hash, 'Task 5e: the plaintext key is not kept');
         $this->assertSame(hash('sha256', self::KEY), $row->system_key_hash);
         $this->assertSame('4567', $row->system_key_last_four);
 

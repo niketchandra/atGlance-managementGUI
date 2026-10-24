@@ -95,7 +95,7 @@ class ServiceAccountSystemRoutesTest extends TestCase
 
         $this->postJson('/api/v1/systems/self/rotate-key', ['new_key' => str_repeat('b', 40)], $headers)
             ->assertOk()->assertJsonPath('rotated', true);
-        $this->assertSame(str_repeat('b', 40), $system->fresh()->validation_hash);
+        $this->assertTrue($system->fresh()->matchesKey(str_repeat('b', 40)));
         $this->assertTrue(ActivityLog::where('event', 'system.key_rotated')->whereNull('user_id')->where('description', 'like', '%service account%')->exists());
     }
 

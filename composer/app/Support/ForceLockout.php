@@ -58,11 +58,8 @@ class ForceLockout
             }
         }
 
-        // Count failures in the last 15 minutes for this email
-        $recentFailures = ForceAttempt::where('email_hash', $emailHash)
-            ->where('succeeded', false)
-            ->where('created_at', '>=', $now->copy()->subMinutes(self::FAILURE_WINDOW_MINUTES))
-            ->count();
+        // Count failures in the last 15 minutes for this email (since its last success)
+        $recentFailures = self::recentFailures($emailHash);
 
         if ($recentFailures >= self::FAILURE_THRESHOLD) {
             // Trigger lockout if not already locked
@@ -128,10 +125,7 @@ class ForceLockout
         }
 
         // Check if this failure triggers a lockout
-        $recentFailures = ForceAttempt::where('email_hash', $emailHash)
-            ->where('succeeded', false)
-            ->where('created_at', '>=', now()->subMinutes(self::FAILURE_WINDOW_MINUTES))
-            ->count();
+        $recentFailures = self::recentFailures($emailHash);
 
         if ($recentFailures >= self::FAILURE_THRESHOLD) {
             self::applyLockout($user, $emailHash, $recentFailures);
@@ -161,11 +155,25 @@ class ForceLockout
             }
         }
 
-        // Clear the failure window for this email
-        if ($user) {
-            // We keep the lock level in case another failure happens, but we don't clear
-            // it immediately - it will auto-reset after 24 hours of inactivity
-        }
+        // The failure window restarts here: recentFailures() counts only failures after the
+        // latest success. The lock level is kept; it resets after 24 hours without a lockout.
+    }
+
+    /**
+     * Failed attempts for this email in the last 15 minutes, after its latest successful
+     * attempt (a success clears the failure window).
+     */
+    private static function recentFailures(string $emailHash): int
+    {
+        $lastSuccessId = ForceAttempt::where('email_hash', $emailHash)
+            ->where('succeeded', true)
+            ->max('id');
+
+        return ForceAttempt::where('email_hash', $emailHash)
+            ->where('succeeded', false)
+            ->where('created_at', '>=', now()->subMinutes(self::FAILURE_WINDOW_MINUTES))
+            ->when($lastSuccessId !== null, fn ($q) => $q->where('id', '>', $lastSuccessId))
+            ->count();
     }
 
     /**

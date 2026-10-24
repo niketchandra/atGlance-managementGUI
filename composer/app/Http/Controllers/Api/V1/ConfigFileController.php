@@ -23,13 +23,17 @@ class ConfigFileController extends Controller
     public function store(Request $request)
     {
         $system = $this->system($request);
+        // The system stores only a hash of its key; the key itself is the one the host sent,
+        // already checked against that hash by the atglance.system middleware. Each upload
+        // keeps its own copy, used by the legacy config-files/filter lookup.
+        $key = (string) $request->header('X-Atglance-System-Key', '');
 
         // The verified system wins over anything the client sent.
         $request->merge([
             'system_id' => $system->id,
             'system_register_id' => $system->id,
-            'validation_hash' => $system->validation_hash,
-            'system_hash' => $system->validation_hash,
+            'validation_hash' => $key,
+            'system_hash' => $key,
             'org_id' => $system->org_id,
             'service_id' => null,
         ]);

@@ -17,6 +17,10 @@ class ConsolidatedMigrationTest extends TestCase
 {
     private const LAST_1X = '2026_04_09_000001_set_configuration_files_autoincrement_to_2010.php';
     private const LAST_2X = '2026_10_07_000000_add_workspace_to_activity_logs.php';
+    /** The consolidated 2.1.2 schema; later migrations (lockout, key hashes, ...) add to it. */
+    private const CONSOLIDATED = '2026_10_14_000000_version_2_1_2_schema.php';
+    /** Tables new in 2.1.2, created only by the consolidated migration (no legacy migration). */
+    private const NEW_IN_2_1_2 = ['temporary_credential_messages'];
 
     private string $legacyDir;
     private string $newDir;
@@ -42,9 +46,14 @@ class ConsolidatedMigrationTest extends TestCase
         $this->migrateFresh($this->legacyDir);
         $legacy = $this->snapshot();
 
-        $this->migrateFresh($this->newDir);
+        $this->migrateFresh($this->subset($this->newDir, self::CONSOLIDATED));
+        $consolidated = $this->snapshot();
+        foreach (self::NEW_IN_2_1_2 as $table) {
+            $this->assertArrayHasKey($table, $consolidated);
+            unset($consolidated[$table]);
+        }
 
-        $this->assertEquals($legacy, $this->snapshot());
+        $this->assertEquals($legacy, $consolidated);
     }
 
     public function test_upgrade_from_2x_matches_fresh_install(): void
@@ -120,11 +129,19 @@ class ConsolidatedMigrationTest extends TestCase
      */
     private function legacySubset(string $lastFile): string
     {
-        $dir = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'atglance-legacy-' . uniqid();
+        return $this->subset($this->legacyDir, $lastFile);
+    }
+
+    /**
+     * A folder with the migrations of $source up to and including $lastFile.
+     */
+    private function subset(string $source, string $lastFile): string
+    {
+        $dir = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'atglance-migrations-' . uniqid();
         File::ensureDirectoryExists($dir);
         $this->tempDirs[] = $dir;
 
-        foreach (File::files($this->legacyDir) as $file) {
+        foreach (File::files($source) as $file) {
             if (strcmp($file->getFilename(), $lastFile) <= 0) {
                 File::copy($file->getPathname(), $dir . DIRECTORY_SEPARATOR . $file->getFilename());
             }

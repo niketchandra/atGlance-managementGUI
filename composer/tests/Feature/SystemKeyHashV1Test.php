@@ -134,7 +134,7 @@ class SystemKeyHashV1Test extends TestCase
         $row = DB::table('system_register')->where('id', $system->id)->first();
         $this->assertSame(hash('sha256', self::NEW_KEY), $row->system_key_hash);
         $this->assertSame('WXYZ', $row->system_key_last_four);
-        $this->assertSame(self::NEW_KEY, $row->validation_hash, 'still dual-written until 5e');
+        $this->assertNull($row->validation_hash, 'Task 5e: the plaintext key is not kept');
 
         $this->getJson('/api/v1/systems/self', $pat + $this->systemHeaders($system))->assertNotFound();
         $this->getJson('/api/v1/systems/self', $pat + $this->systemHeaders($system, self::NEW_KEY))->assertOk();
@@ -171,7 +171,7 @@ class SystemKeyHashV1Test extends TestCase
         $id = $this->postJson('/api/v1/systems', $this->registerBody(), $this->pat($user))->assertCreated()->json('system.id');
 
         $row = DB::table('system_register')->where('id', $id)->first();
-        $this->assertSame(self::KEY, $row->validation_hash);
+        $this->assertNull($row->validation_hash);
         $this->assertSame(hash('sha256', self::KEY), $row->system_key_hash);
         $this->assertSame('4567', $row->system_key_last_four);
     }
@@ -247,5 +247,40 @@ class SystemKeyHashV1Test extends TestCase
             ->assertOk()->assertJsonPath('system.id', $system->id);
         $this->getJson('/api/v1/credentials/status', $pat + $this->systemHeaders($system, self::NEW_KEY))
             ->assertNotFound()->assertExactJson(['message' => 'System not found']);
+    }
+
+    public function test_v1_upload_keeps_the_sent_key_and_rotation_moves_the_files_to_the_new_key(): void
+    {
+        $owner = $this->user('owner@example.test');
+        $system = $this->system($owner);
+        $pat = $this->pat($owner);
+
+        $fileId = $this->post('/api/v1/config-files', [
+            'file' => \Illuminate\Http\UploadedFile::fake()->createWithContent('sshd_config', "PermitRootLogin no\n"), 'service_name' => 'ssh',
+        ], $pat + $this->systemHeaders($system))->assertCreated()->json('file.id');
+        $this->assertSame(self::KEY, DB::table('configuration_files')->where('id', $fileId)->value('validation_hash'));
+        $this->getJson('/api/config-files/filter?' . http_build_query(['system_id' => $system->id, 'validation_hash' => self::KEY]), $pat)
+            ->assertOk()->assertJsonPath('files.0.id', $fileId);
+
+        $this->postJson('/api/v1/systems/self/rotate-key', ['password' => 'secret-pass', 'new_key' => self::NEW_KEY], $pat + $this->systemHeaders($system))
+            ->assertOk();
+
+        $this->assertSame(self::NEW_KEY, DB::table('configuration_files')->where('id', $fileId)->value('validation_hash'));
+        $this->getJson('/api/config-files/filter?' . http_build_query(['system_id' => $system->id, 'validation_hash' => self::NEW_KEY]), $pat)
+            ->assertOk()->assertJsonPath('files.0.id', $fileId);
+    }
+
+    public function test_migration_clears_plaintext_keys_and_hashes_rows_without_a_hash(): void
+    {
+        $owner = $this->user('owner@example.test');
+        $hashed = $this->system($owner);
+        DB::table('system_register')->where('id', $hashed->id)->update(['validation_hash' => self::KEY]); // left from before 5e
+        $this->unhashedSystem($owner);
+
+        (require database_path('migrations/2026_10_24_000001_clear_plaintext_system_keys.php'))->up();
+
+        $this->assertSame(0, DB::table('system_register')->whereNotNull('validation_hash')->count());
+        $this->assertSame(hash('sha256', self::KEY), DB::table('system_register')->where('id', $hashed->id)->value('system_key_hash'));
+        $this->assertSame(hash('sha256', self::KEY), DB::table('system_register')->where('id', 777001)->value('system_key_hash'));
     }
 }
